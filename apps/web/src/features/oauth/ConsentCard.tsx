@@ -34,6 +34,8 @@ export function ConsentCard({
   const chosen = view.organizations.find((o) => o.organization_id === selectedOrgId)
   const canAllow = Boolean(chosen?.external_tools_enabled) && !busy
   const toolIcon = clientIcon(view.client_id)
+  // Write is a larger power than search, so the page must say so in words.
+  const canWrite = view.scope.split(/\s+/).includes('knowledge:write')
 
   return (
     <div className="oauth-card">
@@ -55,11 +57,11 @@ export function ConsentCard({
       <ul className="oauth-perms">
         <li>
           <span className="oauth-perm-icon yes"><Check size={14} /></span>
-          <span>{t('oauth.can')}</span>
+          <span>{t(canWrite ? 'oauth.canWrite' : 'oauth.can')}</span>
         </li>
         <li>
           <span className="oauth-perm-icon no"><X size={14} /></span>
-          <span>{t('oauth.cannot')}</span>
+          <span>{t(canWrite ? 'oauth.cannotWrite' : 'oauth.cannot')}</span>
         </li>
       </ul>
 
