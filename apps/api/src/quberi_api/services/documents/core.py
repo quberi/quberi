@@ -177,7 +177,10 @@ def _validate_mime(mime: str) -> str:
             return normalised
         if normalised == allowed:
             return normalised
-        if allowed.endswith("-") and normalised.startswith(allowed):
+        # Prefixes that stop at a "-" (application/vnd.ms-) or a "." (the
+        # Office Open XML family) match any type that starts with them. The "."
+        # case was missing, which made every .docx/.xlsx/.pptx upload fail.
+        if allowed.endswith(("-", ".")) and normalised.startswith(allowed):
             return normalised
     raise UnsupportedMimeError(f"unsupported mime type: {mime!r}")
 
