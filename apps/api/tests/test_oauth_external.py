@@ -914,4 +914,8 @@ async def test_discovery_document_points_at_the_right_places(http):
     assert meta["token_endpoint_auth_methods_supported"] == ["none"]
     assert meta["token_endpoint"].endswith("/api/v1/oauth/token")
     assert meta["authorization_endpoint"].endswith("/oauth/authorize")
-    assert meta["scopes_supported"] == ["knowledge:read", "knowledge:write"]
+    assert meta["scopes_supported"] == [
+        "knowledge:read",
+        "knowledge:write",
+        "knowledge:upload",
+    ]

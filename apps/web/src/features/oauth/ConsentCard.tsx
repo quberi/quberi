@@ -34,8 +34,17 @@ export function ConsentCard({
   const chosen = view.organizations.find((o) => o.organization_id === selectedOrgId)
   const canAllow = Boolean(chosen?.external_tools_enabled) && !busy
   const toolIcon = clientIcon(view.client_id)
-  // Write is a larger power than search, so the page must say so in words.
-  const canWrite = view.scope.split(/\s+/).includes('knowledge:write')
+  // Each power gets its own sentence, so the page never says less than the tool asked for.
+  const scopes = view.scope.split(/\s+/)
+  const canRead = scopes.includes('knowledge:read')
+  const canSave = scopes.includes('knowledge:write')
+  const canUpload = scopes.includes('knowledge:upload')
+  const canChange = canSave || canUpload
+  const abilities = [
+    ...(canRead ? ['oauth.canRead'] : []),
+    ...(canSave ? ['oauth.canSave'] : []),
+    ...(canUpload ? ['oauth.canUpload'] : []),
+  ]
 
   return (
     <div className="oauth-card">
@@ -55,13 +64,15 @@ export function ConsentCard({
       </header>
 
       <ul className="oauth-perms">
-        <li>
-          <span className="oauth-perm-icon yes"><Check size={14} /></span>
-          <span>{t(canWrite ? 'oauth.canWrite' : 'oauth.can')}</span>
-        </li>
+        {abilities.map((key) => (
+          <li key={key}>
+            <span className="oauth-perm-icon yes"><Check size={14} /></span>
+            <span>{t(key)}</span>
+          </li>
+        ))}
         <li>
           <span className="oauth-perm-icon no"><X size={14} /></span>
-          <span>{t(canWrite ? 'oauth.cannotWrite' : 'oauth.cannot')}</span>
+          <span>{t(canChange ? 'oauth.cannotWriteOrUpload' : 'oauth.cannot')}</span>
         </li>
       </ul>
 

@@ -21,7 +21,15 @@ from urllib.parse import urlsplit
 # it needs.
 SCOPE_KNOWLEDGE_READ = "knowledge:read"
 SCOPE_KNOWLEDGE_WRITE = "knowledge:write"
-SUPPORTED_SCOPES = (SCOPE_KNOWLEDGE_READ, SCOPE_KNOWLEDGE_WRITE)
+# Uploading files (PDFs, images, Office documents) is a larger power than saving
+# a text note, so it is its own scope: a grant that may save notes does not
+# silently gain it. It implies neither read nor write.
+SCOPE_KNOWLEDGE_UPLOAD = "knowledge:upload"
+SUPPORTED_SCOPES = (
+    SCOPE_KNOWLEDGE_READ,
+    SCOPE_KNOWLEDGE_WRITE,
+    SCOPE_KNOWLEDGE_UPLOAD,
+)
 
 # Scopes granted when a request names none. Kept to read-only on purpose:
 # write is a strictly larger power, so it must be asked for explicitly. This

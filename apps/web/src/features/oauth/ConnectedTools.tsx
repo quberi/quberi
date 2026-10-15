@@ -68,6 +68,9 @@ export function ConnectedTools() {
               {g.scope.split(/\s+/).includes('knowledge:write') && (
                 <span className="oauth-write-badge">{t('oauth.writeBadge')}</span>
               )}
+              {g.scope.split(/\s+/).includes('knowledge:upload') && (
+                <span className="oauth-write-badge">{t('oauth.uploadBadge')}</span>
+              )}
               <small className="integration-source-meta">
                 <span>{g.organization_name}</span>
                 <span className="dot-sep">·</span>

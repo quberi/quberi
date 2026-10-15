@@ -16,10 +16,11 @@ What is different, on purpose:
 
 from __future__ import annotations
 
+import io
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -31,6 +32,7 @@ from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import documents as documents_service
 from quberi_api.services import spaces as spaces_service
+from quberi_api.services.documents import external_upload
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
     DocumentValidationError,
@@ -46,6 +48,7 @@ router = APIRouter(prefix="/external", tags=["external"])
 _bearer = HTTPBearer(auto_error=False)
 _SEARCH_RATE_LIMIT = 60  # per grant per minute
 _SAVE_RATE_LIMIT = 30  # per grant per minute — writes are rarer than searches
+_UPLOAD_RATE_LIMIT = 10  # per grant per minute — files are heavier than notes
 _MAX_PASSAGE_CHARS = 4_000
 
 
@@ -303,6 +306,182 @@ async def save(
         space_id=target.space.id,
         space_name=target.space.name,
         name=view.document.name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Upload a file into the person's knowledge (requires knowledge:upload)
+# ---------------------------------------------------------------------------
+
+
+class UploadResponse(BaseModel):
+    document_id: uuid.UUID
+    space_id: uuid.UUID
+    space_name: str
+    name: str
+    mime_type: str
+    size_bytes: int
+
+
+def _too_large(limit: int) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        detail={
+            "code": "file_too_large",
+            "message": f"the file is larger than the {limit}-byte limit",
+        },
+    )
+
+
+async def _read_capped(upload: UploadFile, limit: int) -> bytes:
+    """Read the file in pieces and stop as soon as it passes ``limit``."""
+
+    buf = bytearray()
+    while True:
+        piece = await upload.read(1024 * 1024)
+        if not piece:
+            break
+        buf.extend(piece)
+        if len(buf) > limit:
+            raise _too_large(limit)
+    return bytes(buf)
+
+
+@router.post(
+    "/upload",
+    response_model=UploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload a file into readable knowledge",
+)
+async def upload(
+    request: Request,
+    file: UploadFile = File(...),
+    space: Optional[str] = Form(default=None, max_length=200),
+    ext: core.ExternalCaller = Depends(require_external_caller),
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> UploadResponse:
+    # Scope first, before touching the body at all.
+    if not ext.has_scope(clients.SCOPE_KNOWLEDGE_UPLOAD):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "insufficient_scope", "message": "knowledge:upload is required"},
+        )
+    try:
+        await core.rate_limit(
+            infra.redis,
+            key=f"quberi:external:upload:{ext.grant_id}",
+            limit=_UPLOAD_RATE_LIMIT,
+            window_seconds=60,
+        )
+    except core.OAuthError as exc:
+        raise HTTPException(
+            status_code=exc.status,
+            detail={"code": exc.error, "message": exc.description},
+            headers={"Retry-After": "60"} if exc.status == 429 else None,
+        ) from exc
+
+    limit = documents_service.MAX_UPLOAD_BYTES
+    # Refuse an honest oversized request without reading it; a dishonest one is
+    # caught by the capped read below.
+    declared_length = request.headers.get("content-length")
+    if declared_length and declared_length.isdigit() and int(declared_length) > limit + 64 * 1024:
+        raise _too_large(limit)
+
+    data = await _read_capped(file, limit)
+    try:
+        checked = external_upload.check_upload(
+            data=data,
+            filename=file.filename or "",
+            declared_mime=file.content_type or "",
+        )
+    except UnsupportedMimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail={"code": "unsupported_type", "message": str(exc)},
+        ) from exc
+    except DocumentValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "invalid_file", "message": str(exc)},
+        ) from exc
+
+    try:
+        target = await spaces_service.resolve_target_space(
+            session,
+            organization_id=ext.organization.id,
+            user_id=ext.user.id,
+            name=space,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "space_not_found", "message": str(exc)},
+        ) from exc
+    # resolve_target_space opened a read transaction; close it before writing.
+    await session.commit()
+
+    try:
+        view = await documents_service.upload_local(
+            session,
+            organization_id=ext.organization.id,
+            space_id=target.space.id,
+            uploader_user_id=ext.user.id,
+            filename=checked.filename,
+            file_obj=io.BytesIO(data),
+            content_type=checked.mime,
+            attributes={"origin": "external_upload", "source_label": ext.client_name},
+        )
+    except DocumentPermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": str(exc)},
+        ) from exc
+    except UnsupportedMimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail={"code": "unsupported_type", "message": str(exc)},
+        ) from exc
+    except DocumentValidationError as exc:
+        status_code = (
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            if "limit" in str(exc)
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": "invalid_file", "message": str(exc)},
+        ) from exc
+
+    # upload_local already committed the document and its own audit row; this
+    # one records that it came through an outside tool, and which one.
+    session.add(
+        AuditEvent(
+            organization_id=ext.organization.id,
+            actor_type="user",
+            actor_id=ext.user.id,
+            action="knowledge.external_upload",
+            resource_type="oauth_grant",
+            resource_id=ext.grant_id,
+            payload={
+                "grant_id": str(ext.grant_id),
+                "client_name": ext.client_name,
+                "document_id": str(view.document.id),
+                "space_id": str(target.space.id),
+                "mime": checked.mime,
+                "size_bytes": len(data),
+            },
+        )
+    )
+    await session.commit()
+
+    return UploadResponse(
+        document_id=view.document.id,
+        space_id=target.space.id,
+        space_name=target.space.name,
+        name=view.document.name,
+        mime_type=checked.mime,
+        size_bytes=len(data),
     )
 
 

@@ -7,6 +7,7 @@ Re-exports the public read/write functions so callers can just:
 """
 
 from quberi_api.services.documents.core import (
+    MAX_UPLOAD_BYTES,
     DocumentPage,
     DocumentStats,
     DocumentView,
@@ -26,6 +27,7 @@ from quberi_api.services.documents.errors import (
 )
 
 __all__ = [
+    "MAX_UPLOAD_BYTES",
     "delete_document",
     "get_document",
     "get_document_text",

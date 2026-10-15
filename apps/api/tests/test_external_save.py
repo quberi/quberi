@@ -132,6 +132,7 @@ def _no_infra(monkeypatch):
     async def fake_store(*, storage_key, source_stream, content_type, max_bytes):
         blob = source_stream.read()
         captured["blob"] = blob
+        captured["content_type"] = content_type
         return _StoreResult(storage_key=storage_key, size_bytes=len(blob), checksum_sha256="0" * 64)
 
     async def fake_enqueue(document_id):
