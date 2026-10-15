@@ -100,14 +100,17 @@ Layout:
 
 ## Security
 
-Please do not open a public issue for a vulnerability. Email
-[chaney1720@gmail.com](mailto:chaney1720@gmail.com) with details.
-No SLA is promised yet.
+Please do not open a public issue for a vulnerability. Use GitHub's
+**Security → Report a vulnerability** to report it privately. If that is not
+possible, email [chaney1720@gmail.com](mailto:chaney1720@gmail.com). No response
+time is promised yet.
 
 ## Contributing
 
-Issues and pull requests are welcome. A contributor agreement or DCO process has
-not been decided yet, so please open an issue to discuss larger changes first.
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are accepted under the [Developer Certificate of Origin](DCO): sign
+off each commit with `git commit -s`. There is no CLA, and your contribution is
+licensed under AGPL-3.0 like the rest of the project.
 
 ## License
 
