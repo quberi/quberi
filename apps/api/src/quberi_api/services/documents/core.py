@@ -16,9 +16,11 @@ treated identically to a directly-bound user.
 
 from __future__ import annotations
 
+import io
 import re
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import AsyncIterator, BinaryIO, Optional
 
 from sqlalchemy import case, func, select
@@ -601,6 +603,111 @@ async def upload_local(
     await enqueue_index_document(doc.id)
 
     return await _to_view(session, doc)
+
+
+# ---------------------------------------------------------------------------
+# Save a text note (e.g. a snippet captured from an external agent chat)
+# ---------------------------------------------------------------------------
+
+# Keep note titles short enough to live inside the ``.md`` filename without
+# tripping the filename-length guard (``MAX_FILENAME_LENGTH``) once the
+# ``.md`` suffix is appended.
+MAX_NOTE_TITLE_LENGTH = 180
+MAX_NOTE_TEXT_BYTES = 1 * 1024 * 1024  # 1 MiB of UTF-8 text
+
+
+def _compose_note_markdown(
+    *,
+    title: str,
+    text: str,
+    source_label: Optional[str],
+    source_url: Optional[str],
+    saved_at: datetime,
+) -> str:
+    """Render a note as a self-describing markdown document.
+
+    The front matter is plain markdown (not YAML) so the existing text
+    extractor indexes it verbatim — the source label and timestamp become
+    searchable context, not hidden metadata.
+    """
+
+    lines = [f"# {title}", ""]
+    provenance: list[str] = []
+    if source_label:
+        provenance.append(f"来源 / Source: {source_label}")
+    if source_url:
+        provenance.append(f"链接 / Link: {source_url}")
+    provenance.append(f"保存时间 / Saved: {saved_at.isoformat()}")
+    lines.extend(provenance)
+    lines.extend(["", "---", "", text.strip(), ""])
+    return "\n".join(lines)
+
+
+async def save_note(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    space_id: uuid.UUID,
+    author_user_id: uuid.UUID,
+    title: str,
+    text: str,
+    source_label: Optional[str] = None,
+    source_url: Optional[str] = None,
+) -> DocumentView:
+    """Store a plain-text note into a space as a markdown document.
+
+    This is the write side of the knowledge base used by external agents
+    (e.g. the ``dsh-quberi`` DeepSeek Harness plugin's ``quberi_save``
+    tool): a user captures a conclusion from a chat and it lands in their
+    knowledge base, searchable alongside uploaded files.
+
+    It is a thin wrapper over :func:`upload_local` — the note text is
+    composed into a markdown blob and pushed through the exact same path
+    (MinIO store, Document row, editor+ permission check, async indexing),
+    so a note is indistinguishable from an uploaded ``.md`` file
+    downstream. Nothing new is invented in the storage/index/permission
+    layers.
+    """
+
+    clean_title = (title or "").strip()
+    if not clean_title:
+        raise DocumentValidationError("note title must not be empty")
+    if len(clean_title) > MAX_NOTE_TITLE_LENGTH:
+        clean_title = clean_title[:MAX_NOTE_TITLE_LENGTH].rstrip()
+
+    if not (text or "").strip():
+        raise DocumentValidationError("note text must not be empty")
+
+    markdown = _compose_note_markdown(
+        title=clean_title,
+        text=text,
+        source_label=source_label,
+        source_url=source_url,
+        saved_at=datetime.now(timezone.utc),
+    )
+    blob = markdown.encode("utf-8")
+    if len(blob) > MAX_NOTE_TEXT_BYTES:
+        raise DocumentValidationError(
+            f"note is too large ({len(blob)} bytes); "
+            f"limit is {MAX_NOTE_TEXT_BYTES} bytes"
+        )
+
+    attributes = {
+        "origin": "note",
+        "source_label": source_label or "",
+        "source_url": source_url or "",
+    }
+
+    return await upload_local(
+        session,
+        organization_id=organization_id,
+        space_id=space_id,
+        uploader_user_id=author_user_id,
+        filename=f"{clean_title}.md",
+        file_obj=io.BytesIO(blob),
+        content_type="text/markdown",
+        attributes=attributes,
+    )
 
 
 # ---------------------------------------------------------------------------

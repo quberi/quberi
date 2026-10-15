@@ -15,7 +15,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,7 +48,7 @@ class AccountResponse(BaseModel):
     google_account: str | None = None
 
 
-def _to_response(view: account_service.AccountView) -> "AccountResponse":
+def _to_response(view: account_service.AccountView) -> AccountResponse:
     return AccountResponse(
         display_name=view.display_name,
         avatar_url=view.avatar_url,

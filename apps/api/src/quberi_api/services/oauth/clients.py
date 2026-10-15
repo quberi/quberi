@@ -15,9 +15,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-# The one thing a grant can do today: search knowledge the person can read.
+# What a grant can do. ``knowledge:read`` searches knowledge the person can
+# read; ``knowledge:write`` additionally saves notes into a space they can
+# write to. A write grant does not imply read — a tool asks for exactly what
+# it needs.
 SCOPE_KNOWLEDGE_READ = "knowledge:read"
-SUPPORTED_SCOPES = (SCOPE_KNOWLEDGE_READ,)
+SCOPE_KNOWLEDGE_WRITE = "knowledge:write"
+SUPPORTED_SCOPES = (SCOPE_KNOWLEDGE_READ, SCOPE_KNOWLEDGE_WRITE)
+
+# Scopes granted when a request names none. Kept to read-only on purpose:
+# write is a strictly larger power, so it must be asked for explicitly. This
+# also keeps every pre-existing client (which either names ``knowledge:read``
+# or names nothing) read-only across this change — no grant silently gains
+# the ability to write.
+DEFAULT_SCOPES = (SCOPE_KNOWLEDGE_READ,)
 
 
 @dataclass(frozen=True)
@@ -68,11 +79,16 @@ def is_valid_redirect_uri(uri: str) -> bool:
 
 
 def normalise_scope(scope: str | None) -> str | None:
-    """The requested scopes if all are supported (default: all), else ``None``."""
+    """The requested scopes if all are supported, else ``None``.
+
+    Naming no scope grants :data:`DEFAULT_SCOPES` (read-only) rather than
+    everything supported: write must be requested explicitly, so widening the
+    set of supported scopes never retroactively widens an existing grant.
+    """
 
     requested = [s for s in (scope or "").split() if s]
     if not requested:
-        return " ".join(SUPPORTED_SCOPES)
+        return " ".join(DEFAULT_SCOPES)
     if any(s not in SUPPORTED_SCOPES for s in requested):
         return None
     return " ".join(sorted(set(requested)))

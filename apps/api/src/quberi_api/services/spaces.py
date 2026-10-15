@@ -149,6 +149,58 @@ def _is_owner(space: Space, *, user_id: uuid.UUID) -> bool:
     return space.owner_type == "user" and space.owner_id == user_id
 
 
+async def resolve_target_space(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    name: str | None = None,
+) -> SpaceView:
+    """Resolve a space to save into from a human-friendly reference.
+
+    Used by the "save a note" flow where the caller (a person, or a model
+    acting for them in an external agent) names a space in words rather than
+    by id — or names nothing at all.
+
+    * ``name is None``/blank → the caller's **personal space** (every user
+      gets one at onboarding: ``preset='personal'``, owned by the user). If
+      somehow absent, fall back to the first space they can reach.
+    * ``name`` given → a case-insensitive, whitespace-trimmed match against
+      the names of spaces the caller can reach. An exact (case-folded) match
+      wins; otherwise raise ``NotFoundError`` listing nothing (existence is
+      scoped information). Ambiguous duplicate names resolve to the
+      earliest-created match, matching ``list_spaces_for_user`` ordering.
+
+    Returns a :class:`SpaceView` so the caller can read both the id and the
+    ownership flag. It does **not** check write permission — that stays with
+    the write path (``documents.save_note`` → ``upload_local``'s editor+
+    gate), so this resolver never leaks "you could write here" information.
+    """
+
+    spaces = await list_spaces_for_user(
+        session, organization_id=organization_id, user_id=user_id
+    )
+    if not spaces:
+        raise NotFoundError("no accessible space to save into")
+
+    wanted = (name or "").strip()
+    if not wanted:
+        personal = next(
+            (s for s in spaces if s.space.preset == "personal" and s.is_owner),
+            None,
+        )
+        return personal or spaces[0]
+
+    folded = wanted.casefold()
+    match = next(
+        (s for s in spaces if (s.space.name or "").strip().casefold() == folded),
+        None,
+    )
+    if match is None:
+        raise NotFoundError(f"no accessible space named {wanted!r}")
+    return match
+
+
 async def get_space_for_manager(
     session: AsyncSession,
     *,

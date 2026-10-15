@@ -15,6 +15,7 @@ from quberi_api.services.documents.core import (
     get_document_text,
     list_documents_in_space,
     open_download_stream,
+    save_note,
     stats_for_space,
     upload_local,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "get_document_text",
     "list_documents_in_space",
     "open_download_stream",
+    "save_note",
     "stats_for_space",
     "upload_local",
     "DocumentPage",

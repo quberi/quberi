@@ -268,6 +268,43 @@ async def upload_document(
     return _serialise(view)
 
 
+class SaveNoteRequest(BaseModel):
+    """Save a plain-text note (e.g. a snippet captured from an agent chat)."""
+
+    title: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1)
+    source_label: Optional[str] = Field(default=None, max_length=200)
+    source_url: Optional[str] = Field(default=None, max_length=2000)
+
+
+@router.post(
+    "/{space_id}/notes",
+    response_model=DocumentView,
+    status_code=status.HTTP_201_CREATED,
+    summary="Save a text note into a space (stored as a markdown document)",
+)
+async def save_note(
+    space_id: uuid.UUID,
+    body: SaveNoteRequest,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentView:
+    try:
+        view = await documents_service.save_note(
+            session,
+            organization_id=caller.organization.id,
+            space_id=space_id,
+            author_user_id=caller.user.id,
+            title=body.title,
+            text=body.text,
+            source_label=body.source_label,
+            source_url=body.source_url,
+        )
+    except (DocumentValidationError, DocumentPermissionError, UnsupportedMimeError) as exc:
+        raise _translate(exc) from exc
+    return _serialise(view)
+
+
 @router.get(
     "/{space_id}/documents/{document_id}",
     response_model=DocumentView,

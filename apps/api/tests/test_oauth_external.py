@@ -167,9 +167,18 @@ def test_pkce_only_accepts_the_matching_s256_verifier():
 
 
 def test_unknown_scopes_are_refused():
+    # Naming nothing stays read-only (write must be asked for explicitly), so
+    # widening SUPPORTED_SCOPES never retroactively widens an existing grant.
     assert clients.normalise_scope(None) == "knowledge:read"
     assert clients.normalise_scope("knowledge:read") == "knowledge:read"
-    assert clients.normalise_scope("knowledge:write") is None
+    # write is now a supported scope, and read+write may be requested together.
+    assert clients.normalise_scope("knowledge:write") == "knowledge:write"
+    assert (
+        clients.normalise_scope("knowledge:read knowledge:write")
+        == "knowledge:read knowledge:write"
+    )
+    # ...but an unknown scope still poisons the whole request.
+    assert clients.normalise_scope("admin") is None
     assert clients.normalise_scope("knowledge:read admin") is None
 
 
@@ -905,4 +914,4 @@ async def test_discovery_document_points_at_the_right_places(http):
     assert meta["token_endpoint_auth_methods_supported"] == ["none"]
     assert meta["token_endpoint"].endswith("/api/v1/oauth/token")
     assert meta["authorization_endpoint"].endswith("/oauth/authorize")
-    assert meta["scopes_supported"] == ["knowledge:read"]
+    assert meta["scopes_supported"] == ["knowledge:read", "knowledge:write"]
