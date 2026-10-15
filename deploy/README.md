@@ -68,7 +68,7 @@ make check          # lint + check-drift + test（提交前建议跑一遍）
 ```bash
 docker exec quberi-postgres-1 psql -U quberi -d quberi -c "CREATE DATABASE quberi_test OWNER quberi"
 ```
-测试用的连接串默认是 `postgresql://quberi:quberi-local-postgres-2026@127.0.0.1:5432/quberi_test`（见 `apps/api/tests/conftest.py`），必要时用环境变量 `TEST_POSTGRES_DSN` 覆盖。测试代码里做了保护：DSN 不包含 `test` 字样会直接拒绝运行，防止手滑跑到开发库上。
+测试用的连接串默认是 `postgresql://quberi:change-me-local-only@127.0.0.1:5432/quberi_test`（见 `apps/api/tests/conftest.py`），必要时用环境变量 `TEST_POSTGRES_DSN` 覆盖。测试代码里做了保护：DSN 不包含 `test` 字样会直接拒绝运行，防止手滑跑到开发库上。
 
 ### 5. 前端本地开发环境
 

@@ -41,7 +41,7 @@ APPS_API_DIR = Path(__file__).resolve().parents[1]
 # different credentials/port.
 TEST_POSTGRES_DSN = os.environ.get(
     "TEST_POSTGRES_DSN",
-    "postgresql://quberi:quberi-local-postgres-2026@127.0.0.1:5432/quberi_test",
+    "postgresql://quberi:change-me-local-only@127.0.0.1:5432/quberi_test",
 )
 
 if "quberi_test" not in TEST_POSTGRES_DSN and "test" not in TEST_POSTGRES_DSN:

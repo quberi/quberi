@@ -9,7 +9,7 @@ COMPOSE := docker compose --env-file .env
 # The API container talks to Postgres over the docker network as
 # ``postgres:5432``; when we invoke Alembic from the host we need
 # ``127.0.0.1:5432`` instead. This env var overrides the compose DSN.
-HOST_POSTGRES_DSN := postgresql://quberi:quberi-local-postgres-2026@127.0.0.1:5432/quberi
+HOST_POSTGRES_DSN ?= postgresql://quberi:change-me-local-only@127.0.0.1:5432/quberi
 
 .PHONY: help
 help: ## Show this help

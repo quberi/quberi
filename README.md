@@ -1,0 +1,116 @@
+# Quberi
+
+Quberi is a multi-tenant AI knowledge base for teams. You upload documents,
+members ask questions in chat, and answers come from retrieved passages.
+Retrieval is filtered by what the asking user is allowed to see.
+
+Licensed under [AGPL-3.0](LICENSE).
+
+> Status: early. Expect rough edges. There are no prebuilt images or releases
+> yet, and the stack is built from source.
+
+## What it does
+
+- **Permission-aware retrieval.** Documents live in spaces. Access is granted by
+  organization, unit, position, group or individual member, each with a role.
+  Every question is checked against it.
+- **Audit log.** Sensitive actions are recorded, including searches made by
+  connected outside tools.
+- **Send review.** Before a question and the retrieved passages go to the chat
+  model, you can preview them, edit them, or drop individual passages.
+- **Models.** Bring your own key, use an organization-level model, or use a
+  platform default. Chat uses OpenAI-compatible endpoints. Embeddings (BGE-M3)
+  run inside the API and worker processes on CPU, not through a third-party API.
+- **Agents.** Build knowledge assistants and connect external agents (Coze, Dify).
+- **Sign-in and sync.** Email code, Google or Feishu login. Feishu documents can
+  be synced in.
+- **Connected tools.** An organization admin can allow read-only search from
+  outside tools through OAuth (authorization code with PKCE). It is off by
+  default. A plugin for DeepSeek Harness is published separately as
+  [`dsh-quberi`](https://github.com/quberi/dsh-quberi).
+
+## Run it locally
+
+Requirements: Docker with Compose, and `pnpm` if you want to work on the web app.
+
+```bash
+cp .env.example .env     # development values; change every secret before sharing
+# Generate the required encryption key and put it in .env as QUBERI_ENCRYPTION_KEY:
+python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+make up                  # builds and starts the full stack
+```
+
+`QUBERI_ENCRYPTION_KEY` encrypts stored API keys and tokens. Keep it: if you lose
+it, stored credentials cannot be read again.
+
+Then open <http://localhost:8080>. The API listens on <http://localhost:8000>.
+
+The stack is Postgres, Redis, Qdrant, MinIO (via the community fork
+`pgsty/silo`), the API, a background worker and the web app. See
+[`deploy/README.md`](deploy/README.md) for details (it is written in Chinese).
+
+### Signing in locally
+
+Real sign-in needs SMTP, Google or Feishu to be configured in `.env`.
+In a non-production environment (`QUBERI_ENVIRONMENT=development`, the default in
+`.env.example`), email verification codes are also written to the API log, so you
+can try the app without a mail server:
+
+```bash
+docker compose --env-file .env --profile app logs api | grep "DEV verification code"
+```
+
+Do not run with `QUBERI_ENVIRONMENT=development` on a machine that others can reach.
+
+### First run and resources
+
+- The first question or upload loads the BGE-M3 embedding model, which is
+  downloaded from Hugging Face into a Docker volume (about 4 GB on disk). If
+  Hugging Face is not reachable from your network, the download will fail.
+- In one measurement, loading BGE-M3 on CPU took about 2.4 GB of memory at peak.
+  The API and worker each load their own copy. We have not measured the whole
+  stack under load, so treat 16 GB of RAM as a comfortable starting point rather
+  than a tested requirement.
+
+## What stays on your machine
+
+When you run the stack yourself, uploaded documents (MinIO), vectors (Qdrant),
+conversations and the audit log (Postgres) are stored on the machines you run.
+Embeddings are computed locally once the model is cached.
+
+This is not an air-gapped setup. Questions and the retrieved passages are sent to
+whichever chat model you configure. If that is a cloud API, they leave your
+network. Login codes go through your SMTP provider, Google or Feishu sign-in
+talks to those services, and the first model download comes from Hugging Face.
+We have not tested the app against a fully local chat model.
+
+## Development
+
+```bash
+make check     # lint, migration drift check, API and web tests
+make test-api  # needs a separate quberi_test database, see deploy/README.md
+make test-web
+```
+
+Layout:
+
+- `apps/api` — FastAPI service, Alembic migrations, RAG worker
+- `apps/web` — React app
+- `compose.yaml` — local stack; `deploy/` — production overlay (Caddy) and notes
+
+## Security
+
+Please do not open a public issue for a vulnerability. Email
+[chaney1720@gmail.com](mailto:chaney1720@gmail.com) with details.
+No SLA is promised yet.
+
+## Contributing
+
+Issues and pull requests are welcome. A contributor agreement or DCO process has
+not been decided yet, so please open an issue to discuss larger changes first.
+
+## License
+
+Quberi is licensed under the GNU Affero General Public License v3.0 only. If you
+modify it and offer it to others over a network, you must make your modified
+source available to those users. See [LICENSE](LICENSE).
