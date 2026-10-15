@@ -6,7 +6,6 @@ import { AdminApiError } from './api'
 const api = vi.hoisted(() => ({
   adminLogin: vi.fn(),
   changeAdminPassword: vi.fn(),
-  verifyToken: vi.fn(),
   getOverview: vi.fn(),
   getOrganizations: vi.fn(),
   getModelCatalog: vi.fn(),
@@ -91,31 +90,19 @@ describe('AdminApp sign-in', () => {
   })
 })
 
-describe('AdminApp token fallback', () => {
-  it('still lets an operator paste the deployment token', async () => {
-    api.verifyToken.mockResolvedValue({})
+describe('AdminApp has no token entry', () => {
+  it('shows no control for pasting an admin token', () => {
     render(<AdminApp />)
-    fireEvent.click(screen.getByRole('button', { name: 'Use an admin token instead' }))
-    expect(screen.queryByLabelText('Username')).toBeNull()
-    fireEvent.change(screen.getByLabelText('Platform admin token'), {
-      target: { value: 'the-deployment-token' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Enter' }))
-    await waitFor(() => expect(screen.getByText('overview-view')).toBeTruthy())
-    expect(api.verifyToken).toHaveBeenCalledWith('the-deployment-token')
-    expect(api.adminLogin).not.toHaveBeenCalled()
+    expect(screen.queryByText(/admin token/i)).toBeNull()
+    expect(screen.queryByPlaceholderText(/token/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: /token/i })).toBeNull()
   })
 
-  it('shows a token-specific error and clears the field when switching back', async () => {
-    api.verifyToken.mockRejectedValue(new AdminApiError(401, 'invalid platform admin token'))
+  it('has exactly two fields: username and password', () => {
     render(<AdminApp />)
-    fireEvent.click(screen.getByRole('button', { name: 'Use an admin token instead' }))
-    fireEvent.change(screen.getByLabelText('Platform admin token'), { target: { value: 'nope' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enter' }))
-    expect((await screen.findByRole('alert')).textContent).toBe('Invalid admin token.')
-    fireEvent.click(screen.getByRole('button', { name: 'Use a username and password' }))
-    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('')
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByLabelText('Username')).toBeTruthy()
+    expect(screen.getByLabelText('Password')).toBeTruthy()
+    expect(document.querySelectorAll('input')).toHaveLength(2)
   })
 })
 

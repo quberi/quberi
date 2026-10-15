@@ -16,7 +16,6 @@ import {
   getModelCatalog,
   getOrganizations,
   getOverview,
-  verifyToken,
   type ModelCatalogEntry,
   type OrganizationStatsRow,
   type PlatformOverview,
@@ -75,8 +74,8 @@ export function AdminApp() {
 }
 
 // ---------------------------------------------------------------------------
-// Sign-in gate — username + password. The deployment's admin token can still
-// be pasted instead (scripts, and a way in if the first-boot password was lost).
+// Sign-in gate — username + password. (The deployment's admin token is still
+// accepted by the API for scripts, but the console no longer offers it.)
 // ---------------------------------------------------------------------------
 
 function SignInGate({
@@ -84,45 +83,30 @@ function SignInGate({
 }: {
   onSignedIn: (token: string, mustChange: boolean) => void
 }) {
-  const [useToken, setUseToken] = useState(false)
   const [username, setUsername] = useState('')
-  const [secret, setSecret] = useState('')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (busy) return
+    if (busy || !username.trim() || !password) return
     setBusy(true)
     setError(null)
     try {
-      if (useToken) {
-        const t = secret.trim()
-        if (!t) return
-        await verifyToken(t)
-        onSignedIn(t, false)
-      } else {
-        if (!username.trim() || !secret) return
-        const session = await adminLogin(username.trim(), secret)
-        onSignedIn(session.token, session.must_change_password)
-      }
+      const session = await adminLogin(username.trim(), password)
+      onSignedIn(session.token, session.must_change_password)
     } catch (err) {
       if (err instanceof AdminApiError && err.status === 429) {
         setError('Too many attempts. Wait a few minutes and try again.')
       } else if (err instanceof AdminApiError && err.status === 401) {
-        setError(useToken ? 'Invalid admin token.' : 'Invalid username or password.')
+        setError('Invalid username or password.')
       } else {
         setError('Could not reach the admin API. Try again in a moment.')
       }
     } finally {
       setBusy(false)
     }
-  }
-
-  const switchMode = () => {
-    setUseToken((v) => !v)
-    setSecret('')
-    setError(null)
   }
 
   return (
@@ -132,53 +116,37 @@ function SignInGate({
           <ShieldCheck size={22} />
         </span>
         <h1>Quberi Platform Admin</h1>
-        {useToken ? (
-          <p>
-            Paste the <code>QUBERI_PLATFORM_ADMIN_TOKEN</code> for this deployment. It is
-            kept only in this tab's session storage; closing the tab clears it.
-          </p>
-        ) : (
-          <p>
-            Sign in with a platform admin account. On a new deployment the first
-            password is written once to the API log.
-          </p>
-        )}
+        <p>
+          Sign in with a platform admin account. On a new deployment the first
+          password is written once to the API log.
+        </p>
         <form onSubmit={submit}>
-          {!useToken && (
-            <input
-              aria-label="Username"
-              autoComplete="username"
-              autoFocus
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username"
-              type="text"
-              value={username}
-            />
-          )}
           <input
-            aria-label={useToken ? 'Platform admin token' : 'Password'}
-            autoComplete={useToken ? 'off' : 'current-password'}
-            autoFocus={useToken}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder={useToken ? 'Platform admin token' : 'Password'}
+            aria-label="Username"
+            autoComplete="username"
+            autoFocus
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+            type="text"
+            value={username}
+          />
+          <input
+            aria-label="Password"
+            autoComplete="current-password"
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
             type="password"
-            value={secret}
+            value={password}
           />
           {error && (
             <div className="admin-gate-error" role="alert">
               {error}
             </div>
           )}
-          <button
-            disabled={busy || !secret.trim() || (!useToken && !username.trim())}
-            type="submit"
-          >
-            {busy ? 'Signing in…' : useToken ? 'Enter' : 'Sign in'}
+          <button disabled={busy || !password || !username.trim()} type="submit">
+            {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <button className="admin-gate-link" onClick={switchMode} type="button">
-          {useToken ? 'Use a username and password' : 'Use an admin token instead'}
-        </button>
       </div>
     </div>
   )

@@ -48,11 +48,6 @@ async function adminFetch<T>(
   return (await response.json()) as T
 }
 
-/** Cheap probe used to validate a token before storing it. */
-export function verifyToken(token: string): Promise<unknown> {
-  return adminFetch(token, '/api/v1/admin/stats/overview')
-}
-
 export interface AdminSession {
   token: string
   expires_at: number

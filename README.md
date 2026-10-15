@@ -82,10 +82,11 @@ before the first start; a weak value is ignored and a random one is generated.
 Because the generated password is printed to the container log, change it right
 away, and treat old logs as sensitive until you have.
 
-`QUBERI_PLATFORM_ADMIN_TOKEN` still works as a bearer token for scripts and as a
-fallback on the sign-in page ("Use an admin token instead"). Leave it empty if you
-do not need it. Sign-in is rate limited: 5 failed attempts on an account lock it
-until 15 minutes after the first of those failures, even for the right password.
+`QUBERI_PLATFORM_ADMIN_TOKEN` still works as a bearer token for scripts and `curl`
+against `/api/v1/admin/*`, but the console itself only accepts a username and
+password. Leave the token empty if you do not need it. Sign-in is rate limited:
+5 failed attempts on an account lock it until 15 minutes after the first of those
+failures, even for the right password.
 
 ### First run and resources
 
