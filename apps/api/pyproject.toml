@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools==80.8.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quberi-api"
+version = "0.1.0"
+description = "Quberi platform API"
+license = "AGPL-3.0-only"
+requires-python = ">=3.9"
+dependencies = [
+  "alembic==1.14.0",
+  "arq==0.26.3",
+  "asyncpg==0.30.0",
+  "cryptography==44.0.0",
+  "email-validator==2.2.0",
+  "fastapi==0.115.12",
+  "greenlet==3.1.1",
+  "httpx==0.28.1",
+  "minio==7.2.15",
+  # ``openpyxl`` reads xlsx; ``python-docx`` reads docx; ``python-pptx``
+  # reads pptx; ``pypdf`` reads pdf. Together with markdown / plaintext
+  # (stdlib), this covers the "text-native office formats" bucket for the
+  # RAG ingester without pulling in OCR or heavy unified toolkits.
+  "openpyxl==3.1.5",
+  "pydantic-settings==2.9.1",
+  "pypdf==5.1.0",
+  "python-docx==1.1.2",
+  "python-multipart==0.0.20",
+  "python-pptx==1.0.2",
+  "qdrant-client==1.14.2",
+  # Pinned to <6 for arq compatibility. Redis 5.x client works fine
+  # against Redis 6/7/8 servers (the protocol is backward-compatible).
+  "redis==5.2.1",
+  # BGE-M3 (and later Qwen3-Embedding-0.6B) run in-process; the model
+  # weights get pulled to /root/.cache/huggingface on first boot and
+  # cached in the container image thereafter. CPU inference is fine for
+  # our current throughput; GPU can be swapped in later without touching
+  # the provider abstraction.
+  "sentence-transformers==3.3.1",
+  "sqlalchemy[asyncio]==2.0.36",
+  "urllib3==2.6.3",
+  "uvicorn[standard]==0.34.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff==0.11.11",
+  "pytest==8.3.4",
+  "pytest-asyncio==0.25.2",
+  # ASGITransport lets tests hit the FastAPI app in-process (no live
+  # server); httpx is already a runtime dependency above.
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+# Alembic-generated migrations contain long DDL lines that don't fit the app
+# style; leave the folder to Alembic's own formatting.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# UP007/UP045 push PEP 604 unions (``X | None``). SQLAlchemy 2 evaluates ORM
+# annotations at class-construction time, and the runtime union operator is
+# only available on Python 3.10+. Since our floor is 3.9, keep ``Optional[X]``.
+# B008 flags function calls in argument defaults, which is exactly how FastAPI
+# dependency injection (``Depends(...)``) is meant to be written.
+ignore = ["UP007", "UP045", "B008"]

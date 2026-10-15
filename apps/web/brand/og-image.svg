@@ -1,0 +1,44 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Source for public/og-image.png (1200x630, the size link previews expect).
+       Regenerate with:  rsvg-convert -w 1200 -h 630 brand/og-image.svg -o public/og-image.png -->
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f7f4ff" />
+      <stop offset="100%" stop-color="#e6dcff" />
+    </linearGradient>
+    <linearGradient id="qGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3f2594" />
+      <stop offset="54%" stop-color="#7356e8" />
+      <stop offset="100%" stop-color="#b076ff" />
+    </linearGradient>
+    <linearGradient id="bar" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3f2594" />
+      <stop offset="100%" stop-color="#b076ff" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect x="0" y="0" width="1200" height="10" fill="url(#bar)" />
+
+  <!-- logo mark (same geometry as public/logo.svg) -->
+  <g transform="translate(72,72) scale(0.5)">
+    <rect x="16" y="16" width="224" height="224" rx="58" fill="url(#qGradient)" />
+    <g transform="translate(128,120)" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round">
+      <circle cx="-6" cy="6" r="38" />
+      <path d="M 30 -18 L 30 74" />
+    </g>
+  </g>
+  <text x="212" y="152" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#2b1a6b">Quberi</text>
+
+  <text x="72" y="296" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="68" font-weight="700" fill="#1f1650">An AI knowledge base</text>
+  <text x="72" y="376" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="68" font-weight="700" fill="#1f1650">for teams</text>
+
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="30" fill="#4b3f86">
+    <circle cx="84" cy="441" r="7" fill="#7356e8" />
+    <text x="108" y="452">Answers with citations, shaped by who is asking</text>
+    <circle cx="84" cy="495" r="7" fill="#7356e8" />
+    <text x="108" y="506">Review and edit what goes to the LLM before it is sent</text>
+    <circle cx="84" cy="549" r="7" fill="#7356e8" />
+    <text x="108" y="560">Admin audit log of what the model could see</text>
+  </g>
+  <text x="1128" y="590" text-anchor="end" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="26" font-weight="600" fill="#7356e8">ai.quberi.com</text>
+</svg>

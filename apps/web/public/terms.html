@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7fa" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo-32.png" />
+    <title>服务条款 - Quberi</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --purple-700: #6544d8;
+        --purple-500: #8a6cf3;
+        --ink: #1d1d1f;
+        --muted: #6e6e73;
+        --line: rgba(61, 44, 104, .11);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: #f7f7fa;
+        line-height: 1.7;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 32px;
+        text-decoration: none;
+        color: var(--ink);
+      }
+      .brand img { width: 32px; height: 32px; border-radius: 9px; }
+      .brand span { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+      h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 6px; }
+      .updated { color: var(--muted); font-size: 13px; margin: 0 0 36px; }
+      h2 { font-size: 16px; margin: 32px 0 10px; color: var(--purple-700); }
+      p, li { font-size: 14.5px; color: #3d3545; }
+      ul { padding-left: 20px; }
+      a { color: var(--purple-700); text-decoration: underline; }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 36px 40px;
+        box-shadow: 0 12px 36px rgba(65, 43, 105, .055);
+      }
+      footer { margin-top: 32px; color: var(--muted); font-size: 12.5px; }
+      .lang-switch { font-size: 12px; margin-bottom: 24px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="brand" href="https://ai.quberi.com">
+        <img src="/logo-64.png" alt="Quberi" />
+        <span>Quberi</span>
+      </a>
+      <div class="card">
+        <p class="lang-switch"><a href="/terms-en">English</a></p>
+        <h1>服务条款</h1>
+        <p class="updated">生效日期：2026 年 10 月 1 日</p>
+
+        <p>
+          欢迎使用 Quberi（<a href="https://ai.quberi.com">ai.quberi.com</a>，以下简称"本服务"）。
+          请在使用前仔细阅读本服务条款。您注册、登录或使用本服务，即表示您已阅读、理解并同意接受本条款的全部内容。
+        </p>
+
+        <h2>一、服务说明</h2>
+        <p>
+          Quberi 是面向团队与个人的企业知识管理与对话问答平台，提供文档知识库、检索增强生成 (RAG) 问答、
+          智能体 (Agent) 配置、团队协作等功能。我们可能随时新增、调整或下线部分功能，并会尽量提前告知。
+        </p>
+
+        <h2>二、账户与登录</h2>
+        <ul>
+          <li>您可以通过邮箱、手机号或第三方账户（Google、飞书等）注册并登录本服务。</li>
+          <li>您需确保账户信息真实、准确，并妥善保管登录凭证；因账户泄露导致的损失由您自行承担，但不排除平台在合理范围内协助处理。</li>
+          <li>我们保留在您违反本条款时暂停或终止账户的权利。</li>
+        </ul>
+
+        <h2>三、用户内容</h2>
+        <ul>
+          <li>您上传至 Quberi 的文档、数据及对话内容的知识产权归您或原始权利人所有，我们不会主张所有权。</li>
+          <li>您保证上传的内容不侵犯第三方知识产权、商业秘密或其他合法权益，不包含违法、违规内容。</li>
+          <li>为提供服务（如生成向量索引、调用模型生成回答），您授权我们在必要范围内处理您的内容。</li>
+        </ul>
+
+        <h2>四、禁止行为</h2>
+        <p>使用本服务时，您不得：</p>
+        <ul>
+          <li>上传或传播违反法律法规、侵犯他人权益的内容；</li>
+          <li>尝试未经授权访问其他组织或用户的数据；</li>
+          <li>对本服务进行逆向工程、恶意攻击或干扰系统正常运行；</li>
+          <li>利用本服务从事任何违法或损害第三方利益的活动。</li>
+        </ul>
+
+        <h2>五、第三方服务</h2>
+        <p>
+          本服务的部分功能依赖第三方供应商（例如大语言模型 API、对象存储、短信/邮件通道）。
+          这些第三方服务的可用性、准确性不受我们直接控制，我们将尽力保障整体服务的稳定性，但不对第三方服务的中断或错误承担责任。
+        </p>
+
+        <h2>六、服务的变更、中断与终止</h2>
+        <p>
+          我们可能因系统维护、升级或不可抗力暂停部分或全部服务，并会尽量提前通知。
+          您可以随时停止使用本服务并申请删除账户；账户终止后，我们将按照
+          <a href="/privacy.html">隐私政策</a> 处理您的数据。
+        </p>
+
+        <h2>七、免责声明</h2>
+        <p>
+          本服务基于人工智能技术生成的回答可能存在不准确、不完整或过时的情况，仅供参考，不构成专业建议（包括但不限于法律、医疗、财务建议）。
+          您应自行判断并核实重要信息后再做决策。
+        </p>
+
+        <h2>八、条款的变更</h2>
+        <p>
+          我们可能适时修订本条款，修订后的条款将在本页面公布并标注更新日期。若您在条款变更后继续使用本服务，即视为您接受变更后的条款。
+        </p>
+
+        <h2>九、联系我们</h2>
+        <p>
+          如您对本服务条款有任何疑问，请发送邮件至
+          <a href="mailto:chaney1720@gmail.com">chaney1720@gmail.com</a>。
+        </p>
+      </div>
+      <footer>© 2026 Quberi. 保留所有权利。</footer>
+    </div>
+  </body>
+</html>

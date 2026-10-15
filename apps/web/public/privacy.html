@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7fa" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo-32.png" />
+    <title>隐私政策 - Quberi</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --purple-700: #6544d8;
+        --purple-500: #8a6cf3;
+        --ink: #1d1d1f;
+        --muted: #6e6e73;
+        --line: rgba(61, 44, 104, .11);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: #f7f7fa;
+        line-height: 1.7;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 32px;
+        text-decoration: none;
+        color: var(--ink);
+      }
+      .brand img { width: 32px; height: 32px; border-radius: 9px; }
+      .brand span { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+      h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 6px; }
+      .updated { color: var(--muted); font-size: 13px; margin: 0 0 36px; }
+      h2 { font-size: 16px; margin: 32px 0 10px; color: var(--purple-700); }
+      p, li { font-size: 14.5px; color: #3d3545; }
+      ul { padding-left: 20px; }
+      a { color: var(--purple-700); text-decoration: underline; }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 36px 40px;
+        box-shadow: 0 12px 36px rgba(65, 43, 105, .055);
+      }
+      footer { margin-top: 32px; color: var(--muted); font-size: 12.5px; }
+      .lang-switch { font-size: 12px; margin-bottom: 24px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="brand" href="https://ai.quberi.com">
+        <img src="/logo-64.png" alt="Quberi" />
+        <span>Quberi</span>
+      </a>
+      <div class="card">
+        <p class="lang-switch"><a href="/privacy-en">English</a></p>
+        <h1>隐私政策</h1>
+        <p class="updated">生效日期：2026 年 10 月 1 日</p>
+
+        <p>
+          Quberi（以下简称"我们"或"本服务"）重视您的隐私。本隐私政策说明我们在您使用
+          Quberi 企业知识与对话平台（<a href="https://ai.quberi.com">ai.quberi.com</a>）时，
+          如何收集、使用、存储和保护您的信息。
+        </p>
+
+        <h2>一、我们收集的信息</h2>
+        <ul>
+          <li><strong>账户信息</strong>：注册时提供的邮箱、手机号、显示名称，以及通过第三方登录（如
+            Google、飞书）授权获取的基本身份信息（姓名、邮箱、头像）。</li>
+          <li><strong>内容数据</strong>：您上传到知识库的文档、对话消息及其生成的向量索引，用于支撑检索增强生成
+            (RAG) 问答。</li>
+          <li><strong>使用数据</strong>：登录记录、操作日志、API 调用元数据，用于安全审计与服务可靠性。</li>
+          <li><strong>设备与技术信息</strong>：IP 地址、浏览器类型、访问时间等，用于安全防护和故障排查。</li>
+        </ul>
+
+        <h2>二、我们如何使用信息</h2>
+        <ul>
+          <li>提供、维护和改进核心功能（文档检索、对话问答、团队协作）。</li>
+          <li>进行身份验证、权限控制与账户安全保护。</li>
+          <li>向您发送服务通知（如验证码、重要变更提醒）。</li>
+          <li>排查故障、分析使用模式以提升系统性能与稳定性。</li>
+        </ul>
+
+        <h2>三、信息的第三方处理</h2>
+        <p>
+          为实现对话问答功能，您的问题及检索到的文档片段可能会被发送至您或您所在组织配置的大语言模型供应商
+          （例如 DeepSeek，或您通过"AI 供应商"设置自行绑定的其他兼容服务）用于生成回答。我们不会将您的文档内容用于训练第三方的公共模型。
+          登录场景下，如您选择使用 Google 或飞书登录，我们仅获取登录所需的最小身份信息，不会读取您在这些平台上的其他数据。
+        </p>
+
+        <h2>四、数据存储与安全</h2>
+        <ul>
+          <li>文档原文和索引数据存储在您所在组织的隔离空间内，不同组织之间严格隔离。</li>
+          <li>密钥与敏感凭证（如第三方 API Key）在数据库中以加密形式存储。</li>
+          <li>我们采取合理的技术与管理措施（访问控制、传输加密）保护您的数据安全，但无法保证绝对安全。</li>
+        </ul>
+
+        <h2>五、数据保留与删除</h2>
+        <p>
+          您可以随时在"我的知识"中删除已上传的文档，相应的索引数据会被同步清除。
+          账户注销后，我们将在合理期限内删除或匿名化您的个人信息，法律法规要求保留的除外。
+        </p>
+
+        <h2>六、您的权利</h2>
+        <p>
+          您有权访问、更正、删除您的个人信息，或要求我们限制对其的处理。如需行使上述权利，请通过下方联系方式与我们联系。
+        </p>
+
+        <h2>七、政策更新</h2>
+        <p>
+          我们可能会适时更新本政策。重大变更会通过站内通知或邮件告知您。继续使用本服务即表示您同意更新后的政策。
+        </p>
+
+        <h2>八、联系我们</h2>
+        <p>
+          如您对本隐私政策有任何疑问，请发送邮件至
+          <a href="mailto:chaney1720@gmail.com">chaney1720@gmail.com</a>。
+        </p>
+      </div>
+      <footer>© 2026 Quberi. 保留所有权利。</footer>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+# Production reverse proxy for quberi.
+# TLS is terminated here using a Cloudflare Origin CA certificate — see
+# deploy/README.md for how to generate deploy/certs/cert.pem + key.pem.
+# Cloudflare's SSL/TLS mode must be set to "Full (strict)" for this to work
+# end-to-end encrypted between Cloudflare's edge and this server.
+
+ai.quberi.com {
+	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+	reverse_proxy web:80
+}
+
+api.quberi.com {
+	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+	reverse_proxy api:8000
+}
+
+# Caddy's automatic HTTPS feature redirects plain HTTP -> HTTPS for any site
+# block with a real hostname, even when using manual TLS certs above — no
+# extra config needed here.

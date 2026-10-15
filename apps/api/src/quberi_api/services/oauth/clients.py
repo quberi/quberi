@@ -1,0 +1,78 @@
+"""Tools that are allowed to ask for access.
+
+Clients are registered here, in code, not by the tools themselves. There is no
+dynamic client registration: an unknown tool simply cannot start a login.
+Adding a tool is a reviewed code change.
+
+All of them are *public* clients (a desktop tool cannot keep a secret), so the
+protection is PKCE plus a strict redirect rule: the tool must receive the code
+on a loopback address on its own machine (RFC 8252). A code can therefore never
+be sent to a web address someone controls.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from urllib.parse import urlsplit
+
+# The one thing a grant can do today: search knowledge the person can read.
+SCOPE_KNOWLEDGE_READ = "knowledge:read"
+SUPPORTED_SCOPES = (SCOPE_KNOWLEDGE_READ,)
+
+
+@dataclass(frozen=True)
+class OAuthClient:
+    client_id: str
+    name: str
+
+
+CLIENTS: dict[str, OAuthClient] = {
+    "quberi-harness": OAuthClient(
+        client_id="quberi-harness", name="DeepSeek Harness"
+    ),
+}
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})
+_CALLBACK_PATH = "/callback"
+
+
+def get_client(client_id: str) -> OAuthClient | None:
+    return CLIENTS.get(client_id)
+
+
+def is_valid_redirect_uri(uri: str) -> bool:
+    """Only ``http://127.0.0.1:<port>/callback`` (or ``[::1]``) is accepted.
+
+    The port is chosen by the tool at run time (RFC 8252), so it is not
+    pinned; everything else about the address must match exactly.
+    """
+
+    if not uri or len(uri) > 200:
+        return False
+    try:
+        parts = urlsplit(uri)
+        port = parts.port
+    except ValueError:
+        return False
+    return (
+        parts.scheme == "http"
+        and parts.hostname in _LOOPBACK_HOSTS
+        and port is not None
+        and 1024 <= port <= 65535
+        and parts.path == _CALLBACK_PATH
+        and not parts.query
+        and not parts.fragment
+        and not parts.username
+        and not parts.password
+    )
+
+
+def normalise_scope(scope: str | None) -> str | None:
+    """The requested scopes if all are supported (default: all), else ``None``."""
+
+    requested = [s for s in (scope or "").split() if s]
+    if not requested:
+        return " ".join(SUPPORTED_SCOPES)
+    if any(s not in SUPPORTED_SCOPES for s in requested):
+        return None
+    return " ".join(sorted(set(requested)))

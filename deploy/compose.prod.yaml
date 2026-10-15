@@ -1,0 +1,31 @@
+# Production overlay: adds a reverse proxy in front of the existing stack.
+# Usage (run from the repo root on the server):
+#   docker compose --env-file .env -f compose.yaml -f deploy/compose.prod.yaml --profile app up -d --build
+#
+# This does NOT change any existing service — it only adds `caddy` and
+# removes the need to publish web/api ports to the host, since caddy now
+# terminates TLS and proxies to them over the internal `quberi` network.
+
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    profiles: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/certs:/etc/caddy/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_started
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [quberi]
+
+volumes:
+  caddy-data:
+  caddy-config:

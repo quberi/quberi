@@ -1,0 +1,1469 @@
+{
+  "brand": {
+    "name": "Quberi",
+    "workspace": "工作台"
+  },
+  "orgSwitcher": {
+    "createHint": "在账户设置里创建团队"
+  },
+  "navigation": {
+    "chat": "对话",
+    "search": "检索",
+    "knowledge": "知识库",
+    "myModels": "我的模型",
+    "account": "账户",
+    "agents": "智能体",
+    "history": "历史",
+    "planned": "规划中",
+    "comingSoon": "即将上线",
+    "collapsePanel": "收起上下文栏",
+    "expandPanel": "展开上下文栏",
+    "adminConsole": "管理后台"
+  },
+  "adminConsole": {
+    "title": "管理后台",
+    "subtitle": "组织管理",
+    "exit": "返回工作区",
+    "nav": {
+      "overview": "总览",
+      "organization": "组织",
+      "members": "成员",
+      "models": "模型",
+      "integrations": "集成",
+      "spaces": "空间",
+      "audit": "审计"
+    },
+    "overview": {
+      "description": "组织内最新的活动动态。"
+    }
+  },
+  "myModels": {
+    "eyebrow": "我的模型",
+    "title": "我的模型",
+    "description": "添加你自己的 API key，仅你本人可见、可用——组织管理员看不到这些密钥。可以在对话里手动切换为你的私有模型。",
+    "loading": "正在加载…",
+    "providers": {
+      "title": "我的供应商",
+      "description": "每一项是一个供应商端点 + 密钥，以及它提供的模型。密钥已加密，不会再次显示，也不会出现在组织的模型管理里。",
+      "empty": "还没有添加私有模型。",
+      "hint": "OpenAI 兼容接口。费用直接付给供应商，与组织的用量无关。"
+    }
+  },
+  "modelSettings": {
+    "eyebrow": "模型",
+    "title": "模型设置",
+    "description": "填入你自己的 API key,选择驱动对话的模型。未配置时使用 Quberi 的共享模型。",
+    "loading": "正在加载模型设置…",
+    "platformDefaultBadge": "Quberi 默认",
+    "chat": {
+      "title": "对话模型",
+      "description": "用于回答你对话的模型。",
+      "usingDefault": "当前使用 Quberi 共享模型。",
+      "usingPlatformNamed": "当前使用 Quberi 共享模型 · {{model}}。",
+      "usingCustom": "当前使用 {{model}}。",
+      "modelLabel": "模型",
+      "modelPlaceholder": "选择一个模型",
+      "bindingLabel": "供应商(API key)",
+      "bindingPlaceholder": "选择一个供应商",
+      "noBinding": "该模型还没有对应的供应商——在下方添加一个。",
+      "save": "保存",
+      "useDefault": "改用 Quberi 默认",
+      "noModels": "还没有可用模型——请在下方添加供应商。"
+    },
+    "providers": {
+      "title": "你的模型",
+      "description": "每一项是一个供应商端点 + 密钥，以及它提供的模型。密钥已加密，不会再次显示。",
+      "add": "添加模型",
+      "empty": "还没有供应商。",
+      "keySet": "已设密钥",
+      "remove": "删除",
+      "edit": "编辑",
+      "presetLabel": "供应商",
+      "presetCustom": "自定义 / 其他",
+      "nameLabel": "名称",
+      "namePlaceholder": "我的 DeepSeek key",
+      "baseUrlLabel": "Base URL",
+      "keyLabel": "API key",
+      "keyKeepPlaceholder": "留空则保持当前密钥不变",
+      "keyKeepHint": "API key 留空则不修改现有密钥。",
+      "save": "添加",
+      "saveEdit": "保存修改",
+      "cancel": "取消",
+      "hint": "OpenAI 兼容接口。示例 Base URL:DeepSeek https://api.deepseek.com,OpenAI https://api.openai.com/v1。",
+      "byokHint": "添加你自己的 API key,即可免费使用你偏好的模型(费用直接付给供应商)。",
+      "modelsLabel": "模型",
+      "fetchModels": "拉取模型",
+      "noModelsFetched": "该端点未返回模型——请在下方手动添加。",
+      "manualPlaceholder": "输入模型 id（如 qwen-max）",
+      "addModel": "添加",
+      "modelCount": "{{count}} 个模型",
+      "addTitle": "添加模型",
+      "editTitle": "编辑模型",
+      "searchModels": "搜索模型…",
+      "enabledCount": "已选 {{count}} 个",
+      "fetchNeedsKey": "请先填写 API key 才能拉取该供应商的模型，或在下方手动添加模型 id。",
+      "vendorOnly": "只看该供应商的模型",
+      "noneMatchVendor": "没有匹配该供应商的模型——取消勾选可查看全部，或手动添加 id。",
+      "recommended": "推荐",
+      "recommendedHint": "已为你预选推荐的对话模型，直接保存即可，也可在下方调整。"
+    },
+    "access": {
+      "title": "模型访问权限",
+      "description": "控制哪些人能使用每个模型。下面四种方式都是可选的，选一种或组合几种都行——不填任何一项=对全员开放。",
+      "empty": "暂无可治理的可用模型。",
+      "edit": "设置访问",
+      "openHint": "当前对全员开放（未选择任何限制）。",
+      "restrictedHint": "仅下列被选中的主体可使用该模型。",
+      "orLogicHint": "四种方式之间是\"或\"的关系：命中任意一项即可使用，不需要同时满足。",
+      "byUsers": "按成员指定",
+      "byGroups": "按群组指定",
+      "byOrgUnits": "按组织单元指定",
+      "byPositions": "按岗位指定",
+      "usersPlaceholder": "选择成员（可选）…",
+      "groupsPlaceholder": "选择群组（可选）…",
+      "orgUnitsPlaceholder": "选择组织单元（可选）…",
+      "positionsPlaceholder": "选择岗位（可选）…",
+      "optionalTag": "可选",
+      "pickPlaceholder": "选择…",
+      "searchPlaceholder": "搜索…",
+      "noResults": "没有匹配项。",
+      "clearSelection": "清空已选",
+      "excludeUsers": "排除指定成员",
+      "excludeUsersPlaceholder": "选择要排除的成员（可选）…",
+      "excludeHint": "被排除的成员无法使用该模型，即使他们属于上面被允许的群组/组织单元/岗位——排除始终优先生效。",
+      "openExceptDeniedHint": "当前对全员开放，但已排除 {{count}} 位成员（见下方）。",
+      "save": "保存访问",
+      "cancel": "取消"
+    },
+    "byok": {
+      "title": "员工私有模型",
+      "description": "控制组织成员能否在工作区的\"我的模型\"里新增自己的 API key。关闭后，成员无法再添加新的私有模型；已添加的仍可继续使用和编辑。",
+      "toggleLabel": "允许成员添加私有模型"
+    },
+    "modelDesc": {
+      "deepseekChat": "通用对话（DeepSeek V3）——综合能力强",
+      "deepseekReasoner": "推理版（DeepSeek R1）——擅长数学/代码，较慢",
+      "qwenMax": "旗舰版——能力最强，适合复杂任务",
+      "qwenPlus": "均衡版——日常推荐，性价比高",
+      "qwenTurbo": "极速版——快而便宜，适合简单任务",
+      "qwenFlash": "最快最省——轻量任务",
+      "gpt4o": "OpenAI 旗舰，多模态",
+      "gpt4oMini": "OpenAI 轻量版——快而省",
+      "code": "代码专用模型",
+      "vision": "多模态（图片 + 文本）",
+      "reasoning": "推理模型——擅长数学/代码，较慢",
+      "small": "小参数/蒸馏——轻量快，质量略低",
+      "tierMax": "能力最强档",
+      "tierPlus": "能力与成本均衡",
+      "tierTurbo": "更快更省",
+      "tierFlash": "最快最省",
+      "long": "长上下文——可处理超长输入",
+      "generic": "通用对话模型",
+      "snapshot": "指定日期的固定快照——一般用不带日期的别名，除非要锁定版本",
+      "snapshotSuffix": " · 指定日期快照",
+      "character": "角色扮演 / 拟人对话变体",
+      "latest": "滚动更新的 latest 别名"
+    }
+  },
+  "integrations": {
+    "eyebrow": "已连接来源",
+    "title": "集成",
+    "description": "把外部系统接入 Quberi。同步进来的文档跟随目标空间的角色绑定——检索时按权限过滤。",
+    "addFeishu": "添加飞书连接",
+    "loading": "正在加载集成…",
+    "loadError": "无法加载集成",
+    "refresh": "刷新",
+    "cachingPolicy": {
+      "mirror": "镜像存储",
+      "reference_only": "仅引用"
+    },
+    "feishu": {
+      "title": "飞书云文档",
+      "subtitle": "把一个飞书文件夹同步到某个 Quberi 空间。我们只存元数据 + 向量，原文按需实时拉取。",
+      "empty": "还没有连接飞书文件夹。点击\"添加飞书连接\"来关联一个。",
+      "sync": "立即同步",
+      "syncOk": "同步完成。",
+      "syncingNow": "正在同步…",
+      "syncFail": "同步失败：{{message}}",
+      "delete": "移除",
+      "confirmDelete": "移除飞书连接\"{{name}}\"？已索引的文档将被分离。",
+      "targetSpace": "→ {{space}}",
+      "lastSynced": "同步于 {{when}}",
+      "neverSynced": "尚未同步",
+      "addTitle": "连接飞书文件夹",
+      "addHint": "先在飞书里把 Quberi 应用加为文件夹的协作者，再在下方选择该文件夹。你需要能用自己的飞书账号打开这个文件夹。",
+      "folderLabel": "飞书文件夹",
+      "spaceLabel": "目标 Quberi 空间",
+      "spaceHelp": "同步进来的文档会落到该空间并继承它的权限。",
+      "noSpaces": "暂无可用空间",
+      "cancel": "取消",
+      "create": "连接",
+      "oauth": {
+        "checking": "正在检查飞书连接…",
+        "notConnected": "尚未连接飞书",
+        "notConnectedHint": "授权 Quberi 浏览你的飞书文件夹。",
+        "connect": "连接飞书",
+        "connecting": "等待授权…",
+        "connected": "飞书已连接——在下方选择文件夹。"
+      },
+      "picker": {
+        "loading": "加载中…",
+        "retry": "重试",
+        "empty": "（空）",
+        "select": "选择",
+        "selected": "已选",
+        "selectHint": "选择此文件夹",
+        "fileHint": "只能选择文件夹",
+        "chosen": "已选文件夹：{{name}}"
+      },
+      "autoName": "飞书 · {{folder}}"
+    }
+  },
+  "knowledge": {
+    "pageEyebrow": "知识库",
+    "pageTitle": "你可以访问的空间",
+    "pageDescription": "每张卡片对应一个空间。文档访问权跟随该空间的角色绑定——具备绑定的成员都能看到相同的文档库。",
+    "newSpace": "新建空间",
+    "spaceCount": "{{count}} / {{max}} 个空间",
+    "spaceLimitReached": "个人账号最多创建 {{max}} 个空间。",
+    "emptyTitle": "还没有可访问的空间",
+    "emptyDescription": "尚未加入任何空间。请让所有者授予绑定，或到空间菜单创建一个。",
+    "card": {
+      "docCount": "文档数",
+      "sizeTotal": "总大小",
+      "lastUpload": "最近上传",
+      "openAll": "打开文档库"
+    },
+    "indexing": {
+      "not_indexed": "未索引",
+      "indexing": "索引中",
+      "indexed": "已索引",
+      "failed": "索引失败"
+    },
+    "view": {
+      "back": "返回空间列表",
+      "crumbRoot": "知识库",
+      "eyebrow": "空间文档库",
+      "unknownSpace": "未知空间",
+      "uploadLabel": "上传文档",
+      "uploadHint": "文件直接落到该空间；访问权限跟随空间的角色绑定。",
+      "showUpload": "展开上传",
+      "hideUpload": "收起上传",
+      "sources": {
+        "label": "添加文档",
+        "hint": "从任意来源把文件同步进这个空间——本质都是文件同步。",
+        "local": "本地上传",
+        "localHint": "拖拽或选择文件上传",
+        "feishu": "从飞书同步",
+        "feishuHint": "选择飞书文件夹同步进本空间",
+        "wecom": "企业微信",
+        "dingtalk": "钉钉",
+        "drive": "网盘 / SharePoint",
+        "soon": "即将支持"
+      },
+      "search": "按文件名搜索…",
+      "empty": "当前筛选下没有匹配的文档。",
+      "filteredHint": "已筛选出 {{filtered}} / {{total}} 篇文档。",
+      "filter": {
+        "all": "全部来源",
+        "local": "本地上传",
+        "feishu": "飞书",
+        "oss_aliyun": "阿里云 OSS",
+        "s3_aws": "AWS S3"
+      },
+      "sort": {
+        "createdAt": "排序 · 上传时间",
+        "updatedAt": "排序 · 更新时间",
+        "name": "排序 · 名称",
+        "size": "排序 · 大小",
+        "asc": "升序",
+        "desc": "降序"
+      },
+      "stats": {
+        "total": "文档总数",
+        "size": "总大小",
+        "lastUpload": "最近上传",
+        "indexed": "已索引 / 总数",
+        "bySource": "按来源",
+        "byIndexing": "按索引状态"
+      },
+      "table": {
+        "name": "名称",
+        "source": "来源",
+        "size": "大小",
+        "indexing": "索引",
+        "uploader": "上传者",
+        "created": "上传时间"
+      },
+      "pager": {
+        "range": "第 {{start}} – {{end}} 条 / 共 {{total}} 条",
+        "perPage": "每页"
+      }
+    },
+    "detail": {
+      "close": "关闭",
+      "tabProperties": "属性",
+      "tabRag": "RAG 状态",
+      "notFoundTitle": "当前页未包含此文档",
+      "notFoundHint": "该行未在当前页；请翻页或刷新后再打开。",
+      "propName": "名称",
+      "propUploader": "上传者",
+      "propSource": "来源",
+      "propSize": "大小",
+      "propMime": "MIME 类型",
+      "propCreatedAt": "上传时间",
+      "propUpdatedAt": "更新时间",
+      "propChecksum": "SHA-256",
+      "propStorageKey": "存储键",
+      "propSyncState": "外部同步状态",
+      "propChunks": "分块数",
+      "propLastIndexed": "最近索引时间",
+      "propIndexingError": "最近报错",
+      "sync": {
+        "local_only": "仅本地",
+        "synced_fresh": "同步（最新）",
+        "synced_stale": "同步（过期）",
+        "synced_broken": "同步（异常）"
+      },
+      "rag": {
+        "not_indexed": "等待 RAG 索引器处理此文件。",
+        "indexing": "RAG 索引器正在嵌入此文件。",
+        "indexed": "已完成嵌入。锚定到该空间的对话即可检索。",
+        "failed": "上次索引失败，可从 RAG 运维页重试（暂未开放）。",
+        "placeholder": "RAG 索引器将在后续切片上线，届时现有文档会被自动处理。"
+      }
+    }
+  },
+  "documents": {
+    "title": "文档",
+    "description": "锚定在此空间的文件。访问权跟随该空间的角色绑定。",
+    "refresh": "刷新",
+    "loading": "正在加载文档…",
+    "loadError": "加载文档失败",
+    "empty": "还没有文档——把文件拖到上方即可上传。",
+    "download": "下载",
+    "delete": "删除",
+    "confirmDelete": "确定删除 “{{name}}” ？",
+    "unknownUploader": "未知",
+    "upload": {
+      "title": "拖入文件，或点击选择",
+      "noSpace": "请先选择一个空间",
+      "hint": "单个文件不超过 25 MB。支持文本、Office、PDF、图片等。",
+      "progressPct": "{{pct}}%",
+      "done": "已完成",
+      "failed": "上传失败"
+    },
+    "source": {
+      "local": "本地",
+      "feishu": "飞书",
+      "oss_aliyun": "阿里云 OSS",
+      "s3_aws": "AWS S3"
+    }
+  },
+  "audit": {
+    "recent": {
+      "title": "组织脉搏",
+      "refresh": "刷新",
+      "loading": "加载事件中…",
+      "loadError": "加载事件失败。",
+      "empty": "还没有事件。",
+      "unknownActor": "某人",
+      "action": {
+        "fallback": "{{actor}} · {{action}} · {{resource}}",
+        "member.invited": "{{actor}} 邀请了 {{resource}}",
+        "position.created": "{{actor}} 新建了岗位 {{resource}}",
+        "position.updated": "{{actor}} 更新了岗位 {{resource}}",
+        "position.archived": "{{actor}} 归档了岗位 {{resource}}",
+        "position.assigned": "{{actor}} 为 {{resource}} 指派了岗位",
+        "position.ended": "{{actor}} 结束了 {{resource}} 的任期",
+        "position.primary_set": "{{actor}} 设置了 {{resource}} 的主岗位",
+        "group.created": "{{actor}} 新建了工作组 {{resource}}",
+        "group.updated": "{{actor}} 更新了工作组 {{resource}}",
+        "group.archived": "{{actor}} 归档了工作组 {{resource}}",
+        "group.member_added": "{{actor}} 向工作组 {{resource}} 添加了成员",
+        "group.member_removed": "{{actor}} 从工作组 {{resource}} 移除了成员",
+        "org_unit.created": "{{actor}} 新建了组织单元 {{resource}}",
+        "org_unit.updated": "{{actor}} 更新了组织单元 {{resource}}",
+        "org_unit.archived": "{{actor}} 归档了组织单元 {{resource}}",
+        "org_unit.moved": "{{actor}} 移动了组织单元 {{resource}}",
+        "org_unit.primary_set": "{{actor}} 设置了 {{resource}} 的主属单元",
+        "org_unit.member_removed": "{{actor}} 从组织单元 {{resource}} 移除了成员",
+        "space.created": "{{actor}} 创建了空间 {{resource}}",
+        "space.archived": "{{actor}} 归档了空间 {{resource}}",
+        "space.access_granted": "{{actor}} 授予了 {{space}} 的访问权",
+        "space.access_revoked": "{{actor}} 撤销了 {{space}} 的访问权",
+        "organization.bootstrapped": "{{actor}} 完成了组织初始化",
+        "conversation.created": "{{actor}} 发起了一次对话",
+        "message.sent": "{{actor}} 发送了一条消息",
+        "document.uploaded": "{{actor}} 上传了 {{resource}}",
+        "document.deleted": "{{actor}} 删除了 {{resource}}",
+        "document_source.registered": "{{actor}} 注册了文档来源 {{resource}}",
+        "document_source.deleted": "{{actor}} 移除了文档来源 {{resource}}",
+        "document_source.sync_attempted": "{{actor}} 尝试同步 {{resource}}",
+        "conversation.scope_mode_changed": "{{actor}} 调整了对话的知识范围",
+        "conversation.source_added": "{{actor}} 给对话追加了知识来源空间",
+        "conversation.source_removed": "{{actor}} 从对话移除了知识来源空间",
+        "agent.access_granted": "{{actor}} 授予了智能体 {{resource}} 的使用权限",
+        "agent.access_revoked": "{{actor}} 撤销了智能体 {{resource}} 的使用权限",
+        "conversation.renamed": "{{actor}} 重命名了一次对话",
+        "document.synced_from_feishu": "{{actor}} 从飞书同步了 {{resource}}",
+        "member.role_changed": "{{actor}} 修改了 {{resource}} 的角色",
+        "message.send_cancelled": "{{actor}} 取消了一次发送，内容没有发给模型",
+        "external_access.granted": "{{actor}} 连接了一个外部工具",
+        "external_access.revoked": "一个外部工具已断开连接",
+        "knowledge.external_search": "{{actor}} 的外部工具检索了知识库",
+        "organization.external_tools_changed": "{{actor}} 修改了外部工具开关"
+      },
+      "time": {
+        "now": "刚刚",
+        "minutes_one": "{{count}} 分钟前",
+        "minutes_other": "{{count}} 分钟前",
+        "hours_one": "{{count}} 小时前",
+        "hours_other": "{{count}} 小时前",
+        "days_one": "{{count}} 天前",
+        "days_other": "{{count}} 天前"
+      }
+    },
+    "page": {
+      "title": "审计日志",
+      "description": "组织里发生的事件，包括每次提问时助手能看到哪些文档。只有所有者和管理员能看到。",
+      "export": "导出 CSV",
+      "loadMore": "加载更多",
+      "empty": "当前筛选下没有事件。",
+      "details": "详情",
+      "filter": {
+        "time": "时间",
+        "action": "事件",
+        "person": "人员",
+        "space": "空间",
+        "any": "全部"
+      },
+      "range": {
+        "all": "不限",
+        "1h": "最近 1 小时",
+        "24h": "最近 24 小时",
+        "7d": "最近 7 天",
+        "30d": "最近 30 天"
+      },
+      "col": {
+        "time": "时间",
+        "event": "事件",
+        "space": "空间"
+      },
+      "retrievedTitle": "助手可能看到的文档",
+      "retrievedNone": "这次提问没有检索到任何文档。",
+      "deletedDocument": "（文档已删除）",
+      "retrievedHint": "指检索交给模型的所有候选文档，不只是回答里引用的。",
+      "rawTitle": "原始记录",
+      "actionName": {
+        "message.sent": "发送消息",
+        "document.uploaded": "上传文档",
+        "document.deleted": "删除文档",
+        "document.synced_from_feishu": "飞书同步文档",
+        "document_source.registered": "注册文档来源",
+        "document_source.deleted": "移除文档来源",
+        "document_source.sync_attempted": "尝试同步",
+        "space.created": "创建空间",
+        "space.archived": "归档空间",
+        "space.access_granted": "授予空间权限",
+        "space.access_revoked": "撤销空间权限",
+        "member.invited": "邀请成员",
+        "member.role_changed": "修改成员角色",
+        "agent.access_granted": "授予智能体权限",
+        "agent.access_revoked": "撤销智能体权限",
+        "conversation.created": "发起对话",
+        "conversation.renamed": "重命名对话",
+        "conversation.scope_mode_changed": "调整知识范围",
+        "conversation.source_added": "追加知识来源",
+        "conversation.source_removed": "移除知识来源",
+        "group.created": "新建工作组",
+        "group.updated": "更新工作组",
+        "group.archived": "归档工作组",
+        "group.member_added": "工作组加人",
+        "group.member_removed": "工作组移人",
+        "org_unit.created": "新建组织单元",
+        "org_unit.updated": "更新组织单元",
+        "org_unit.archived": "归档组织单元",
+        "org_unit.moved": "移动组织单元",
+        "org_unit.primary_set": "设置主属单元",
+        "org_unit.member_removed": "组织单元移人",
+        "position.created": "新建岗位",
+        "position.updated": "更新岗位",
+        "position.archived": "归档岗位",
+        "position.assigned": "指派岗位",
+        "position.ended": "结束任期",
+        "position.primary_set": "设置主岗位",
+        "organization.bootstrapped": "组织初始化",
+        "message.send_cancelled": "取消发送",
+        "external_access.granted": "连接外部工具",
+        "external_access.revoked": "断开外部工具",
+        "knowledge.external_search": "外部工具检索",
+        "organization.external_tools_changed": "调整外部工具开关"
+      }
+    }
+  },
+  "signIn": {
+    "title": "登录 Quberi",
+    "description": "真正的 SSO 将在后续切片落地。目前请粘贴平台管理员令牌，并填写你要冒充的组织与邮箱。",
+    "adminToken": "平台管理员令牌",
+    "adminTokenPlaceholder": "QUBERI_PLATFORM_ADMIN_TOKEN",
+    "organizationSlug": "组织 slug",
+    "userEmail": "用户邮箱",
+    "submit": "进入工作台",
+    "disclaimer": "此登录仅用于本地开发；当部署未设置 QUBERI_PLATFORM_ADMIN_TOKEN 时会自动禁用。",
+    "email": {
+      "title": "登录 Quberi",
+      "description": "输入你的邮箱，我们会发送一次性验证码。首次使用会自动为你开通账号。",
+      "emailLabel": "邮箱",
+      "sendCode": "发送验证码",
+      "codeLabel": "输入发送到 {{email}} 的验证码",
+      "verify": "验证并继续",
+      "changeEmail": "换个邮箱"
+    },
+    "modeLogin": "登录",
+    "modeSignup": "注册",
+    "signupKindPersonal": "个人",
+    "signupKindTeam": "团队",
+    "contactEmail": "邮箱",
+    "contactPhone": "手机号",
+    "toggle": {
+      "toSignup": "还没有账号？立即注册",
+      "toLogin": "已有账号？直接登录"
+    },
+    "phone": {
+      "title": "使用手机号",
+      "description": "我们会发送一次性短信验证码，用于登录或创建账号。",
+      "label": "手机号",
+      "placeholder": "138 0000 0000",
+      "sendCode": "发送验证码",
+      "codeLabel": "输入发送到 {{phone}} 的验证码",
+      "verify": "验证并进入",
+      "changePhone": "换个号码"
+    },
+    "or": "或",
+    "quickLogin": "快速登录",
+    "quickHint": "一键登录,或自动创建个人账号。",
+    "legal": {
+      "prefix": "继续即表示你同意我们的",
+      "privacy": "隐私政策",
+      "and": "和",
+      "terms": "服务条款"
+    },
+    "notices": {
+      "emailSent": "验证码已发送，请查看邮箱。",
+      "codeSent": "验证码已发送。"
+    },
+    "google": {
+      "button": "使用 Google 登录",
+      "short": "Google",
+      "popupBlocked": "弹窗被拦截 —— 请允许弹窗后重试。",
+      "failed": "Google 登录失败。"
+    },
+    "feishu": {
+      "button": "使用飞书登录",
+      "short": "飞书",
+      "popupBlocked": "弹窗被拦截 —— 请允许弹窗后重试。",
+      "failed": "飞书登录失败。"
+    },
+    "feishuBind": {
+      "title": "绑定邮箱以完成登录",
+      "description": "飞书已验证你的身份。请绑定一个邮箱以保护账号,我们会发送一次性验证码进行验证。若该邮箱已有 Quberi 账号,飞书将直接关联到它。",
+      "emailLabel": "邮箱",
+      "sendCode": "发送验证码",
+      "codeLabel": "输入发送到 {{email}} 的验证码",
+      "verify": "验证并继续",
+      "changeEmail": "换一个邮箱",
+      "cancel": "取消"
+    },
+    "personal": {
+      "title": "开始使用 Quberi",
+      "description": "给你自己用。输入邮箱,我们发送一次性验证码,再取个名字就能进。",
+      "emailLabel": "邮箱",
+      "sendCode": "发送验证码",
+      "codeLabel": "输入发送到 {{email}} 的验证码",
+      "displayLabel": "你的名字",
+      "displayPlaceholder": "张三",
+      "create": "开始使用",
+      "changeEmail": "换个邮箱"
+    },
+    "signup": {
+      "title": "创建你的工作区",
+      "description": "开启一个全新的 Quberi 工作区。输入邮箱，我们会发送一次性验证码确认是你本人。",
+      "emailLabel": "工作邮箱",
+      "sendCode": "发送验证码",
+      "codeLabel": "输入发送到 {{email}} 的验证码",
+      "workspaceLabel": "工作区名称",
+      "workspacePlaceholder": "示例公司",
+      "displayLabel": "你的名字",
+      "displayPlaceholder": "张三",
+      "create": "创建工作区",
+      "changeEmail": "换个邮箱",
+      "haveAccount": "已有工作区？去登录",
+      "noAccount": "第一次使用 Quberi？创建工作区"
+    }
+  },
+  "oauth": {
+    "loading": "正在核对请求…",
+    "invalid": {
+      "title": "无法完成这个请求",
+      "body": "链接缺少必要信息，或者不是 Quberi 认识的应用发起的。请回到应用重新操作。"
+    },
+    "title": "把 {{client}} 连接到 Quberi",
+    "intro": "{{client}} 想要检索你在 Quberi 中有权限阅读的知识。",
+    "can": "在你下面选择的组织里，检索你有权限阅读的空间中的内容。",
+    "cannot": "不能上传、修改或删除任何内容，也看不到你没有权限的空间。",
+    "leaves": "它检索到的内容会发送给 {{client}} 及其 AI 模型，不经过 Quberi 的“发送前检查”。每次检索都会记录在你所在组织的审计日志里。",
+    "chooseOrg": "组织",
+    "personalSpace": "我的个人空间",
+    "offCanEnable": "这里还没有开启外部工具。",
+    "offAskAdmin": "这里还没有开启外部工具，请联系所有者或管理员开启。",
+    "turnOn": "开启",
+    "allow": "允许",
+    "cancel": "取消",
+    "revokeHint": "你可以随时在“账号”里断开连接。",
+    "done": {
+      "title": "马上就好…",
+      "body": "正在带你回到应用。"
+    },
+    "kindPersonal": "个人",
+    "kindTeam": "团队",
+    "result": {
+      "ok": {
+        "title": "已连接",
+        "body": "DeepSeek Harness 现在可以检索你的 Quberi 知识库了，回到应用继续吧。"
+      },
+      "cancelled": {
+        "title": "未连接",
+        "body": "你选择了不授权，所以没有共享任何内容。需要时可以随时在应用里重新连接。"
+      },
+      "org_off": {
+        "title": "这个组织还没有允许外部工具",
+        "body": "请联系所有者或管理员在 Quberi 里开启，然后回到应用重试。"
+      },
+      "failed": {
+        "title": "出了点问题",
+        "body": "没能完成连接。请回到应用，重新登录一次。"
+      },
+      "closeHint": "可以关闭这个标签页了。"
+    }
+  },
+  "externalTools": {
+    "title": "外部工具",
+    "description": "允许成员连接 DeepSeek Harness 等工具，让他们在这个组织里检索自己有权限阅读的知识。",
+    "loading": "加载中…",
+    "toggleLabel": "允许成员连接外部工具",
+    "offEffect": "检索结果会发送给该工具和它使用的 AI 模型，不经过“发送前检查”。关闭后访问立即失效。每一次检索都会记录在审计日志里。"
+  },
+  "connectedTools": {
+    "title": "已连接的工具",
+    "hint": "你允许检索自己知识库的外部工具。断开后立即生效。",
+    "confirm": "断开 {{client}}？",
+    "disconnect": "断开",
+    "lastUsed": "最近使用 {{when}}",
+    "neverUsed": "还没有使用过"
+  },
+  "auth": {
+    "signedInAs": "当前身份",
+    "signOut": "登出",
+    "guest": "游客",
+    "guestCta": "登录 / 注册"
+  },
+  "common": {
+    "close": "关闭"
+  },
+  "account": {
+    "open": "账户",
+    "eyebrow": "账户",
+    "title": "你的账户",
+    "description": "管理你的资料和登录方式。",
+    "loading": "正在加载账户…",
+    "profile": "资料",
+    "noEmail": "未设置邮箱",
+    "methods": "登录方式",
+    "methodsHint": "邮箱和飞书都可用来登录同一个账号。",
+    "orgs": {
+      "title": "组织",
+      "hint": "你拥有或被邀请加入的所有组织。",
+      "loading": "正在加载组织…",
+      "current": "当前",
+      "switchTo": "切换到此组织",
+      "switching": "切换中…",
+      "pending": "邀请待确认",
+      "tier": {
+        "personal": "个人版",
+        "team": "团队版"
+      },
+      "createTeam": "创建团队",
+      "teamNamePlaceholder": "团队名称",
+      "create": "创建",
+      "cancel": "取消",
+      "createHint": "创建一个由你拥有的新团队。你的其他组织身份不受影响——创建完成后可以在上方切换过去。"
+    },
+    "name": {
+      "edit": "修改名称",
+      "save": "保存",
+      "cancel": "取消"
+    },
+    "avatar": {
+      "edit": "更换头像"
+    },
+    "email": {
+      "title": "邮箱",
+      "none": "未设置 · 设置后即可用邮箱登录",
+      "verified": "已验证",
+      "changeLabel": "更换",
+      "setLabel": "设置",
+      "codeShort": "6 位验证码",
+      "sendCode": "发送验证码",
+      "verify": "验证并保存",
+      "back": "取消"
+    },
+    "phone": {
+      "title": "手机号",
+      "none": "未设置 · 设置后即可用手机号登录",
+      "verified": "已验证",
+      "changeLabel": "更换",
+      "setLabel": "设置",
+      "placeholder": "138 0000 0000",
+      "codeShort": "6 位验证码",
+      "sendCode": "发送验证码",
+      "verify": "验证并保存",
+      "back": "取消"
+    },
+    "google": {
+      "title": "Google",
+      "description": "绑定 Google,下次可一键登录。",
+      "linked": "已绑定",
+      "link": "绑定 Google",
+      "unlink": "解除绑定",
+      "popupBlocked": "弹窗被拦截 —— 请允许弹窗后重试。",
+      "failed": "Google 绑定失败。"
+    },
+    "feishu": {
+      "title": "飞书",
+      "description": "绑定飞书,下次可一键登录。",
+      "linked": "已绑定",
+      "link": "绑定飞书",
+      "popupBlocked": "弹窗被拦截 —— 请允许弹窗后重试。",
+      "failed": "飞书绑定失败。"
+    }
+  },
+  "spaces": {
+    "currentLabel": "当前空间",
+    "loading": "正在加载空间…",
+    "loadError": "空间加载失败",
+    "empty": "还没有可用的空间",
+    "emptyDescription": "创建第一个协作空间，邀请团队成员加入。",
+    "none": "尚未选择空间",
+    "createCta": "创建协作空间",
+    "owner": "你是该空间的所有者",
+    "noDescription": "尚未填写描述。",
+    "visibilityLabel": "可见性",
+    "trustLabel": "信任等级",
+    "presetLabel": "预设",
+    "statusLabel": "状态",
+    "preset": {
+      "personal": "个人",
+      "collaborative": "协作",
+      "managed": "受管"
+    },
+    "visibility": {
+      "private": "私有",
+      "organization": "组织内",
+      "public_link": "公开链接"
+    },
+    "trust": {
+      "trusted": "可信",
+      "guided": "引导",
+      "exploratory": "探索"
+    },
+    "status": {
+      "active": "启用",
+      "archived": "已归档"
+    }
+  },
+  "createSpace": {
+    "title": "创建协作空间",
+    "titlePersonal": "新建空间",
+    "name": "名称",
+    "namePlaceholder": "火箭小队",
+    "namePlaceholderPersonal": "我的知识库",
+    "slug": "slug",
+    "description": "描述",
+    "descriptionPlaceholder": "这个空间用来做什么？",
+    "visibility": "可见性",
+    "cancel": "取消",
+    "submit": "创建"
+  },
+  "members": {
+    "title": "组织成员",
+    "description": "该组织内所有可访问的成员。目前只有所有者与管理员可以邀请新成员。",
+    "invite": "邀请成员",
+    "refresh": "刷新",
+    "loading": "正在加载成员…",
+    "loadError": "加载成员失败",
+    "empty": "尚无成员。",
+    "pending": "已发送邀请",
+    "primaryOrgUnitLabel": "所属部门",
+    "primaryOrgUnitEmpty": "未归属",
+    "primaryPositionLabel": "主岗位",
+    "primaryPositionEmpty": "无岗位",
+    "directManagerLabel": "直接上级",
+    "directManagerEmpty": "无上级",
+    "groupsChip": "所在工作组",
+    "groupsChipCount_one": "在 {{count}} 组",
+    "groupsChipCount_other": "在 {{count}} 组",
+    "groupsPopoverTitle": "该成员加入的工作组",
+    "groupsLoading": "加载中…",
+    "groupsEmpty": "未加入任何工作组。",
+    "role": {
+      "owner": "所有者",
+      "admin": "管理员",
+      "member": "成员",
+      "editor": "编辑者",
+      "viewer": "查看者",
+      "none": "无角色"
+    },
+    "tally": {
+      "total": "成员总数",
+      "other": "其他角色",
+      "pending": "待接受邀请"
+    },
+    "promoteToAdmin": "设为管理员",
+    "demoteToMember": "设为成员"
+  },
+  "inviteMember": {
+    "title": "邀请新成员",
+    "email": "邮箱",
+    "displayName": "显示名",
+    "displayNamePlaceholder": "Ada Lovelace",
+    "role": "组织角色",
+    "hint": "此处只选择组织级角色。编辑者与查看者的空间访问权限，将在被邀请人加入后按空间单独授予。",
+    "cancel": "取消",
+    "submit": "发送邀请"
+  },
+  "organization": {
+    "title": "组织",
+    "description": "组织单元、岗位与工作组共同决定谁可以被授权。",
+    "tabsLabel": "组织分区",
+    "tabs": {
+      "units": "组织单元",
+      "positions": "岗位",
+      "groups": "工作组"
+    }
+  },
+  "positions": {
+    "title": "岗位",
+    "description": "带有汇报线与编制的岗位。岗位本身即可作为授权主体——在岗成员会继承其权限。",
+    "showArchived": "显示已归档",
+    "refresh": "刷新",
+    "new": "新建岗位",
+    "empty": "还没有岗位，点“新建岗位”创建一个。",
+    "loadError": "加载岗位失败",
+    "pickOne": "在左侧选择一个岗位，或新建一个。",
+    "loading": "正在加载岗位…",
+    "archive": "归档",
+    "primary": "主岗位",
+    "setPrimary": "设为主岗位",
+    "endTenure": "结束任期",
+    "assign": "指派",
+    "occupants": "在岗成员",
+    "occupantsDescription": "当前担任此岗位的成员。主岗位标记决定 Members 面板中的“直接上级”列。",
+    "occupantsLoading": "正在加载在岗成员…",
+    "occupantsError": "加载在岗成员失败",
+    "occupantsEmpty": "尚无成员担任此岗位。",
+    "confirmArchive": "确定归档“{{name}}”？需要先结束所有在岗成员，之后岗位默认将被隐藏。",
+    "headcountUnlimited": "不限",
+    "facet": {
+      "status": "状态",
+      "headcount": "编制",
+      "grade": "职级",
+      "family": "职族",
+      "reportsTo": "汇报至"
+    },
+    "create": {
+      "title": "新建岗位",
+      "name": "名称",
+      "namePlaceholder": "AI 平台负责人",
+      "code": "编码（可选）",
+      "grade": "职级",
+      "family": "职族",
+      "orgUnit": "所属单元",
+      "orgUnitNone": "— 无 —",
+      "reportsTo": "汇报至",
+      "reportsToNone": "— 无 —",
+      "headcount": "编制上限（0 = 不限）",
+      "hint": "编码与汇报线之后可再调整。",
+      "cancel": "取消",
+      "submit": "创建"
+    },
+    "assignDialog": {
+      "title": "指派在岗成员",
+      "user": "成员",
+      "makePrimary": "同时设为该成员的主岗位",
+      "hint": "只列出尚未担任该岗位的成员。",
+      "noCandidates": "没有可指派的成员。",
+      "cancel": "取消",
+      "submit": "指派"
+    }
+  },
+  "groups": {
+    "title": "工作组",
+    "description": "跨越组织树的横向单元——专项组、安全组、项目组。成员可以是用户、组织单元、岗位或服务账号。",
+    "showArchived": "显示已归档",
+    "refresh": "刷新",
+    "new": "新建工作组",
+    "empty": "还没有工作组，点“新建工作组”创建一个。",
+    "loadError": "加载工作组失败",
+    "pickOne": "在左侧选择一个工作组，或新建一个。",
+    "loading": "正在加载工作组…",
+    "archive": "归档",
+    "membersShort": "成员",
+    "membersTitle": "工作组成员",
+    "membersDescription": "只显示直接成员。授权工作组时，权限仅作用于此处列出的实体。",
+    "membersLoading": "正在加载成员…",
+    "membersError": "加载成员失败",
+    "membersEmpty": "尚无成员。",
+    "addMember": "添加成员",
+    "removeMember": "移除",
+    "removeSelected": "移除 {{count}} 项",
+    "confirmArchive": "确定归档“{{name}}”？成员会被解除关联，工作组默认将被隐藏。",
+    "confirmRemoveOne": "确定将“{{subject}}”从工作组中移除？",
+    "confirmRemoveBulk": "确定移除 {{count}} 位成员？",
+    "searchPlaceholder": "搜索工作组…",
+    "clearSearch": "清除搜索",
+    "filterEmpty": "没有符合筛选条件的工作组。",
+    "sort": {
+      "name": "按名称",
+      "members": "按成员数",
+      "updated": "最近更新"
+    },
+    "facet": {
+      "type": "类型",
+      "directBindings": "直接绑定",
+      "effectiveUsers": "有效用户",
+      "effectivePending": "…",
+      "breakdown": "构成"
+    },
+    "edit": {
+      "button": "编辑",
+      "title": "编辑工作组",
+      "name": "名称",
+      "type": "类型",
+      "description": "描述",
+      "descriptionPlaceholder": "该工作组的用途？",
+      "cancel": "取消",
+      "submit": "保存"
+    },
+    "effective": {
+      "title": "有效用户",
+      "description": "通过工作组内成员条目扩展出的真实用户。",
+      "loading": "正在展开…",
+      "loadError": "计算有效用户失败",
+      "empty": "该工作组暂无真实用户。",
+      "pathsCount_one": "{{count}} 条路径",
+      "pathsCount_other": "{{count}} 条路径",
+      "hitPath": {
+        "direct": "直接列为成员",
+        "via_position": "通过岗位 {{subject}}",
+        "via_organization_unit": "通过组织单元 {{subject}}"
+      }
+    },
+    "type": {
+      "static": "静态",
+      "dynamic": "动态",
+      "security": "安全组",
+      "project": "项目组"
+    },
+    "memberType": {
+      "user": "用户",
+      "organization_unit": "组织单元",
+      "position": "岗位",
+      "service_account": "服务账号"
+    },
+    "create": {
+      "title": "新建工作组",
+      "name": "名称",
+      "type": "类型",
+      "description": "描述",
+      "descriptionPlaceholder": "该工作组的用途？",
+      "cancel": "取消",
+      "submit": "创建"
+    },
+    "addMemberDialog": {
+      "title": "添加工作组成员",
+      "subjectType": "成员类型",
+      "subject": "成员",
+      "hint": "先选择成员类型，再选择具体实体。",
+      "noCandidates": "该类型下没有可选实体。",
+      "cancel": "取消",
+      "submit": "添加"
+    }
+  },
+  "spaceAccess": {
+    "title": "空间访问",
+    "description": "直接授予此空间的角色。通过工作组、岗位或组织单元继承而来的成员不会出现在此列表。",
+    "empty": "此空间尚无直接授权。",
+    "add": "授予访问权",
+    "remove": "撤销",
+    "subjectType": "主体类型",
+    "role": "角色",
+    "subject": "主体",
+    "confirmRevoke": "确定撤销该访问权？",
+    "loading": "加载中…",
+    "loadError": "加载访问权失败",
+    "subjectTypeOption": {
+      "user": "成员",
+      "group": "工作组",
+      "organization_unit": "组织单元",
+      "position": "岗位",
+      "organization": "整个企业"
+    },
+    "subjectTypeShort": {
+      "user": "成员",
+      "group": "工作组",
+      "organization_unit": "组织单元",
+      "position": "岗位",
+      "organization": "整个企业"
+    },
+    "addDialog": {
+      "title": "授予空间访问",
+      "hint": "先选择授权对象，再选择空间级角色。",
+      "noCandidates": "该主体类型下没有可选对象。",
+      "cancel": "取消",
+      "submit": "授予"
+    },
+    "effective": {
+      "title": "实际生效",
+      "description": "当前所有能访问该空间的用户，包括通过岗位、工作组或组织单元继承而来的路径。展开每一行可查看理由。",
+      "idle": "选择一个空间以查看访问权限。",
+      "loading": "正在计算有效访问…",
+      "loadError": "加载有效访问失败",
+      "empty": "尚无用户能访问该空间。",
+      "pathsCount_one": "{{count}} 条路径",
+      "pathsCount_other": "{{count}} 条路径",
+      "hitPath": {
+        "direct": "直接授权",
+        "position": "在岗于岗位 {{subject}}",
+        "organization_unit": "隶属于组织单元 {{subject}}",
+        "organization_unit_ancestor": "位于 {{subject}} 的下级单元",
+        "group_via_user": "工作组 {{subject}} 的直接成员",
+        "group_via_position": "通过岗位加入工作组 {{subject}}",
+        "group_via_organization_unit": "通过组织单元加入工作组 {{subject}}",
+        "organization": "属于企业 {{subject}}"
+      }
+    },
+    "wholeOrganization": "整个企业",
+    "wholeOrganizationHint": "所有成员"
+  },
+  "orgUnits": {
+    "title": "组织架构",
+    "description": "该组织内的部门、团队与业务单元。当组织自建管理时可编辑；接入外部目录同步后由源系统只读镜像。",
+    "showArchived": "显示已归档",
+    "refresh": "刷新",
+    "newRoot": "新建单元",
+    "empty": "还没有组织单元，点“新建单元”开始。",
+    "loadError": "加载组织单元失败",
+    "pickOne": "在左侧选择一个组织单元，或者新建一个。",
+    "rootParent": "— 顶级 —",
+    "primary": "主属",
+    "type": {
+      "department": "部门",
+      "team": "小组",
+      "business_unit": "业务单元",
+      "legal_entity": "法人实体",
+      "cost_center": "成本中心",
+      "custom": "自定义"
+    },
+    "actions": {
+      "rename": "重命名",
+      "move": "移动",
+      "archive": "归档",
+      "addChild": "新建下级",
+      "addMember": "添加成员",
+      "removeMember": "移除",
+      "setPrimary": "设为主属",
+      "refresh": "刷新"
+    },
+    "facet": {
+      "type": "类型",
+      "parent": "上级",
+      "status": "状态",
+      "sync": "同步来源",
+      "code": "编码"
+    },
+    "membersTitle": "本单元成员",
+    "membersDescription": "归属于此单元的用户。主属标记决定 Members 面板中的“所属部门”列。",
+    "membersLoading": "正在加载成员…",
+    "membersError": "加载成员失败",
+    "membersEmpty": "本单元下暂无成员。",
+    "confirmArchive": "确定归档“{{name}}”？成员会被解除关联，单元默认将被隐藏。",
+    "create": {
+      "title": "新建组织单元",
+      "name": "名称",
+      "namePlaceholder": "工程部",
+      "type": "类型",
+      "parent": "上级单元",
+      "parentRoot": "— 顶级 —",
+      "code": "编码（可选）",
+      "cancel": "取消",
+      "submit": "创建"
+    },
+    "move": {
+      "title": "移动“{{name}}”",
+      "newParent": "移动到",
+      "hint": "该单元与其所有下级会一起移动。若目标为自身的后代，服务端会拒绝以避免形成环。",
+      "cancel": "取消",
+      "submit": "移动"
+    },
+    "addMember": {
+      "title": "添加成员",
+      "user": "成员",
+      "makePrimary": "同时设为该成员的主属单元",
+      "hint": "下拉只列出尚未加入该单元的成员。",
+      "noCandidates": "没有可添加的成员。",
+      "cancel": "取消",
+      "submit": "添加"
+    }
+  },
+  "agent": {
+    "title": "智能体",
+    "description": "提出一个横跨知识库与组织数据的问题。智能体会自主规划、调用工具，并跨来源推理——过程实时可见。",
+    "you": "你",
+    "assistant": "智能体",
+    "thinking": "处理中",
+    "gathering": "正在收集信息…",
+    "run": "运行",
+    "meta": "调用工具 {{tools}} 次 · 共 {{iters}} 步",
+    "composerPlaceholder": "跨知识库 + 组织数据提问——例如：工程部有多少人？他们能访问哪些空间？（⌘/Ctrl+Enter 运行）",
+    "empty": {
+      "title": "在你可见的范围内跨源推理",
+      "body": "不同于单次检索，智能体会把多个工具串联起来——知识检索，加上人员、部门、职位与访问权限——回答单次查询无法回答的问题。所有操作都严格限定在你有权查看的范围内。"
+    },
+    "suggestions": {
+      "s1": "组织里一共有多少人？分别在哪些部门？",
+      "s2": "谁可以访问 Engineering Wiki？为什么？",
+      "s3": "总结一下我们的入职文档，并告诉我谁负责那个知识空间。"
+    },
+    "back": "返回智能体列表",
+    "list": {
+      "description": "为不同工作配置专属智能体——每个都有自己的工具和指令。选择一个开始对话。",
+      "new": "新建智能体",
+      "loading": "正在加载智能体…",
+      "loadError": "加载智能体失败",
+      "empty": "还没有智能体，创建第一个吧。",
+      "edit": "编辑",
+      "delete": "删除",
+      "defaultBadge": "默认",
+      "restrictedBadge": "受限",
+      "noDescription": "暂无描述。",
+      "toolCount": "{{count}} 个工具",
+      "confirmDelete": "确定删除智能体「{{name}}」？此操作无法撤销。"
+    },
+    "editor": {
+      "newTitle": "新建智能体",
+      "editTitle": "编辑智能体",
+      "cancel": "取消",
+      "save": "保存",
+      "name": "名称",
+      "namePlaceholder": "例如：HR 助手",
+      "description": "描述",
+      "descriptionPlaceholder": "这个智能体是做什么的？",
+      "icon": "图标",
+      "systemPrompt": "指令（可选）",
+      "systemPromptPlaceholder": "给它设定专注领域或语气——例如「你面向新员工，用友好的语气解答」。",
+      "tools": "可使用的工具",
+      "scope": {
+        "label": "知识范围",
+        "mode": {
+          "user": "跟随用户",
+          "intersect": "指定空间 ∩ 用户可见",
+          "fixed": "固定空间"
+        },
+        "modeHint": {
+          "user": "检索提问者本人有权访问的全部空间（默认；绝不越权）。",
+          "intersect": "检索所选空间，但仅限提问者本人也能访问的那些。",
+          "fixed": "始终检索所选空间，不受提问者本人权限限制。"
+        },
+        "fixedWarning": "该智能体可能让用户读到其本人无权访问的知识。请在下方将其限定给特定人群使用。",
+        "noSpaces": "该组织暂无可选空间。"
+      },
+      "visibility": {
+        "label": "谁能使用",
+        "mode": {
+          "organization": "全员",
+          "restricted": "指定范围"
+        },
+        "modeHint": {
+          "organization": "组织内所有成员都能看到并使用该智能体。",
+          "restricted": "仅限你在下方授权的人员、部门、职位或群组。"
+        },
+        "add": "添加",
+        "noCandidates": "无可选项",
+        "noGrants": "尚未添加，请至少授权一个对象。",
+        "removeGrant": "移除"
+      },
+      "kind": {
+        "label": "智能体类型",
+        "mode": {
+          "builtin": "内置（工具型）",
+          "external": "外部端点"
+        },
+        "modeHint": {
+          "builtin": "使用平台内置工具与知识检索",
+          "external": "转发到第三方 OpenAI 兼容端点"
+        }
+      },
+      "external": {
+        "endpoint": "端点 Base URL",
+        "model": "模型名称",
+        "modelPlaceholder": "如 gpt-4o、qwen-plus",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "sk-…",
+        "apiKeyKeep": "留空则不修改",
+        "hint": "兼容 OpenAI /chat/completions 的端点（Dify 兼容层、FastGPT、OneAPI、vLLM 等）。"
+      }
+    },
+    "tools": {
+      "search_knowledge": "检索知识",
+      "list_members": "列出成员",
+      "get_member_profile": "查询成员档案",
+      "list_spaces": "列出知识空间",
+      "get_space_access": "查看空间访问权限",
+      "list_org_units": "列出部门",
+      "list_org_unit_members": "列出部门成员",
+      "list_positions": "列出职位"
+    }
+  },
+  "chat": {
+    "title": "对话",
+    "description": "默认会检索你有权访问的所有知识空间。可在下方输入框用 # 选择本次对话要引用的空间。",
+    "descriptionNoAnchor": "暂无可访问的知识空间，请先创建或加入一个空间再开始对话。",
+    "noSpace": "尚无可访问的空间——请让所有者授予绑定，或先创建一个空间。",
+    "model": {
+      "label": "模型",
+      "default": "默认模型",
+      "defaultNamed": "默认 · {{name}}",
+      "defaultOption": "默认模型",
+      "defaultDesc": "跟随管理员设置的组织默认模型",
+      "defaultDescNamed": "跟随组织默认 · 当前为 {{name}}",
+      "byAgent": "模型由该智能体提供",
+      "defaultBadge": "默认",
+      "group": {
+        "org": "组织模型",
+        "platform": "平台模型",
+        "private": "我的模型"
+      }
+    },
+    "anchorPicker": {
+      "label": "默认锚定空间",
+      "placeholder": "暂无可用空间",
+      "hint": "新建对话默认落到这里。可以在\"新建对话\"弹窗中按需覆盖。"
+    },
+    "newDialog": {
+      "title": "新建对话",
+      "picker": "锚定空间",
+      "hint": "选择这条对话锚定的空间；之后仍可以追加更多知识来源。",
+      "empty": "尚无可锚定的空间。",
+      "cancel": "取消",
+      "submit": "创建"
+    },
+    "new": "新建对话",
+    "refresh": "刷新",
+    "loadError": "加载失败",
+    "loadingConversations": "正在加载对话…",
+    "loadingMessages": "正在加载消息…",
+    "emptyConversations": "还没有对话，点上方按钮新建一个。",
+    "emptyMessages": "尚无消息，在下方说点什么吧。",
+    "pickOrCreate": "在左侧选择一个对话，或者新建一个。",
+    "untitled": "未命名对话",
+    "messageCount_one": "{{count}} 条消息",
+    "messageCount_other": "{{count}} 条消息",
+    "placeholder": "占位回复",
+    "streaming": "生成中…",
+    "composerPlaceholder": "问助手一句…（⌘/Ctrl + Enter 发送）",
+    "send": "发送",
+    "quotaRemaining": "本月免费消息剩余 {{remaining}} / {{limit}} 条",
+    "quotaExhausted": "本月免费消息已用完。到「模型」里添加你自己的 API key,即可免费继续聊。",
+    "citations": {
+      "panelTitle": "引用来源",
+      "header_one": "{{used}}/{{total}} 条被引用",
+      "header_other": "{{used}}/{{total}} 条被引用",
+      "chunk": "chunk #{{index}}",
+      "score": "得分 {{score}}",
+      "usedBadge": "已引用",
+      "empty": "这条回答暂无引用来源。",
+      "openDocument": "查看原文",
+      "viewerLoading": "正在重新提取文档文本…",
+      "viewerHighlightHint": "已为你定位到引用片段并高亮显示。"
+    },
+    "role": {
+      "user": "你",
+      "assistant": "助手",
+      "system": "系统",
+      "tool": "工具"
+    },
+    "scope": {
+      "summaryLabel": "知识来源",
+      "autoLabel_one": "全部可访问 · {{count}} 空间",
+      "autoLabel_other": "全部可访问 · {{count}} 空间",
+      "anchorPrefix": "锚定 · ",
+      "addSource": "添加来源",
+      "removeSource": "移除 {{name}}",
+      "toCustom": "→ 自定义范围",
+      "toAuto": "→ 自动范围",
+      "addDialogTitle": "添加知识来源空间",
+      "addDialogPicker": "空间",
+      "addDialogHint": "选一个你有权访问的空间。RAG 检索时会在对话锚定空间之外，同时搜索这里加入的空间。每次检索仍会重新校验当前权限。",
+      "addDialogEmpty": "没有可添加的其他空间。",
+      "addDialogCancel": "取消",
+      "addDialogSubmit": "添加",
+      "noneLabel": "未选择空间 · 仅用模型回答"
+    },
+    "composerPlaceholderMention": "输入消息… 输入 # 可引用空间 / 智能体",
+    "mention": {
+      "title": "引用",
+      "close": "关闭",
+      "space": "空间",
+      "agent": "智能体",
+      "spaceHint": "选择本次对话可检索的空间。",
+      "anchor": "锚定",
+      "noOther": "没有其他可访问的空间。",
+      "back": "返回",
+      "done": "完成",
+      "agentSoon": "在对话中选择智能体即将推出。",
+      "personal": "个人空间",
+      "agentHint": "选择一个智能体来回答本次对话（可调用工具、按其规则检索）。",
+      "agentNone": "不使用智能体（普通问答）",
+      "agentEmpty": "暂无可用智能体。",
+      "agentActive": "当前智能体：{{name}}（点击切换）",
+      "spaceTitle": "引用知识空间"
+    },
+    "sendHint": "发送（⌘/Ctrl + Enter）",
+    "attach": {
+      "label": "附件",
+      "soon": "上传附件即将推出。"
+    },
+    "rename": "重命名对话",
+    "trace": {
+      "header": "推理过程 · {{count}} 步",
+      "toolCall": "调用工具",
+      "toolResult": "工具结果",
+      "note": "思考",
+      "running": "智能体正在思考…"
+    },
+    "agent": {
+      "label": "智能体",
+      "pick": "智能体",
+      "none": "不使用智能体",
+      "noneDesc": "普通对话（用所选模型 + 知识空间）",
+      "empty": "暂无可用智能体"
+    },
+    "guest": {
+      "placeholder": "问问我关于 Quberi 的任何问题…",
+      "remaining": "今天还可以免费提问 {{remaining}} / {{limit}} 次。",
+      "exhausted": "今天的免费提问次数已用完。",
+      "signIn": "登录后不限次数",
+      "startersLabel": "可以这样问",
+      "starters": {
+        "what": "Quberi 是什么？能做什么？",
+        "isolation": "Quberi 如何做到不同团队的数据互相隔离？",
+        "start": "我怎么上传自己的文档开始使用？",
+        "models": "可以用哪些 AI 模型？",
+        "share": "怎么让整个部门都能访问某个知识库？",
+        "files": "支持上传哪些类型的文件？",
+        "agents": "智能体能做什么？",
+        "guest": "不登录能做什么？",
+        "data": "我的数据存放在哪里？能不能不离开我的电脑？",
+        "cloud": "用云端大模型时，我的文档会被上传吗？"
+      },
+      "startersMore": "继续问",
+      "startersRefresh": "换一批",
+      "hot": "热门"
+    },
+    "review": {
+      "title": "即将发送的内容",
+      "toVendor": "将发送给 {{vendor}} 的 {{model}}",
+      "toLocal": "将发送给本地部署的模型 {{model}}",
+      "toModel": "将发送给大模型",
+      "found": "发现 {{count}} 处疑似敏感信息",
+      "none": "没有发现明显的敏感信息",
+      "heuristic": "高亮只是辅助，只能识别手机号、身份证号、银行卡号、邮箱、密钥、密码和内网 IP，人名、地址等识别不了，请自己再看一遍。",
+      "scanFailed": "暂时无法重新识别，高亮可能不是最新的。",
+      "deleteAll": "全部删除",
+      "maskAll": "全部替换为占位符",
+      "question": "你的问题",
+      "history": "之前的对话（{{count}} 条，也会一并发送）",
+      "references": "参考资料（{{count}} 段，来自知识库）",
+      "roleUser": "你",
+      "roleAssistant": "助手",
+      "emptyPart": "（空）",
+      "notSent": "不发送",
+      "noneIncluded": "已取消勾选全部参考资料，这样不会调用模型。请至少保留一段，或取消这次发送。",
+      "edit": "编辑",
+      "doneEditing": "完成",
+      "markAria": "疑似{{kind}}，点击处理",
+      "delete": "删除",
+      "replace": "替换",
+      "keep": "保留",
+      "replaceWith": "替换为",
+      "showRaw": "查看实际发送的完整内容",
+      "hideRaw": "收起完整内容",
+      "noModelCall": "这次不会调用模型。",
+      "edited": "已修改 {{count}} 处",
+      "unchanged": "未做修改，将原样发送",
+      "cancel": "取消",
+      "send": "发送",
+      "enable": "发送前检查",
+      "enableHint": "开启后，每次提问都会先让你看到并可修改将发送给大模型的内容",
+      "agentUnsupported": "智能体对话暂不支持发送前检查，请先关闭，或切换为普通对话。",
+      "heldHint": "请先处理上面的待发送内容。",
+      "cancelledNote": "已取消，这次提问没有发送给模型。",
+      "edited_badge": "发送前已修改",
+      "kind": {
+        "phone": "手机号",
+        "id_card": "身份证号",
+        "bank_card": "银行卡号",
+        "email": "邮箱",
+        "secret": "密钥",
+        "password": "密码",
+        "internal_ip": "内网 IP"
+      },
+      "editedBadgeHint": "这次发送前，你修改过内容或去掉了部分参考资料，所以引用里显示的是知识库原文，模型看到的不完全一样。"
+    }
+  },
+  "orgSpaces": {
+    "title": "企业空间",
+    "description": "归企业所有、不依附于某个人的空间。按组织结构授权：整个企业、部门/小组（含下级）、岗位、用户组或单个成员，每一项可单独指定角色。",
+    "refresh": "刷新",
+    "create": "新建企业空间",
+    "loading": "正在加载空间…",
+    "loadError": "企业空间加载失败",
+    "empty": "还没有企业空间。创建一个并选择谁可以访问。",
+    "manageAccess": "管理访问",
+    "hideAccess": "收起访问",
+    "archive": "归档",
+    "confirmArchive": "确定归档空间「{{name}}」？归档后成员将无法继续使用。",
+    "dialog": {
+      "title": "新建企业空间",
+      "name": "名称",
+      "namePlaceholder": "技术手册",
+      "slug": "标识（slug）",
+      "description": "描述",
+      "descriptionPlaceholder": "这个空间用来做什么？",
+      "access": "谁可以访问",
+      "accessHint": "选择部门/小组、岗位、用户组、成员或整个企业，并为每一项指定角色。之后也可以调整。",
+      "addGrant": "添加",
+      "removeGrant": "移除",
+      "noGrants": "目前只有你自己可以访问。添加需要使用这个空间的对象。",
+      "cancel": "取消",
+      "submit": "创建空间"
+    }
+  },
+  "guestSandbox": {
+    "title": "您是游客，请不要上传隐私数据",
+    "body": "您上传的文件将被所有人看到。如果您想创建属于自己的空间，请登录后再上传。文件会在 24 小时后自动删除，您也可以随时删除自己上传的文件。",
+    "signIn": "登录",
+    "mine": "我的"
+  }
+}

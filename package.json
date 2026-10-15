@@ -1,0 +1,15 @@
+{
+  "name": "quberi",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.9.0",
+  "engines": {
+    "node": "22.14.0"
+  },
+  "scripts": {
+    "web:dev": "pnpm --filter @quberi/web dev",
+    "web:build": "pnpm --filter @quberi/web build",
+    "web:lint": "pnpm --filter @quberi/web lint"
+  }
+}

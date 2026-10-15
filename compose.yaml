@@ -1,0 +1,239 @@
+name: quberi
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_USER: ${QUBERI_POSTGRES_USER:-quberi}
+      POSTGRES_PASSWORD: ${QUBERI_POSTGRES_PASSWORD:?Set QUBERI_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${QUBERI_POSTGRES_DB:-quberi}
+    ports:
+      - "127.0.0.1:${QUBERI_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${QUBERI_POSTGRES_USER:-quberi} -d ${QUBERI_POSTGRES_DB:-quberi}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks: [quberi]
+
+  redis:
+    image: redis:8.0.1-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${QUBERI_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks: [quberi]
+
+  qdrant:
+    image: qdrant/qdrant:v1.14.1
+    ports:
+      - "127.0.0.1:${QUBERI_QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${QUBERI_QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks: [quberi]
+
+  minio:
+    # MinIO Inc. pulled minio/minio and minio/mc off Docker Hub and quay.io
+    # in Sep 2026 to push its paid AIStor product. pgsty/silo is a
+    # community-maintained fork that keeps the S3/Admin API, MINIO_* env
+    # vars, and on-disk format byte-for-byte compatible — see
+    # https://github.com/pgsty/silo. Swap back to an official image if/when
+    # one becomes freely pullable again.
+    image: pgsty/silo:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${QUBERI_MINIO_ACCESS_KEY:?Set QUBERI_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${QUBERI_MINIO_SECRET_KEY:?Set QUBERI_MINIO_SECRET_KEY}
+    ports:
+      - "127.0.0.1:${QUBERI_MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${QUBERI_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks: [quberi]
+
+  minio-init:
+    # pgsty/mc is the matching community-maintained fork of minio/mc (same
+    # `mc` CLI, see the minio service comment above for why).
+    image: pgsty/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${QUBERI_MINIO_ACCESS_KEY:?Set QUBERI_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${QUBERI_MINIO_SECRET_KEY:?Set QUBERI_MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${QUBERI_MINIO_BUCKET:-quberi}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+    restart: "no"
+    networks: [quberi]
+
+  api:
+    profiles: [app]
+    build:
+      context: ./apps/api
+    environment:
+      QUBERI_ENVIRONMENT: ${QUBERI_ENVIRONMENT:-development}
+      QUBERI_APP_VERSION: ${QUBERI_APP_VERSION:-0.1.0}
+      QUBERI_DEFAULT_LOCALE: ${QUBERI_DEFAULT_LOCALE:-en-US}
+      QUBERI_ALLOWED_ORIGINS: ${QUBERI_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:8080}
+      QUBERI_POSTGRES_DSN: ${QUBERI_POSTGRES_DSN:?Set QUBERI_POSTGRES_DSN}
+      QUBERI_REDIS_URL: ${QUBERI_REDIS_URL:-redis://redis:6379/0}
+      QUBERI_QDRANT_URL: ${QUBERI_QDRANT_URL:-http://qdrant:6333}
+      QUBERI_MINIO_ENDPOINT: ${QUBERI_MINIO_ENDPOINT:-minio:9000}
+      QUBERI_MINIO_ACCESS_KEY: ${QUBERI_MINIO_ACCESS_KEY:?Set QUBERI_MINIO_ACCESS_KEY}
+      QUBERI_MINIO_SECRET_KEY: ${QUBERI_MINIO_SECRET_KEY:?Set QUBERI_MINIO_SECRET_KEY}
+      QUBERI_MINIO_BUCKET: ${QUBERI_MINIO_BUCKET:-quberi}
+      QUBERI_MINIO_SECURE: ${QUBERI_MINIO_SECURE:-false}
+      QUBERI_PLATFORM_ADMIN_TOKEN: ${QUBERI_PLATFORM_ADMIN_TOKEN:-}
+      QUBERI_ENCRYPTION_KEY: ${QUBERI_ENCRYPTION_KEY:?Set QUBERI_ENCRYPTION_KEY}
+      QUBERI_DEFAULT_DEEPSEEK_KEY: ${QUBERI_DEFAULT_DEEPSEEK_KEY:-}
+      QUBERI_DEFAULT_CHAT_MODEL: ${QUBERI_DEFAULT_CHAT_MODEL:-deepseek-chat}
+      QUBERI_DEFAULT_EMBEDDING_MODEL: ${QUBERI_DEFAULT_EMBEDDING_MODEL:-bge-m3}
+      QUBERI_ARQ_REDIS_URL: ${QUBERI_ARQ_REDIS_URL:-redis://redis:6379/1}
+      QUBERI_FEISHU_APP_ID: ${QUBERI_FEISHU_APP_ID:-}
+      QUBERI_FEISHU_APP_SECRET: ${QUBERI_FEISHU_APP_SECRET:-}
+      QUBERI_FEISHU_BASE_URL: ${QUBERI_FEISHU_BASE_URL:-https://open.feishu.cn/open-apis}
+      QUBERI_FEISHU_ENCRYPT_KEY: ${QUBERI_FEISHU_ENCRYPT_KEY:-}
+      QUBERI_FEISHU_VERIFICATION_TOKEN: ${QUBERI_FEISHU_VERIFICATION_TOKEN:-}
+      QUBERI_GOOGLE_CLIENT_ID: ${QUBERI_GOOGLE_CLIENT_ID:-}
+      QUBERI_GOOGLE_CLIENT_SECRET: ${QUBERI_GOOGLE_CLIENT_SECRET:-}
+      QUBERI_PUBLIC_BASE_URL: ${QUBERI_PUBLIC_BASE_URL:-}
+      QUBERI_SMTP_HOST: ${QUBERI_SMTP_HOST:-}
+      QUBERI_SMTP_PORT: ${QUBERI_SMTP_PORT:-465}
+      QUBERI_SMTP_USERNAME: ${QUBERI_SMTP_USERNAME:-}
+      QUBERI_SMTP_PASSWORD: ${QUBERI_SMTP_PASSWORD:-}
+      QUBERI_SMTP_FROM: ${QUBERI_SMTP_FROM:-}
+      QUBERI_SMTP_USE_SSL: ${QUBERI_SMTP_USE_SSL:-true}
+      QUBERI_SMTP2_HOST: ${QUBERI_SMTP2_HOST:-}
+      QUBERI_SMTP2_PORT: ${QUBERI_SMTP2_PORT:-465}
+      QUBERI_SMTP2_USERNAME: ${QUBERI_SMTP2_USERNAME:-}
+      QUBERI_SMTP2_PASSWORD: ${QUBERI_SMTP2_PASSWORD:-}
+      QUBERI_SMTP2_FROM: ${QUBERI_SMTP2_FROM:-}
+      QUBERI_SMTP2_USE_SSL: ${QUBERI_SMTP2_USE_SSL:-true}
+      QUBERI_SESSION_TTL_SECONDS: ${QUBERI_SESSION_TTL_SECONDS:-1209600}
+      # sentence-transformers reads HF_HOME as the model cache root; sharing
+      # the volume with the worker means the ~2 GB BGE-M3 weights are only
+      # downloaded once per host.
+      HF_HOME: /hf-cache
+    ports:
+      - "127.0.0.1:${QUBERI_API_PORT:-8000}:8000"
+    volumes:
+      - hf-cache:/hf-cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [quberi]
+
+  worker:
+    profiles: [app]
+    # Reuse the exact API image so we don't rebuild twice on every
+    # source change. The entrypoint kicks off the arq worker instead
+    # of uvicorn. Migrations don't run here — the api container is
+    # the single owner of schema state on boot.
+    image: quberi-api:latest
+    entrypoint: ["arq", "quberi_api.workers.rag.WorkerSettings"]
+    environment:
+      QUBERI_ENVIRONMENT: ${QUBERI_ENVIRONMENT:-development}
+      QUBERI_APP_VERSION: ${QUBERI_APP_VERSION:-0.1.0}
+      QUBERI_POSTGRES_DSN: ${QUBERI_POSTGRES_DSN:?Set QUBERI_POSTGRES_DSN}
+      QUBERI_REDIS_URL: ${QUBERI_REDIS_URL:-redis://redis:6379/0}
+      QUBERI_QDRANT_URL: ${QUBERI_QDRANT_URL:-http://qdrant:6333}
+      QUBERI_MINIO_ENDPOINT: ${QUBERI_MINIO_ENDPOINT:-minio:9000}
+      QUBERI_MINIO_ACCESS_KEY: ${QUBERI_MINIO_ACCESS_KEY:?Set QUBERI_MINIO_ACCESS_KEY}
+      QUBERI_MINIO_SECRET_KEY: ${QUBERI_MINIO_SECRET_KEY:?Set QUBERI_MINIO_SECRET_KEY}
+      QUBERI_MINIO_BUCKET: ${QUBERI_MINIO_BUCKET:-quberi}
+      QUBERI_MINIO_SECURE: ${QUBERI_MINIO_SECURE:-false}
+      QUBERI_ENCRYPTION_KEY: ${QUBERI_ENCRYPTION_KEY:?Set QUBERI_ENCRYPTION_KEY}
+      QUBERI_DEFAULT_DEEPSEEK_KEY: ${QUBERI_DEFAULT_DEEPSEEK_KEY:-}
+      QUBERI_DEFAULT_CHAT_MODEL: ${QUBERI_DEFAULT_CHAT_MODEL:-deepseek-chat}
+      QUBERI_DEFAULT_EMBEDDING_MODEL: ${QUBERI_DEFAULT_EMBEDDING_MODEL:-bge-m3}
+      QUBERI_ARQ_REDIS_URL: ${QUBERI_ARQ_REDIS_URL:-redis://redis:6379/1}
+      QUBERI_FEISHU_APP_ID: ${QUBERI_FEISHU_APP_ID:-}
+      QUBERI_FEISHU_APP_SECRET: ${QUBERI_FEISHU_APP_SECRET:-}
+      QUBERI_FEISHU_BASE_URL: ${QUBERI_FEISHU_BASE_URL:-https://open.feishu.cn/open-apis}
+      QUBERI_FEISHU_ENCRYPT_KEY: ${QUBERI_FEISHU_ENCRYPT_KEY:-}
+      QUBERI_FEISHU_VERIFICATION_TOKEN: ${QUBERI_FEISHU_VERIFICATION_TOKEN:-}
+      QUBERI_PUBLIC_BASE_URL: ${QUBERI_PUBLIC_BASE_URL:-}
+      HF_HOME: /hf-cache
+    volumes:
+      - hf-cache:/hf-cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [quberi]
+
+  web:
+    profiles: [app]
+    build:
+      # Repo root, not ./apps/web: the build needs the workspace-level
+      # pnpm-lock.yaml + pnpm-workspace.yaml to install with pnpm
+      # (deterministic, cached) instead of a lockfile-less npm install.
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:${QUBERI_WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [quberi]
+
+volumes:
+  postgres-data:
+  redis-data:
+  qdrant-data:
+  minio-data:
+  # Sentence-transformers cache (models pulled from Hugging Face). Shared
+  # between the ``api`` and ``worker`` containers so the ~2 GB BGE-M3
+  # download happens once per host.
+  hf-cache:
+
+networks:
+  quberi:
+    driver: bridge

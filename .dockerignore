@@ -1,0 +1,27 @@
+# Root-level .dockerignore — applies to any build with context: .
+# (currently just apps/web/Dockerfile, which needs the workspace-level
+# pnpm-lock.yaml/pnpm-workspace.yaml but nothing else at the repo root).
+.git
+.gitignore
+.venv
+apps/api/.venv
+apps/api/src
+apps/api/alembic
+apps/api/tests
+apps/api/pyproject.toml
+apps/api/Dockerfile
+apps/api/.dockerignore
+node_modules
+apps/web/node_modules
+apps/web/dist
+apps/web/.vite
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+*.md

@@ -1,0 +1,22 @@
+.env
+.env.*
+!.env.example
+deploy/certs/
+deploy/.env.prod.tmp
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+dist/
+build/
+*.log
+.apioverlay/
+.venv/
+venv/
+*.egg-info/
+
+# DeepSeek Harness plugin build output
+integrations/deepseek-harness/lib/
+
+# Private product/business documents: never commit or publish
+/Quberi*.md

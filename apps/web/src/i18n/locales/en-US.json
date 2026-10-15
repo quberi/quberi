@@ -1,0 +1,1469 @@
+{
+  "brand": {
+    "name": "Quberi",
+    "workspace": "Workspace"
+  },
+  "orgSwitcher": {
+    "createHint": "Create a team from Account settings"
+  },
+  "navigation": {
+    "chat": "Chat",
+    "search": "Search",
+    "knowledge": "Knowledge base",
+    "myModels": "My models",
+    "account": "Account",
+    "agents": "Agent",
+    "history": "History",
+    "planned": "Planned",
+    "comingSoon": "Coming soon",
+    "collapsePanel": "Collapse context panel",
+    "expandPanel": "Expand context panel",
+    "adminConsole": "Admin console"
+  },
+  "adminConsole": {
+    "title": "Admin console",
+    "subtitle": "Organization management",
+    "exit": "Back to workspace",
+    "nav": {
+      "overview": "Overview",
+      "organization": "Organization",
+      "members": "Members",
+      "models": "Models",
+      "integrations": "Integrations",
+      "spaces": "Spaces",
+      "audit": "Audit"
+    },
+    "overview": {
+      "description": "The newest activity across your organization."
+    }
+  },
+  "myModels": {
+    "eyebrow": "My models",
+    "title": "My models",
+    "description": "Add your own API key, visible and usable only by you — your org's admins can't see these keys. Switch to your private model manually in any chat.",
+    "loading": "Loading…",
+    "providers": {
+      "title": "My providers",
+      "description": "Each entry is a provider endpoint + key and the models it serves. Keys are encrypted, never shown again, and never appear in the org's model management.",
+      "empty": "No private models added yet.",
+      "hint": "OpenAI-compatible endpoint. You pay the provider directly; this has nothing to do with your org's usage."
+    }
+  },
+  "modelSettings": {
+    "eyebrow": "Models",
+    "title": "Model settings",
+    "description": "Bring your own API key and choose which model powers your chats. With no key set, you use Quberi's shared model.",
+    "loading": "Loading model settings…",
+    "platformDefaultBadge": "Quberi default",
+    "chat": {
+      "title": "Chat model",
+      "description": "The model used to answer your chats.",
+      "usingDefault": "Currently using Quberi's shared model.",
+      "usingPlatformNamed": "Currently using Quberi's shared model · {{model}}.",
+      "usingCustom": "Currently using {{model}}.",
+      "modelLabel": "Model",
+      "modelPlaceholder": "Choose a model",
+      "bindingLabel": "Provider (API key)",
+      "bindingPlaceholder": "Choose a provider",
+      "noBinding": "No provider for this model yet — add one below.",
+      "save": "Save",
+      "useDefault": "Use Quberi default",
+      "noModels": "No usable models yet — add a provider below."
+    },
+    "providers": {
+      "title": "Your models",
+      "description": "Each entry is a provider endpoint + key and the models it serves. Keys are encrypted and never shown again.",
+      "add": "Add model",
+      "empty": "No providers yet.",
+      "keySet": "key set",
+      "remove": "Remove",
+      "edit": "Edit",
+      "presetLabel": "Provider",
+      "presetCustom": "Custom / other",
+      "nameLabel": "Name",
+      "namePlaceholder": "My DeepSeek key",
+      "baseUrlLabel": "Base URL",
+      "keyLabel": "API key",
+      "keyKeepPlaceholder": "Leave blank to keep the current key",
+      "keyKeepHint": "Leave the API key blank to keep the existing one.",
+      "save": "Add",
+      "saveEdit": "Save changes",
+      "cancel": "Cancel",
+      "hint": "OpenAI-compatible endpoint. Example base URLs: DeepSeek https://api.deepseek.com, OpenAI https://api.openai.com/v1.",
+      "byokHint": "Add your own API key to use your preferred model for free (you pay your provider directly).",
+      "modelsLabel": "Models",
+      "fetchModels": "Fetch models",
+      "noModelsFetched": "This endpoint returned no models — add them manually below.",
+      "manualPlaceholder": "Add a model id (e.g. qwen-max)",
+      "addModel": "Add",
+      "modelCount": "{{count}} models",
+      "addTitle": "Add a model",
+      "editTitle": "Edit model",
+      "searchModels": "Search models…",
+      "enabledCount": "{{count}} enabled",
+      "fetchNeedsKey": "Enter the API key first to fetch this provider’s models — or add model ids manually below.",
+      "vendorOnly": "Only this provider’s models",
+      "noneMatchVendor": "No models match this provider — untick the filter to see all, or add an id manually.",
+      "recommended": "recommended",
+      "recommendedHint": "We pre-selected the recommended chat models — just save, or adjust below."
+    },
+    "access": {
+      "title": "Model access",
+      "description": "Control who can use each model. The four pickers below are all optional — use one or combine a few; leave everything empty to keep it open to everyone.",
+      "empty": "No usable models to govern yet.",
+      "edit": "Set access",
+      "openHint": "Currently open to everyone (no restriction selected).",
+      "restrictedHint": "Only the selected principals may use this model.",
+      "orLogicHint": "The four pickers are combined with OR: matching any one of them is enough — you don't need to match all of them.",
+      "byUsers": "By member",
+      "byGroups": "By group",
+      "byOrgUnits": "By org unit",
+      "byPositions": "By position",
+      "usersPlaceholder": "Select members (optional)…",
+      "groupsPlaceholder": "Select groups (optional)…",
+      "orgUnitsPlaceholder": "Select org units (optional)…",
+      "positionsPlaceholder": "Select positions (optional)…",
+      "optionalTag": "optional",
+      "pickPlaceholder": "Select…",
+      "searchPlaceholder": "Search…",
+      "noResults": "No matches.",
+      "clearSelection": "Clear selection",
+      "excludeUsers": "Exclude specific members",
+      "excludeUsersPlaceholder": "Select members to exclude (optional)…",
+      "excludeHint": "Excluded members can't use this model, even if they belong to an allowed group / org unit / position above — exclusion always wins.",
+      "openExceptDeniedHint": "Currently open to everyone, except {{count}} excluded member(s) below.",
+      "save": "Save access",
+      "cancel": "Cancel"
+    },
+    "byok": {
+      "title": "Member private models",
+      "description": "Control whether org members can add their own API key under their workspace's \"My models\". When off, members can't add new private models; existing ones keep working and can still be edited.",
+      "toggleLabel": "Allow members to add private models"
+    },
+    "modelDesc": {
+      "deepseekChat": "General chat (DeepSeek V3) — strong all-rounder",
+      "deepseekReasoner": "Reasoning (DeepSeek R1) — great at math/code, slower",
+      "qwenMax": "Flagship — strongest, best for complex tasks",
+      "qwenPlus": "Balanced — recommended for everyday use, good value",
+      "qwenTurbo": "Fast & cheap — good for simple tasks",
+      "qwenFlash": "Fastest & cheapest — lightweight tasks",
+      "gpt4o": "OpenAI flagship, multimodal",
+      "gpt4oMini": "OpenAI lightweight — fast & cheap",
+      "code": "Code-specialised model",
+      "vision": "Multimodal (image + text)",
+      "reasoning": "Reasoning model — strong at math/code, slower",
+      "small": "Small/distilled — lightweight & fast, lower quality",
+      "tierMax": "Top capability tier",
+      "tierPlus": "Balanced capability & cost",
+      "tierTurbo": "Faster & cheaper",
+      "tierFlash": "Fastest & cheapest",
+      "long": "Long-context — handles very long inputs",
+      "generic": "General chat model",
+      "snapshot": "Pinned dated snapshot — use the undated alias unless you need a fixed version",
+      "snapshotSuffix": " · pinned dated snapshot",
+      "character": "Role-play / persona-tuned variant",
+      "latest": "Rolling “latest” alias"
+    }
+  },
+  "integrations": {
+    "eyebrow": "Connected sources",
+    "title": "Integrations",
+    "description": "Wire external systems into Quberi. Documents synced here follow the target space's role bindings — access is enforced at query time.",
+    "addFeishu": "Add Feishu connection",
+    "loading": "Loading integrations…",
+    "loadError": "Could not load integrations",
+    "refresh": "Refresh",
+    "cachingPolicy": {
+      "mirror": "Mirrored",
+      "reference_only": "Reference only"
+    },
+    "feishu": {
+      "title": "Feishu cloud docs",
+      "subtitle": "Sync a Feishu folder into a Quberi space. We store metadata + embeddings only; original content is fetched on demand.",
+      "empty": "No Feishu folders connected yet. Click \"Add Feishu connection\" to link one.",
+      "sync": "Sync now",
+      "syncOk": "Sync complete.",
+      "syncingNow": "Syncing…",
+      "syncFail": "Sync failed: {{message}}",
+      "delete": "Remove",
+      "confirmDelete": "Remove the Feishu connection \"{{name}}\"? Indexed documents will be detached.",
+      "targetSpace": "→ {{space}}",
+      "lastSynced": "synced {{when}}",
+      "neverSynced": "never synced",
+      "addTitle": "Connect a Feishu folder",
+      "addHint": "In Feishu, add the Quberi app as a collaborator on a folder, then pick that folder below. You must be able to open the folder in Feishu with your own account.",
+      "folderLabel": "Feishu folder",
+      "spaceLabel": "Target Quberi space",
+      "spaceHelp": "Synced documents land in this space and inherit its permissions.",
+      "noSpaces": "No spaces available",
+      "cancel": "Cancel",
+      "create": "Connect",
+      "oauth": {
+        "checking": "Checking Feishu connection…",
+        "notConnected": "Feishu not connected",
+        "notConnectedHint": "Authorise Quberi to browse your Feishu folders.",
+        "connect": "Connect Feishu",
+        "connecting": "Waiting for authorisation…",
+        "connected": "Feishu connected — pick a folder below."
+      },
+      "picker": {
+        "loading": "Loading…",
+        "retry": "Retry",
+        "empty": "(empty)",
+        "select": "Select",
+        "selected": "Selected",
+        "selectHint": "Select this folder",
+        "fileHint": "Only folders can be selected",
+        "chosen": "Selected folder: {{name}}"
+      },
+      "autoName": "Feishu · {{folder}}"
+    }
+  },
+  "knowledge": {
+    "pageEyebrow": "Knowledge bases",
+    "pageTitle": "Every space you can access",
+    "pageDescription": "One card per space. Documents inherit the space's role bindings — anyone with a binding sees the same library.",
+    "newSpace": "New space",
+    "spaceCount": "{{count}} / {{max}} spaces",
+    "spaceLimitReached": "Personal accounts are limited to {{max}} spaces.",
+    "emptyTitle": "No accessible spaces",
+    "emptyDescription": "You don't have any spaces yet. Ask an owner to grant you access, or create one from the Spaces menu.",
+    "card": {
+      "docCount": "Documents",
+      "sizeTotal": "Total size",
+      "lastUpload": "Last upload",
+      "openAll": "Open library"
+    },
+    "indexing": {
+      "not_indexed": "Not indexed",
+      "indexing": "Indexing",
+      "indexed": "Indexed",
+      "failed": "Index failed"
+    },
+    "view": {
+      "back": "Back to spaces",
+      "crumbRoot": "Knowledge",
+      "eyebrow": "Space library",
+      "unknownSpace": "Unknown space",
+      "uploadLabel": "Upload documents",
+      "uploadHint": "Files land straight into this space. Access follows the space's role bindings.",
+      "showUpload": "Show upload",
+      "hideUpload": "Hide upload",
+      "sources": {
+        "label": "Add documents",
+        "hint": "Sync files into this space from any source — it's all file sync underneath.",
+        "local": "Local upload",
+        "localHint": "Drag or choose files to upload",
+        "feishu": "Sync from Feishu",
+        "feishuHint": "Pick a Feishu folder to sync here",
+        "wecom": "WeCom",
+        "dingtalk": "DingTalk",
+        "drive": "Cloud drive / SharePoint",
+        "soon": "Coming soon"
+      },
+      "search": "Search by name…",
+      "empty": "No documents match the current filters.",
+      "filteredHint": "Showing {{filtered}} of {{total}} documents (filtered).",
+      "filter": {
+        "all": "All sources",
+        "local": "Local upload",
+        "feishu": "Feishu",
+        "oss_aliyun": "Aliyun OSS",
+        "s3_aws": "AWS S3"
+      },
+      "sort": {
+        "createdAt": "Sort · Created",
+        "updatedAt": "Sort · Updated",
+        "name": "Sort · Name",
+        "size": "Sort · Size",
+        "asc": "Ascending",
+        "desc": "Descending"
+      },
+      "stats": {
+        "total": "Documents",
+        "size": "Total size",
+        "lastUpload": "Last upload",
+        "indexed": "Indexed / total",
+        "bySource": "By source",
+        "byIndexing": "By indexing state"
+      },
+      "table": {
+        "name": "Name",
+        "source": "Source",
+        "size": "Size",
+        "indexing": "Indexing",
+        "uploader": "Uploader",
+        "created": "Uploaded"
+      },
+      "pager": {
+        "range": "{{start}} – {{end}} of {{total}}",
+        "perPage": "Per page"
+      }
+    },
+    "detail": {
+      "close": "Close",
+      "tabProperties": "Properties",
+      "tabRag": "RAG status",
+      "notFoundTitle": "Document not on this page",
+      "notFoundHint": "This row isn't on the current page — page or refresh and try again.",
+      "propName": "Name",
+      "propUploader": "Uploader",
+      "propSource": "Source",
+      "propSize": "Size",
+      "propMime": "MIME type",
+      "propCreatedAt": "Uploaded at",
+      "propUpdatedAt": "Updated at",
+      "propChecksum": "SHA-256",
+      "propStorageKey": "Storage key",
+      "propSyncState": "Source sync",
+      "propChunks": "Chunk count",
+      "propLastIndexed": "Last indexed at",
+      "propIndexingError": "Last error",
+      "sync": {
+        "local_only": "Local only",
+        "synced_fresh": "Synced (fresh)",
+        "synced_stale": "Synced (stale)",
+        "synced_broken": "Synced (broken)"
+      },
+      "rag": {
+        "not_indexed": "Waiting for the RAG worker to pick this file up.",
+        "indexing": "The RAG worker is currently embedding this file.",
+        "indexed": "Fully embedded. Chats scoped to this space can retrieve it.",
+        "failed": "Last attempt failed. Retry from the RAG operations page (coming soon).",
+        "placeholder": "The RAG indexer ships in a later slice. Existing documents will be picked up automatically on rollout."
+      }
+    }
+  },
+  "documents": {
+    "title": "Documents",
+    "description": "Files anchored to this space. Access follows the space's role bindings.",
+    "refresh": "Refresh",
+    "loading": "Loading documents…",
+    "loadError": "Could not load documents",
+    "empty": "No documents yet — drop a file above to upload.",
+    "download": "Download",
+    "delete": "Delete",
+    "confirmDelete": "Delete \"{{name}}\"?",
+    "unknownUploader": "unknown",
+    "upload": {
+      "title": "Drop files here, or click to pick",
+      "noSpace": "Pick a space first",
+      "hint": "Up to 25 MB each. Text, docs, spreadsheets, PDFs, images.",
+      "progressPct": "{{pct}}%",
+      "done": "Done",
+      "failed": "Upload failed"
+    },
+    "source": {
+      "local": "Local",
+      "feishu": "Feishu",
+      "oss_aliyun": "Aliyun OSS",
+      "s3_aws": "AWS S3"
+    }
+  },
+  "audit": {
+    "recent": {
+      "title": "Live pulse",
+      "refresh": "Refresh",
+      "loading": "Loading events…",
+      "loadError": "Could not load recent events.",
+      "empty": "Nothing has happened yet.",
+      "unknownActor": "Someone",
+      "action": {
+        "fallback": "{{actor}} {{action}} {{resource}}",
+        "member.invited": "{{actor}} invited {{resource}}",
+        "position.created": "{{actor}} created position {{resource}}",
+        "position.updated": "{{actor}} updated position {{resource}}",
+        "position.archived": "{{actor}} archived position {{resource}}",
+        "position.assigned": "{{actor}} assigned {{resource}} to a position",
+        "position.ended": "{{actor}} ended {{resource}}'s tenure",
+        "position.primary_set": "{{actor}} set primary position for {{resource}}",
+        "group.created": "{{actor}} created group {{resource}}",
+        "group.updated": "{{actor}} updated group {{resource}}",
+        "group.archived": "{{actor}} archived group {{resource}}",
+        "group.member_added": "{{actor}} added a member to {{resource}}",
+        "group.member_removed": "{{actor}} removed a member from {{resource}}",
+        "org_unit.created": "{{actor}} created unit {{resource}}",
+        "org_unit.updated": "{{actor}} updated unit {{resource}}",
+        "org_unit.archived": "{{actor}} archived unit {{resource}}",
+        "org_unit.moved": "{{actor}} moved unit {{resource}}",
+        "org_unit.primary_set": "{{actor}} set {{resource}}'s primary unit",
+        "org_unit.member_removed": "{{actor}} removed a member from {{resource}}",
+        "space.created": "{{actor}} created space {{resource}}",
+        "space.archived": "{{actor}} archived space {{resource}}",
+        "space.access_granted": "{{actor}} granted access on {{space}}",
+        "space.access_revoked": "{{actor}} revoked access on {{space}}",
+        "organization.bootstrapped": "{{actor}} bootstrapped the organisation",
+        "conversation.created": "{{actor}} started a conversation",
+        "message.sent": "{{actor}} sent a message",
+        "document.uploaded": "{{actor}} uploaded {{resource}}",
+        "document.deleted": "{{actor}} deleted {{resource}}",
+        "document_source.registered": "{{actor}} registered document source {{resource}}",
+        "document_source.deleted": "{{actor}} removed document source {{resource}}",
+        "document_source.sync_attempted": "{{actor}} tried to sync {{resource}}",
+        "conversation.scope_mode_changed": "{{actor}} changed the knowledge scope of a conversation",
+        "conversation.source_added": "{{actor}} attached a knowledge source to a conversation",
+        "conversation.source_removed": "{{actor}} detached a knowledge source from a conversation",
+        "agent.access_granted": "{{actor}} granted access to agent {{resource}}",
+        "agent.access_revoked": "{{actor}} revoked access to agent {{resource}}",
+        "conversation.renamed": "{{actor}} renamed a conversation",
+        "document.synced_from_feishu": "{{actor}} synced {{resource}} from Feishu",
+        "member.role_changed": "{{actor}} changed the role of {{resource}}",
+        "message.send_cancelled": "{{actor}} cancelled a send; nothing went to the model",
+        "external_access.granted": "{{actor}} connected an outside tool",
+        "external_access.revoked": "An outside tool was disconnected",
+        "knowledge.external_search": "{{actor}}'s outside tool searched the knowledge base",
+        "organization.external_tools_changed": "{{actor}} changed the outside-tools setting"
+      },
+      "time": {
+        "now": "just now",
+        "minutes_one": "{{count}} minute ago",
+        "minutes_other": "{{count}} minutes ago",
+        "hours_one": "{{count}} hour ago",
+        "hours_other": "{{count}} hours ago",
+        "days_one": "{{count}} day ago",
+        "days_other": "{{count}} days ago"
+      }
+    },
+    "page": {
+      "title": "Audit log",
+      "description": "What happened in the organization, including which documents the assistant could see for each question. Only owners and admins can read it.",
+      "export": "Export CSV",
+      "loadMore": "Load more",
+      "empty": "No events match these filters.",
+      "details": "Details",
+      "filter": {
+        "time": "Time",
+        "action": "Event",
+        "person": "Person",
+        "space": "Space",
+        "any": "Any"
+      },
+      "range": {
+        "all": "All time",
+        "1h": "Last hour",
+        "24h": "Last 24 hours",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days"
+      },
+      "col": {
+        "time": "Time",
+        "event": "Event",
+        "space": "Space"
+      },
+      "retrievedTitle": "Documents the assistant could see",
+      "retrievedNone": "No documents were retrieved for this question.",
+      "deletedDocument": "(document deleted)",
+      "retrievedHint": "Every candidate retrieval put in front of the model, not only those cited in the answer.",
+      "rawTitle": "Raw record",
+      "actionName": {
+        "message.sent": "Message sent",
+        "document.uploaded": "Document uploaded",
+        "document.deleted": "Document deleted",
+        "document.synced_from_feishu": "Document synced from Feishu",
+        "document_source.registered": "Source registered",
+        "document_source.deleted": "Source removed",
+        "document_source.sync_attempted": "Sync attempted",
+        "space.created": "Space created",
+        "space.archived": "Space archived",
+        "space.access_granted": "Space access granted",
+        "space.access_revoked": "Space access revoked",
+        "member.invited": "Member invited",
+        "member.role_changed": "Member role changed",
+        "agent.access_granted": "Agent access granted",
+        "agent.access_revoked": "Agent access revoked",
+        "conversation.created": "Conversation started",
+        "conversation.renamed": "Conversation renamed",
+        "conversation.scope_mode_changed": "Knowledge scope changed",
+        "conversation.source_added": "Knowledge source added",
+        "conversation.source_removed": "Knowledge source removed",
+        "group.created": "Group created",
+        "group.updated": "Group updated",
+        "group.archived": "Group archived",
+        "group.member_added": "Group member added",
+        "group.member_removed": "Group member removed",
+        "org_unit.created": "Unit created",
+        "org_unit.updated": "Unit updated",
+        "org_unit.archived": "Unit archived",
+        "org_unit.moved": "Unit moved",
+        "org_unit.primary_set": "Primary unit set",
+        "org_unit.member_removed": "Unit member removed",
+        "position.created": "Position created",
+        "position.updated": "Position updated",
+        "position.archived": "Position archived",
+        "position.assigned": "Position assigned",
+        "position.ended": "Position ended",
+        "position.primary_set": "Primary position set",
+        "organization.bootstrapped": "Organization set up",
+        "message.send_cancelled": "Send cancelled",
+        "external_access.granted": "Outside tool connected",
+        "external_access.revoked": "Outside tool disconnected",
+        "knowledge.external_search": "Outside tool search",
+        "organization.external_tools_changed": "Outside tools setting changed"
+      }
+    }
+  },
+  "signIn": {
+    "title": "Sign in to Quberi",
+    "description": "Real SSO ships in a later slice. For now, paste the platform admin token, then the organisation and email you want to act as.",
+    "adminToken": "Platform admin token",
+    "adminTokenPlaceholder": "QUBERI_PLATFORM_ADMIN_TOKEN",
+    "organizationSlug": "Organisation slug",
+    "userEmail": "User email",
+    "submit": "Enter workspace",
+    "disclaimer": "This bootstrap login is for local development only. It is disabled when the deployment does not set QUBERI_PLATFORM_ADMIN_TOKEN.",
+    "email": {
+      "title": "Sign in to Quberi",
+      "description": "Enter your email and we'll send you a one-time code. New here? We'll set you up automatically.",
+      "emailLabel": "Email",
+      "sendCode": "Send code",
+      "codeLabel": "Enter the code sent to {{email}}",
+      "verify": "Verify & continue",
+      "changeEmail": "Use a different email"
+    },
+    "modeLogin": "Sign in",
+    "modeSignup": "Sign up",
+    "signupKindPersonal": "Personal",
+    "signupKindTeam": "Team",
+    "contactEmail": "Email",
+    "contactPhone": "Phone",
+    "toggle": {
+      "toSignup": "New to Quberi? Create an account",
+      "toLogin": "Already have an account? Sign in"
+    },
+    "phone": {
+      "title": "Continue with your phone",
+      "description": "We'll text you a one-time code to sign in or create your account.",
+      "label": "Phone number",
+      "placeholder": "+1 555 000 1234",
+      "sendCode": "Send code",
+      "codeLabel": "Enter the code sent to {{phone}}",
+      "verify": "Verify & continue",
+      "changePhone": "Use a different number"
+    },
+    "or": "or",
+    "quickLogin": "Quick sign-in",
+    "quickHint": "One tap — signs you in or creates a personal account.",
+    "legal": {
+      "prefix": "By continuing, you agree to our ",
+      "privacy": "Privacy Policy",
+      "and": " and ",
+      "terms": "Terms of Service"
+    },
+    "notices": {
+      "emailSent": "Code sent — check your inbox.",
+      "codeSent": "Verification code sent."
+    },
+    "google": {
+      "button": "Continue with Google",
+      "short": "Google",
+      "popupBlocked": "Popup blocked — allow popups and try again.",
+      "failed": "Google sign-in failed."
+    },
+    "feishu": {
+      "button": "Continue with Feishu",
+      "short": "Feishu",
+      "popupBlocked": "Popup blocked — allow popups and try again.",
+      "failed": "Feishu sign-in failed."
+    },
+    "feishuBind": {
+      "title": "Bind an email to finish",
+      "description": "Feishu signed you in. Add an email to secure your account — we'll send a one-time code to verify it. If the email already has a Quberi account, Feishu will link to it.",
+      "emailLabel": "Email",
+      "sendCode": "Send code",
+      "codeLabel": "Enter the code sent to {{email}}",
+      "verify": "Verify & continue",
+      "changeEmail": "Use a different email",
+      "cancel": "Cancel"
+    },
+    "personal": {
+      "title": "Start using Quberi",
+      "description": "For yourself. Enter your email, we'll send a one-time code, then pick a name and you're in.",
+      "emailLabel": "Email",
+      "sendCode": "Send code",
+      "codeLabel": "Enter the code sent to {{email}}",
+      "displayLabel": "Your name",
+      "displayPlaceholder": "Jane Doe",
+      "create": "Start using Quberi",
+      "changeEmail": "Use a different email"
+    },
+    "signup": {
+      "title": "Create your workspace",
+      "description": "Start a new Quberi workspace. Enter your email and we'll send a one-time code to confirm it's you.",
+      "emailLabel": "Work email",
+      "sendCode": "Send code",
+      "codeLabel": "Enter the code sent to {{email}}",
+      "workspaceLabel": "Workspace name",
+      "workspacePlaceholder": "Acme Inc.",
+      "displayLabel": "Your name",
+      "displayPlaceholder": "Jane Doe",
+      "create": "Create workspace",
+      "changeEmail": "Use a different email",
+      "haveAccount": "Already have a workspace? Sign in",
+      "noAccount": "New to Quberi? Create a workspace"
+    }
+  },
+  "oauth": {
+    "loading": "Checking the request…",
+    "invalid": {
+      "title": "This request can't be completed",
+      "body": "The link is missing information, or it was not made by an app Quberi knows. Go back to the app and try again."
+    },
+    "title": "Connect {{client}} to Quberi",
+    "intro": "{{client}} is asking to search the knowledge you can read in Quberi.",
+    "can": "Search passages from the spaces you can read, in the organization you choose below.",
+    "cannot": "It can't upload, edit or delete anything, and can't see spaces you don't have access to.",
+    "leaves": "What it finds is sent to {{client}} and its AI model, without Quberi's “check before sending” step. Every search is recorded in your organization's audit log.",
+    "chooseOrg": "Organization",
+    "personalSpace": "My personal space",
+    "offCanEnable": "Outside tools are off here.",
+    "offAskAdmin": "Outside tools are off here. Ask an owner or admin to turn them on.",
+    "turnOn": "Turn on",
+    "allow": "Allow",
+    "cancel": "Cancel",
+    "revokeHint": "You can disconnect it any time under Account.",
+    "done": {
+      "title": "Almost there…",
+      "body": "Taking you back to the app."
+    },
+    "kindPersonal": "Personal",
+    "kindTeam": "Team",
+    "result": {
+      "ok": {
+        "title": "You're connected",
+        "body": "DeepSeek Harness can now search your Quberi knowledge. Head back to the app to carry on."
+      },
+      "cancelled": {
+        "title": "Not connected",
+        "body": "You chose not to allow access, so nothing was shared. You can try again from the app any time."
+      },
+      "org_off": {
+        "title": "This organization hasn't allowed outside tools",
+        "body": "Ask an owner or admin to turn them on in Quberi, then try again from the app."
+      },
+      "failed": {
+        "title": "Something went wrong",
+        "body": "The connection could not be completed. Go back to the app and try signing in again."
+      },
+      "closeHint": "You can close this tab."
+    }
+  },
+  "externalTools": {
+    "title": "Outside tools",
+    "description": "Let members connect tools such as DeepSeek Harness so they can search the knowledge they can read in this organization.",
+    "loading": "Loading…",
+    "toggleLabel": "Allow members to connect outside tools",
+    "offEffect": "Results go to the tool and its AI model without the “check before sending” step. Turning this off cuts access at once. Every search is recorded in the audit log."
+  },
+  "connectedTools": {
+    "title": "Connected tools",
+    "hint": "Outside tools you allowed to search your knowledge. Disconnecting takes effect at once.",
+    "confirm": "Disconnect {{client}}?",
+    "disconnect": "Disconnect",
+    "lastUsed": "Last used {{when}}",
+    "neverUsed": "Not used yet"
+  },
+  "auth": {
+    "signedInAs": "Signed in as",
+    "signOut": "Sign out",
+    "guest": "Guest",
+    "guestCta": "Sign in / sign up"
+  },
+  "common": {
+    "close": "Close"
+  },
+  "account": {
+    "open": "Account",
+    "eyebrow": "Account",
+    "title": "Your account",
+    "description": "Manage your profile and how you sign in.",
+    "loading": "Loading account…",
+    "profile": "Profile",
+    "noEmail": "No email set",
+    "methods": "Login methods",
+    "methodsHint": "Use email or Feishu to sign in to the same account.",
+    "orgs": {
+      "title": "Organizations",
+      "hint": "Every organization you own or were invited into.",
+      "loading": "Loading organizations…",
+      "current": "Current",
+      "switchTo": "Switch to",
+      "switching": "Switching…",
+      "pending": "Invite pending",
+      "tier": {
+        "personal": "Personal",
+        "team": "Team"
+      },
+      "createTeam": "Create a team",
+      "teamNamePlaceholder": "Acme Inc.",
+      "create": "Create",
+      "cancel": "Cancel",
+      "createHint": "Creates a new team you own. Your other memberships stay as they are — switch to the new team above once it's ready."
+    },
+    "name": {
+      "edit": "Edit name",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "avatar": {
+      "edit": "Change avatar"
+    },
+    "email": {
+      "title": "Email",
+      "none": "Not set · add one to sign in by email",
+      "verified": "Verified",
+      "changeLabel": "Change",
+      "setLabel": "Set",
+      "codeShort": "6-digit code",
+      "sendCode": "Send code",
+      "verify": "Verify & save",
+      "back": "Cancel"
+    },
+    "phone": {
+      "title": "Phone",
+      "none": "Not set · add one to sign in by phone",
+      "verified": "Verified",
+      "changeLabel": "Change",
+      "setLabel": "Set",
+      "placeholder": "+1 555 000 1234",
+      "codeShort": "6-digit code",
+      "sendCode": "Send code",
+      "verify": "Verify & save",
+      "back": "Cancel"
+    },
+    "google": {
+      "title": "Google",
+      "description": "Link Google to sign in with one tap next time.",
+      "linked": "Linked",
+      "link": "Link Google",
+      "unlink": "Unlink",
+      "popupBlocked": "Popup blocked — allow popups and try again.",
+      "failed": "Google link failed."
+    },
+    "feishu": {
+      "title": "Feishu",
+      "description": "Link Feishu to sign in with one tap next time.",
+      "linked": "Linked",
+      "link": "Link Feishu",
+      "popupBlocked": "Popup blocked — allow popups and try again.",
+      "failed": "Feishu link failed."
+    }
+  },
+  "spaces": {
+    "currentLabel": "Current space",
+    "loading": "Loading spaces…",
+    "loadError": "Could not load spaces",
+    "empty": "No spaces available",
+    "emptyDescription": "Create your first collaborative space to invite teammates.",
+    "none": "No space selected",
+    "createCta": "Create collaborative space",
+    "owner": "You own this space",
+    "noDescription": "No description yet.",
+    "visibilityLabel": "Visibility",
+    "trustLabel": "Trust level",
+    "presetLabel": "Preset",
+    "statusLabel": "Status",
+    "preset": {
+      "personal": "Personal",
+      "collaborative": "Collaborative",
+      "managed": "Managed"
+    },
+    "visibility": {
+      "private": "Private",
+      "organization": "Organisation",
+      "public_link": "Public link"
+    },
+    "trust": {
+      "trusted": "Trusted",
+      "guided": "Guided",
+      "exploratory": "Exploratory"
+    },
+    "status": {
+      "active": "Active",
+      "archived": "Archived"
+    }
+  },
+  "createSpace": {
+    "title": "Create a collaborative space",
+    "titlePersonal": "New space",
+    "name": "Name",
+    "namePlaceholder": "Rocket team",
+    "namePlaceholderPersonal": "My knowledge base",
+    "slug": "Slug",
+    "description": "Description",
+    "descriptionPlaceholder": "What is this space for?",
+    "visibility": "Visibility",
+    "cancel": "Cancel",
+    "submit": "Create space"
+  },
+  "members": {
+    "title": "Organisation members",
+    "description": "Everyone with access to this organisation. Only owners and admins can invite new members today.",
+    "invite": "Invite member",
+    "refresh": "Refresh",
+    "loading": "Loading members…",
+    "loadError": "Could not load members",
+    "empty": "No members yet.",
+    "pending": "Invited",
+    "primaryOrgUnitLabel": "Primary unit",
+    "primaryOrgUnitEmpty": "Unassigned",
+    "primaryPositionLabel": "Primary position",
+    "primaryPositionEmpty": "No position",
+    "directManagerLabel": "Direct manager",
+    "directManagerEmpty": "No manager",
+    "groupsChip": "Groups",
+    "groupsChipCount_one": "{{count}} group",
+    "groupsChipCount_other": "{{count}} groups",
+    "groupsPopoverTitle": "Groups this member belongs to",
+    "groupsLoading": "Loading…",
+    "groupsEmpty": "Not in any group.",
+    "role": {
+      "owner": "Owner",
+      "admin": "Administrator",
+      "member": "Member",
+      "editor": "Editor",
+      "viewer": "Viewer",
+      "none": "No role"
+    },
+    "tally": {
+      "total": "Total members",
+      "other": "Other roles",
+      "pending": "Pending invites"
+    },
+    "promoteToAdmin": "Make admin",
+    "demoteToMember": "Make member"
+  },
+  "inviteMember": {
+    "title": "Invite a new member",
+    "email": "Email",
+    "displayName": "Display name",
+    "displayNamePlaceholder": "Ada Lovelace",
+    "role": "Organisation role",
+    "hint": "Only organisation-level roles are chosen here. Editor and viewer access is granted separately, per space, once the invitee joins.",
+    "cancel": "Cancel",
+    "submit": "Send invite"
+  },
+  "organization": {
+    "title": "Organization",
+    "description": "Units, positions, and groups shape who can be granted access.",
+    "tabsLabel": "Organization sections",
+    "tabs": {
+      "units": "Units",
+      "positions": "Positions",
+      "groups": "Groups"
+    }
+  },
+  "positions": {
+    "title": "Positions",
+    "description": "Named roles with reporting lines and headcount budgets. Positions can be granted access on their own — anyone occupying the position inherits it.",
+    "showArchived": "Show archived",
+    "refresh": "Refresh",
+    "new": "New position",
+    "empty": "No positions yet — click “New position” to define one.",
+    "loadError": "Could not load positions",
+    "pickOne": "Pick a position on the left, or create one to get started.",
+    "loading": "Loading positions…",
+    "archive": "Archive",
+    "primary": "Primary",
+    "setPrimary": "Set primary",
+    "endTenure": "End tenure",
+    "assign": "Assign",
+    "occupants": "Occupants",
+    "occupantsDescription": "People currently holding this position. The primary flag drives the “Direct manager” column in Members.",
+    "occupantsLoading": "Loading occupants…",
+    "occupantsError": "Could not load occupants",
+    "occupantsEmpty": "No one holds this position yet.",
+    "confirmArchive": "Archive “{{name}}”? Occupants must be ended first; the position will be hidden by default.",
+    "headcountUnlimited": "unlimited",
+    "facet": {
+      "status": "Status",
+      "headcount": "Headcount",
+      "grade": "Grade",
+      "family": "Family",
+      "reportsTo": "Reports to"
+    },
+    "create": {
+      "title": "New position",
+      "name": "Name",
+      "namePlaceholder": "AI platform lead",
+      "code": "Code (optional)",
+      "grade": "Grade",
+      "family": "Job family",
+      "orgUnit": "Owning unit",
+      "orgUnitNone": "— none —",
+      "reportsTo": "Reports to",
+      "reportsToNone": "— none —",
+      "headcount": "Headcount (0 = unlimited)",
+      "hint": "Codes and reporting lines can be edited later.",
+      "cancel": "Cancel",
+      "submit": "Create"
+    },
+    "assignDialog": {
+      "title": "Assign occupant",
+      "user": "Member",
+      "makePrimary": "Set as this user's primary position",
+      "hint": "Only members not already holding this position are listed.",
+      "noCandidates": "No available members.",
+      "cancel": "Cancel",
+      "submit": "Assign"
+    }
+  },
+  "groups": {
+    "title": "Groups",
+    "description": "Cohorts that cross the org tree — task forces, security groups, project teams. Members can be users, units, positions, or service accounts.",
+    "showArchived": "Show archived",
+    "refresh": "Refresh",
+    "new": "New group",
+    "empty": "No groups yet — click “New group” to create one.",
+    "loadError": "Could not load groups",
+    "pickOne": "Pick a group on the left, or create one to get started.",
+    "loading": "Loading groups…",
+    "archive": "Archive",
+    "membersShort": "members",
+    "membersTitle": "Group members",
+    "membersDescription": "Direct members only. Access grants to a group apply to whichever entity is listed here.",
+    "membersLoading": "Loading members…",
+    "membersError": "Could not load members",
+    "membersEmpty": "No members yet.",
+    "addMember": "Add member",
+    "removeMember": "Remove",
+    "removeSelected": "Remove {{count}}",
+    "confirmArchive": "Archive “{{name}}”? Members will be detached and the group hidden by default.",
+    "confirmRemoveOne": "Remove “{{subject}}” from this group?",
+    "confirmRemoveBulk": "Remove {{count}} members from this group?",
+    "searchPlaceholder": "Search groups…",
+    "clearSearch": "Clear search",
+    "filterEmpty": "No groups match your filters.",
+    "sort": {
+      "name": "By name",
+      "members": "By member count",
+      "updated": "Recently updated"
+    },
+    "facet": {
+      "type": "Type",
+      "directBindings": "Direct bindings",
+      "effectiveUsers": "Effective users",
+      "effectivePending": "…",
+      "breakdown": "Breakdown"
+    },
+    "edit": {
+      "button": "Edit",
+      "title": "Edit group",
+      "name": "Name",
+      "type": "Type",
+      "description": "Description",
+      "descriptionPlaceholder": "What is this group for?",
+      "cancel": "Cancel",
+      "submit": "Save"
+    },
+    "effective": {
+      "title": "Effective users",
+      "description": "Everyone who inherits through this group's membership rows.",
+      "loading": "Expanding…",
+      "loadError": "Could not compute effective users",
+      "empty": "This group contains no real users yet.",
+      "pathsCount_one": "{{count}} path",
+      "pathsCount_other": "{{count}} paths",
+      "hitPath": {
+        "direct": "Listed as a direct member",
+        "via_position": "Via position {{subject}}",
+        "via_organization_unit": "Via unit {{subject}}"
+      }
+    },
+    "type": {
+      "static": "Static",
+      "dynamic": "Dynamic",
+      "security": "Security",
+      "project": "Project"
+    },
+    "memberType": {
+      "user": "User",
+      "organization_unit": "Unit",
+      "position": "Position",
+      "service_account": "Service account"
+    },
+    "create": {
+      "title": "New group",
+      "name": "Name",
+      "type": "Type",
+      "description": "Description",
+      "descriptionPlaceholder": "What is this group for?",
+      "cancel": "Cancel",
+      "submit": "Create"
+    },
+    "addMemberDialog": {
+      "title": "Add group member",
+      "subjectType": "Member type",
+      "subject": "Member",
+      "hint": "Pick a member type, then choose the specific entity to add.",
+      "noCandidates": "No candidates available.",
+      "cancel": "Cancel",
+      "submit": "Add"
+    }
+  },
+  "spaceAccess": {
+    "title": "Space access",
+    "description": "Direct role grants on this space. Members who inherit access via groups, positions, or org units are not listed here.",
+    "empty": "No direct grants on this space yet.",
+    "add": "Grant access",
+    "remove": "Revoke",
+    "subjectType": "Subject type",
+    "role": "Role",
+    "subject": "Subject",
+    "confirmRevoke": "Revoke this access?",
+    "loading": "Loading…",
+    "loadError": "Could not load access",
+    "subjectTypeOption": {
+      "user": "Member",
+      "group": "Group",
+      "organization_unit": "Unit",
+      "position": "Position",
+      "organization": "Whole organization"
+    },
+    "subjectTypeShort": {
+      "user": "member",
+      "group": "group",
+      "organization_unit": "unit",
+      "position": "position",
+      "organization": "organization"
+    },
+    "addDialog": {
+      "title": "Grant space access",
+      "hint": "Pick who to grant, then choose a space-level role.",
+      "noCandidates": "No candidates for this subject type.",
+      "cancel": "Cancel",
+      "submit": "Grant"
+    },
+    "effective": {
+      "title": "Effective access",
+      "description": "Everyone who can currently reach this space, including access inherited from a position, group, or org unit. Expand a row to see why.",
+      "idle": "Pick a space to see who has access.",
+      "loading": "Computing effective access…",
+      "loadError": "Could not load effective access",
+      "empty": "Nobody has effective access to this space.",
+      "pathsCount_one": "{{count}} path",
+      "pathsCount_other": "{{count}} paths",
+      "hitPath": {
+        "direct": "Granted directly",
+        "position": "As current occupant of position {{subject}}",
+        "organization_unit": "Member of unit {{subject}}",
+        "organization_unit_ancestor": "Descendant of unit {{subject}}",
+        "group_via_user": "Member of group {{subject}}",
+        "group_via_position": "In group {{subject}} via their position",
+        "group_via_organization_unit": "In group {{subject}} via their unit",
+        "organization": "Member of the organization {{subject}}"
+      }
+    },
+    "wholeOrganization": "Whole organization",
+    "wholeOrganizationHint": "Every member"
+  },
+  "orgUnits": {
+    "title": "Organization structure",
+    "description": "Departments, teams, and business units for this organisation. Editable when the organisation is self-managed; read-only when a directory sync source owns the entity.",
+    "showArchived": "Show archived",
+    "refresh": "Refresh",
+    "newRoot": "New unit",
+    "empty": "No units yet — click “New unit” to create one.",
+    "loadError": "Could not load org units",
+    "pickOne": "Pick an org unit on the left, or create one to get started.",
+    "rootParent": "— top-level —",
+    "primary": "Primary",
+    "type": {
+      "department": "Department",
+      "team": "Team",
+      "business_unit": "Business unit",
+      "legal_entity": "Legal entity",
+      "cost_center": "Cost center",
+      "custom": "Custom"
+    },
+    "actions": {
+      "rename": "Rename",
+      "move": "Move",
+      "archive": "Archive",
+      "addChild": "Add sub-unit",
+      "addMember": "Assign member",
+      "removeMember": "Remove",
+      "setPrimary": "Make primary",
+      "refresh": "Refresh"
+    },
+    "facet": {
+      "type": "Type",
+      "parent": "Parent",
+      "status": "Status",
+      "sync": "Sync",
+      "code": "Code"
+    },
+    "membersTitle": "Members of this unit",
+    "membersDescription": "Users assigned to this org unit. The primary flag drives the “Primary unit” column on the Members panel.",
+    "membersLoading": "Loading members…",
+    "membersError": "Could not load members",
+    "membersEmpty": "No one is assigned to this unit yet.",
+    "confirmArchive": "Archive “{{name}}”? Members will be detached and the unit hidden by default.",
+    "create": {
+      "title": "New organisation unit",
+      "name": "Name",
+      "namePlaceholder": "Engineering",
+      "type": "Type",
+      "parent": "Parent unit",
+      "parentRoot": "— top-level —",
+      "code": "Code (optional)",
+      "cancel": "Cancel",
+      "submit": "Create"
+    },
+    "move": {
+      "title": "Move “{{name}}”",
+      "newParent": "Move under",
+      "hint": "The unit and every descendant move with it. A move that would create a cycle (targeting one of its own descendants) is rejected by the server.",
+      "cancel": "Cancel",
+      "submit": "Move"
+    },
+    "addMember": {
+      "title": "Assign a member",
+      "user": "Member",
+      "makePrimary": "Set as this member's primary unit",
+      "hint": "The picker only shows users who are not already assigned to this unit.",
+      "noCandidates": "No available candidates.",
+      "cancel": "Cancel",
+      "submit": "Assign"
+    }
+  },
+  "agent": {
+    "title": "Agent",
+    "description": "Ask a question that spans your knowledge and your organization. The agent plans, calls tools, and reasons across sources — showing its work as it goes.",
+    "you": "You",
+    "assistant": "Agent",
+    "thinking": "Working",
+    "gathering": "Gathering information…",
+    "run": "Run",
+    "meta": "{{tools}} tool calls · {{iters}} steps",
+    "composerPlaceholder": "Ask across knowledge + org data — e.g. how many people are in Engineering and what spaces can they see? (⌘/Ctrl+Enter)",
+    "empty": {
+      "title": "Reason across everything you can see",
+      "body": "Unlike a single search, the agent chains tools together — knowledge retrieval plus people, departments, positions, and access — to answer questions no single lookup can. Everything stays scoped to what you're allowed to see."
+    },
+    "suggestions": {
+      "s1": "How many people are in the organization, and in which departments?",
+      "s2": "Who can access the Engineering Wiki, and why?",
+      "s3": "Summarize our onboarding docs and tell me who owns that knowledge space."
+    },
+    "back": "Back to agents",
+    "list": {
+      "description": "Set up focused agents for different jobs — each with its own tools and instructions. Pick one to start a conversation.",
+      "new": "New agent",
+      "loading": "Loading agents…",
+      "loadError": "Failed to load agents",
+      "empty": "No agents yet. Create your first one.",
+      "edit": "Edit",
+      "delete": "Delete",
+      "defaultBadge": "Default",
+      "restrictedBadge": "Restricted",
+      "noDescription": "No description.",
+      "toolCount": "{{count}} tools",
+      "confirmDelete": "Delete the agent “{{name}}”? This cannot be undone."
+    },
+    "editor": {
+      "newTitle": "New agent",
+      "editTitle": "Edit agent",
+      "cancel": "Cancel",
+      "save": "Save",
+      "name": "Name",
+      "namePlaceholder": "e.g. HR Helper",
+      "description": "Description",
+      "descriptionPlaceholder": "What is this agent for?",
+      "icon": "Icon",
+      "systemPrompt": "Instructions (optional)",
+      "systemPromptPlaceholder": "Give this agent a focus or tone — e.g. “You help new hires; answer warmly.”",
+      "tools": "Tools it can use",
+      "scope": {
+        "label": "Knowledge scope",
+        "mode": {
+          "user": "Follow the user",
+          "intersect": "Chosen spaces ∩ the user's",
+          "fixed": "Fixed spaces"
+        },
+        "modeHint": {
+          "user": "Search every space the person asking can access (default; never exposes more than they could see).",
+          "intersect": "Search the chosen spaces, but only those the person can also access.",
+          "fixed": "Always search the chosen spaces, regardless of the person's own access."
+        },
+        "fixedWarning": "This agent can surface knowledge the user cannot access on their own. Pair it with a restricted audience below.",
+        "noSpaces": "No spaces available in this organization."
+      },
+      "visibility": {
+        "label": "Who can use it",
+        "mode": {
+          "organization": "Everyone",
+          "restricted": "Specific people"
+        },
+        "modeHint": {
+          "organization": "Every member of the organization can see and use this agent.",
+          "restricted": "Only the people, departments, positions, or groups you grant below."
+        },
+        "add": "Add",
+        "noCandidates": "None available",
+        "noGrants": "No one added yet — add at least one subject.",
+        "removeGrant": "Remove"
+      },
+      "kind": {
+        "label": "Agent type",
+        "mode": {
+          "builtin": "Built-in (tools)",
+          "external": "External endpoint"
+        },
+        "modeHint": {
+          "builtin": "Uses in-house tools and knowledge retrieval",
+          "external": "Forwards to a third-party OpenAI-compatible endpoint"
+        }
+      },
+      "external": {
+        "endpoint": "Endpoint base URL",
+        "model": "Model name",
+        "modelPlaceholder": "e.g. gpt-4o, qwen-plus",
+        "apiKey": "API key",
+        "apiKeyPlaceholder": "sk-…",
+        "apiKeyKeep": "Leave blank to keep unchanged",
+        "hint": "Any endpoint speaking OpenAI /chat/completions (Dify compat, FastGPT, OneAPI, vLLM, …)."
+      }
+    },
+    "tools": {
+      "search_knowledge": "Search knowledge",
+      "list_members": "List members",
+      "get_member_profile": "Get member profile",
+      "list_spaces": "List knowledge spaces",
+      "get_space_access": "Check space access",
+      "list_org_units": "List departments",
+      "list_org_unit_members": "List department members",
+      "list_positions": "List positions"
+    }
+  },
+  "chat": {
+    "title": "Chat",
+    "description": "By default it searches every knowledge space you can access. Use # in the composer to pick spaces for this conversation.",
+    "descriptionNoAnchor": "No accessible knowledge space yet — create or join one before starting a conversation.",
+    "noSpace": "No accessible spaces — ask an owner to grant you a binding, or create one first.",
+    "model": {
+      "label": "Model",
+      "default": "Default model",
+      "defaultNamed": "Default · {{name}}",
+      "defaultOption": "Default model",
+      "defaultDesc": "Follow the organization's default model",
+      "defaultDescNamed": "Follow org default · currently {{name}}",
+      "byAgent": "Model provided by the agent",
+      "defaultBadge": "Default",
+      "group": {
+        "org": "Organization models",
+        "platform": "Platform models",
+        "private": "My models"
+      }
+    },
+    "anchorPicker": {
+      "label": "Default anchor",
+      "placeholder": "No space available",
+      "hint": "New conversations land here. Override per-thread from the New dialog."
+    },
+    "newDialog": {
+      "title": "Start a new conversation",
+      "picker": "Anchor space",
+      "hint": "Pick which space this thread anchors to. You can attach extra knowledge sources later.",
+      "empty": "No accessible spaces to anchor to.",
+      "cancel": "Cancel",
+      "submit": "Create"
+    },
+    "new": "New conversation",
+    "refresh": "Refresh",
+    "loadError": "Load failed",
+    "loadingConversations": "Loading conversations…",
+    "loadingMessages": "Loading messages…",
+    "emptyConversations": "No conversations yet — start one with the button above.",
+    "emptyMessages": "No messages yet. Say something below.",
+    "pickOrCreate": "Pick a conversation on the left, or create a new one.",
+    "untitled": "Untitled conversation",
+    "messageCount_one": "{{count}} message",
+    "messageCount_other": "{{count}} messages",
+    "placeholder": "Placeholder",
+    "streaming": "Streaming…",
+    "composerPlaceholder": "Ask the assistant… (⌘/Ctrl + Enter to send)",
+    "send": "Send",
+    "quotaRemaining": "{{remaining}} / {{limit}} free messages left this month",
+    "quotaExhausted": "Free monthly messages used up. Add your own API key in Models to keep chatting for free.",
+    "role": {
+      "user": "You",
+      "assistant": "Assistant",
+      "system": "System",
+      "tool": "Tool"
+    },
+    "citations": {
+      "panelTitle": "Sources",
+      "header_one": "{{used}}/{{total}} cited",
+      "header_other": "{{used}}/{{total}} cited",
+      "chunk": "chunk #{{index}}",
+      "score": "score {{score}}",
+      "usedBadge": "cited",
+      "empty": "This answer has no sources yet.",
+      "openDocument": "Open document",
+      "viewerLoading": "Re-extracting the document text…",
+      "viewerHighlightHint": "Jumped to and highlighted the cited passage."
+    },
+    "scope": {
+      "summaryLabel": "Sources",
+      "autoLabel_one": "All accessible · {{count}} space",
+      "autoLabel_other": "All accessible · {{count}} spaces",
+      "anchorPrefix": "Anchor · ",
+      "addSource": "Add source",
+      "removeSource": "Remove {{name}}",
+      "toCustom": "→ Custom scope",
+      "toAuto": "→ Auto scope",
+      "addDialogTitle": "Attach a knowledge source",
+      "addDialogPicker": "Space",
+      "addDialogHint": "Pick a space you have access to. RAG queries will search this space in addition to the conversation's anchor space. Access is re-checked at query time.",
+      "addDialogEmpty": "No other accessible spaces to add.",
+      "addDialogCancel": "Cancel",
+      "addDialogSubmit": "Attach",
+      "noneLabel": "No space selected · model-only answer"
+    },
+    "composerPlaceholderMention": "Type a message… use # to reference spaces / agents",
+    "mention": {
+      "title": "Reference",
+      "close": "Close",
+      "space": "Space",
+      "agent": "Agent",
+      "spaceHint": "Pick which spaces this conversation may search.",
+      "anchor": "anchor",
+      "noOther": "No other accessible spaces.",
+      "back": "Back",
+      "done": "Done",
+      "agentSoon": "Choosing an agent in chat is coming soon.",
+      "personal": "Personal",
+      "agentHint": "Pick an agent to answer this conversation (it can use tools and its own retrieval).",
+      "agentNone": "No agent (plain Q&A)",
+      "agentEmpty": "No agents available.",
+      "agentActive": "Current agent: {{name}} (click to change)",
+      "spaceTitle": "Reference spaces"
+    },
+    "sendHint": "Send (⌘/Ctrl + Enter)",
+    "attach": {
+      "label": "Attachment",
+      "soon": "File attachments are coming soon."
+    },
+    "rename": "Rename conversation",
+    "trace": {
+      "header": "Reasoning · {{count}} steps",
+      "toolCall": "Tool call",
+      "toolResult": "Tool result",
+      "note": "Thinking",
+      "running": "Agent is thinking…"
+    },
+    "agent": {
+      "label": "Agent",
+      "pick": "Agent",
+      "none": "No agent",
+      "noneDesc": "Plain chat (selected model + spaces)",
+      "empty": "No agents available"
+    },
+    "guest": {
+      "placeholder": "Ask anything about Quberi…",
+      "remaining": "{{remaining}} of {{limit}} free questions left today.",
+      "exhausted": "You've used today's free questions.",
+      "signIn": "Sign in for unlimited",
+      "startersLabel": "Try asking",
+      "starters": {
+        "what": "What is Quberi and what can it do?",
+        "isolation": "How does Quberi keep each team's data separate?",
+        "start": "How do I get started with my own documents?",
+        "models": "Which AI models can I use?",
+        "share": "How do I share a knowledge base with a whole department?",
+        "files": "Which file types can I upload?",
+        "agents": "What can agents do?",
+        "guest": "What can I do without signing in?",
+        "data": "Where is my data stored, and can it stay on my own machine?",
+        "cloud": "If a cloud model is used, are my documents uploaded?"
+      },
+      "startersMore": "Ask more",
+      "startersRefresh": "More ideas",
+      "hot": "Popular"
+    },
+    "review": {
+      "title": "About to be sent",
+      "toVendor": "To be sent to {{model}} ({{vendor}})",
+      "toLocal": "To be sent to the locally hosted model {{model}}",
+      "toModel": "To be sent to the model",
+      "found": "{{count}} possible sensitive item(s) found",
+      "none": "No obvious sensitive data found",
+      "heuristic": "Highlighting is only a helper. It spots phone numbers, ID numbers, card numbers, e-mails, keys, passwords and internal IPs, but not names or addresses, so read it yourself too.",
+      "scanFailed": "Could not re-scan just now; highlights may be out of date.",
+      "deleteAll": "Delete all",
+      "maskAll": "Replace all with placeholders",
+      "question": "Your question",
+      "history": "Earlier turns ({{count}}, sent as well)",
+      "references": "Reference passages ({{count}}, from the knowledge base)",
+      "roleUser": "You",
+      "roleAssistant": "Assistant",
+      "emptyPart": "(empty)",
+      "notSent": "not sent",
+      "noneIncluded": "All reference passages are unchecked, so the model would not be called. Keep at least one, or cancel.",
+      "edit": "Edit",
+      "doneEditing": "Done",
+      "markAria": "Possible {{kind}}, click to handle",
+      "delete": "Delete",
+      "replace": "Replace",
+      "keep": "Keep",
+      "replaceWith": "Replace with",
+      "showRaw": "Show everything that will be sent",
+      "hideRaw": "Hide full content",
+      "noModelCall": "The model will not be called this time.",
+      "edited": "{{count}} change(s) made",
+      "unchanged": "Unchanged: will be sent as is",
+      "cancel": "Cancel",
+      "send": "Send",
+      "enable": "Check before sending",
+      "enableHint": "When on, each question first shows you what will go to the model, and lets you edit it",
+      "agentUnsupported": "Agent conversations do not support check-before-sending yet. Turn it off, or switch to a normal conversation.",
+      "heldHint": "Decide on the content above first.",
+      "cancelledNote": "Cancelled: this question was not sent to the model.",
+      "edited_badge": "Edited before sending",
+      "kind": {
+        "phone": "phone number",
+        "id_card": "ID number",
+        "bank_card": "card number",
+        "email": "e-mail",
+        "secret": "key",
+        "password": "password",
+        "internal_ip": "internal IP"
+      },
+      "editedBadgeHint": "Before sending you edited the content or dropped some passages, so the citations show the original text while the model saw a slightly different version."
+    }
+  },
+  "orgSpaces": {
+    "title": "Enterprise spaces",
+    "description": "Spaces owned by the organization, not by one person. Share each one by structure: the whole organization, units (including sub-units), positions, groups or individual members, each with its own role.",
+    "refresh": "Refresh",
+    "create": "New enterprise space",
+    "loading": "Loading spaces…",
+    "loadError": "Could not load enterprise spaces",
+    "empty": "No enterprise spaces yet. Create one and choose who can access it.",
+    "manageAccess": "Manage access",
+    "hideAccess": "Hide access",
+    "archive": "Archive",
+    "confirmArchive": "Archive the space \"{{name}}\"? Members will no longer be able to use it.",
+    "dialog": {
+      "title": "New enterprise space",
+      "name": "Name",
+      "namePlaceholder": "Engineering handbook",
+      "slug": "Slug",
+      "description": "Description",
+      "descriptionPlaceholder": "What is this space for?",
+      "access": "Who can access it",
+      "accessHint": "Pick units, positions, groups, members or the whole organization, and the role each gets. You can change this later.",
+      "addGrant": "Add",
+      "removeGrant": "Remove",
+      "noGrants": "No one has access yet except you. Add who should be able to use this space.",
+      "cancel": "Cancel",
+      "submit": "Create space"
+    }
+  },
+  "guestSandbox": {
+    "title": "You're a guest: please don't upload private data",
+    "body": "Files you upload here are visible to everyone. To keep a space of your own, sign in before uploading. Files are deleted automatically after 24 hours, and you can delete yours any time.",
+    "signIn": "Sign in",
+    "mine": "Mine"
+  }
+}
