@@ -53,6 +53,54 @@ export function verifyToken(token: string): Promise<unknown> {
   return adminFetch(token, '/api/v1/admin/stats/overview')
 }
 
+export interface AdminSession {
+  token: string
+  expires_at: number
+  username: string
+  must_change_password: boolean
+}
+
+/** Sign in with a platform admin account (no bearer token yet, so no adminFetch). */
+export async function adminLogin(
+  username: string,
+  password: string,
+): Promise<AdminSession> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/auth/login`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!response.ok) {
+    let detail = ''
+    try {
+      detail = ((await response.json()) as { detail?: string }).detail ?? ''
+    } catch {
+      /* ignore */
+    }
+    throw new AdminApiError(response.status, detail)
+  }
+  return (await response.json()) as AdminSession
+}
+
+/** The signed-in account; used to learn whether a password change is pending. */
+export function getAdminMe(
+  token: string,
+): Promise<{ username: string; must_change_password: boolean }> {
+  return adminFetch(token, '/api/v1/admin/auth/me')
+}
+
+/** Change the password; returns a fresh session (older ones stop working). */
+export function changeAdminPassword(
+  token: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<AdminSession> {
+  return adminFetch(token, '/api/v1/admin/auth/change-password', {
+    method: 'POST',
+    body: { current_password: currentPassword, new_password: newPassword },
+  })
+}
+
 export interface PlatformTotals {
   organizations: number
   organizations_personal: number

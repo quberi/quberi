@@ -33,6 +33,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.core.config import Settings
 from quberi_api.domain.identity.models import Organization, User
+from quberi_api.domain.platform_admin.models import PlatformAdmin
+from quberi_api.services import platform_admin as platform_admin_service
 from quberi_api.services.auth.session import read_session
 
 # Bearer scheme. ``auto_error=False`` lets us produce our own 401 wording
@@ -90,13 +92,79 @@ def _validate_admin_token(
         )
 
 
-def require_platform_admin(
+def _matches_static_token(
+    credentials: Optional[HTTPAuthorizationCredentials], settings: Settings
+) -> bool:
+    configured = settings.platform_admin_token
+    if configured is None or not configured.get_secret_value():
+        return False
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return False
+    return secrets.compare_digest(
+        credentials.credentials, configured.get_secret_value()
+    )
+
+
+async def _admin_from_session_token(
+    credentials: Optional[HTTPAuthorizationCredentials],
+    session: AsyncSession,
+) -> Optional[PlatformAdmin]:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+    admin = await platform_admin_service.admin_for_token(
+        session, credentials.credentials
+    )
+    # The lookup auto-began a read transaction; close it so the handler can
+    # open its own write transaction.
+    await session.commit()
+    return admin
+
+
+async def require_platform_admin(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
     settings: Settings = Depends(_get_settings),
+    session: AsyncSession = Depends(get_db_session),
 ) -> None:
-    """Reject the request unless it carries the configured admin token."""
+    """Let the request through with the configured admin token (scripts, curl)
+    or with a signed-in platform admin's session (the ``/admin`` console).
 
+    An account that still has to change its first-boot password does not get
+    through here: it can only reach the password-change endpoint.
+    """
+
+    if _matches_static_token(credentials, settings):
+        return
+    admin = await _admin_from_session_token(credentials, session)
+    if admin is not None and not admin.must_change_password:
+        return
+    # Neither matched. ``_validate_admin_token`` always raises here (the token
+    # is unset, absent, or wrong), keeping the exact 401 wording callers saw
+    # before accounts existed.
     _validate_admin_token(credentials, settings)
+    # Reached only if a static token is configured and matched, which the first
+    # check already handled; keep the guard so this can never fall through open.
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="invalid platform admin token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def require_platform_admin_session(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    session: AsyncSession = Depends(get_db_session),
+) -> PlatformAdmin:
+    """A signed-in platform admin *account* (not the static token), including
+    one that must still change its password. Used by the account endpoints."""
+
+    admin = await _admin_from_session_token(credentials, session)
+    if admin is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="sign in required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return admin
 
 
 # ---------------------------------------------------------------------------

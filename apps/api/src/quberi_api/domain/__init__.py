@@ -17,6 +17,7 @@ from quberi_api.domain import (  # noqa: F401
     integrations,
     oauth,
     org,
+    platform_admin,
     positions,
     spaces,
     usage,

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from quberi_api.api.v1.admin.ai_providers import admin_ai_providers_router
+from quberi_api.api.v1.admin.auth import admin_auth_router
 from quberi_api.api.v1.admin.organizations import router as admin_organizations_router
 from quberi_api.api.v1.admin.stats import admin_stats_router
 from quberi_api.api.v1.external import external_router
@@ -37,6 +38,7 @@ router = APIRouter(prefix="/v1")
 router.include_router(auth_router)
 router.include_router(email_settings_router)
 router.include_router(platform_router)
+router.include_router(admin_auth_router)
 router.include_router(admin_organizations_router)
 router.include_router(admin_stats_router)
 router.include_router(admin_ai_providers_router)

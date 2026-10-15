@@ -11,6 +11,8 @@ import { useCallback, useEffect, useState } from 'react'
 
 import {
   AdminApiError,
+  adminLogin,
+  changeAdminPassword,
   getModelCatalog,
   getOrganizations,
   getOverview,
@@ -24,6 +26,8 @@ import { OrganizationsView } from './OrganizationsView'
 import { OverviewView } from './OverviewView'
 
 const TOKEN_KEY = 'quberi.admin.token'
+// Set while the signed-in account still has to choose a new password.
+const MUST_CHANGE_KEY = 'quberi.admin.mustChange'
 
 type AdminView = 'overview' | 'organizations' | 'models'
 
@@ -37,46 +41,190 @@ export function AdminApp() {
   const [token, setToken] = useState<string | null>(() =>
     window.sessionStorage.getItem(TOKEN_KEY),
   )
+  const [mustChange, setMustChange] = useState<boolean>(
+    () => window.sessionStorage.getItem(MUST_CHANGE_KEY) === '1',
+  )
+
+  const start = (t: string, change: boolean) => {
+    window.sessionStorage.setItem(TOKEN_KEY, t)
+    if (change) window.sessionStorage.setItem(MUST_CHANGE_KEY, '1')
+    else window.sessionStorage.removeItem(MUST_CHANGE_KEY)
+    setToken(t)
+    setMustChange(change)
+  }
+  const signOut = () => {
+    window.sessionStorage.removeItem(TOKEN_KEY)
+    window.sessionStorage.removeItem(MUST_CHANGE_KEY)
+    setToken(null)
+    setMustChange(false)
+  }
 
   if (!token) {
-    return <TokenGate onVerified={(t) => setToken(t)} />
+    return <SignInGate onSignedIn={start} />
   }
-  return (
-    <Dashboard
-      token={token}
-      onSignOut={() => {
-        window.sessionStorage.removeItem(TOKEN_KEY)
-        setToken(null)
-      }}
-    />
-  )
+  if (mustChange) {
+    return (
+      <ChangePasswordGate
+        token={token}
+        onChanged={(t) => start(t, false)}
+        onSignOut={signOut}
+      />
+    )
+  }
+  return <Dashboard token={token} onSignOut={signOut} />
 }
 
 // ---------------------------------------------------------------------------
-// Token gate — paste the platform admin bearer token, verified against a
-// real endpoint before it's trusted and stored for the tab's lifetime.
+// Sign-in gate — username + password. The deployment's admin token can still
+// be pasted instead (scripts, and a way in if the first-boot password was lost).
 // ---------------------------------------------------------------------------
 
-function TokenGate({ onVerified }: { onVerified: (token: string) => void }) {
-  const [value, setValue] = useState('')
+function SignInGate({
+  onSignedIn,
+}: {
+  onSignedIn: (token: string, mustChange: boolean) => void
+}) {
+  const [useToken, setUseToken] = useState(false)
+  const [username, setUsername] = useState('')
+  const [secret, setSecret] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const t = value.trim()
-    if (!t || busy) return
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
-      await verifyToken(t)
-      window.sessionStorage.setItem(TOKEN_KEY, t)
-      onVerified(t)
+      if (useToken) {
+        const t = secret.trim()
+        if (!t) return
+        await verifyToken(t)
+        onSignedIn(t, false)
+      } else {
+        if (!username.trim() || !secret) return
+        const session = await adminLogin(username.trim(), secret)
+        onSignedIn(session.token, session.must_change_password)
+      }
     } catch (err) {
+      if (err instanceof AdminApiError && err.status === 429) {
+        setError('Too many attempts. Wait a few minutes and try again.')
+      } else if (err instanceof AdminApiError && err.status === 401) {
+        setError(useToken ? 'Invalid admin token.' : 'Invalid username or password.')
+      } else {
+        setError('Could not reach the admin API. Try again in a moment.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const switchMode = () => {
+    setUseToken((v) => !v)
+    setSecret('')
+    setError(null)
+  }
+
+  return (
+    <div className="admin-gate">
+      <div className="admin-gate-card">
+        <span className="admin-gate-mark" aria-hidden="true">
+          <ShieldCheck size={22} />
+        </span>
+        <h1>Quberi Platform Admin</h1>
+        {useToken ? (
+          <p>
+            Paste the <code>QUBERI_PLATFORM_ADMIN_TOKEN</code> for this deployment. It is
+            kept only in this tab's session storage; closing the tab clears it.
+          </p>
+        ) : (
+          <p>
+            Sign in with a platform admin account. On a new deployment the first
+            password is written once to the API log.
+          </p>
+        )}
+        <form onSubmit={submit}>
+          {!useToken && (
+            <input
+              aria-label="Username"
+              autoComplete="username"
+              autoFocus
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              type="text"
+              value={username}
+            />
+          )}
+          <input
+            aria-label={useToken ? 'Platform admin token' : 'Password'}
+            autoComplete={useToken ? 'off' : 'current-password'}
+            autoFocus={useToken}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder={useToken ? 'Platform admin token' : 'Password'}
+            type="password"
+            value={secret}
+          />
+          {error && (
+            <div className="admin-gate-error" role="alert">
+              {error}
+            </div>
+          )}
+          <button
+            disabled={busy || !secret.trim() || (!useToken && !username.trim())}
+            type="submit"
+          >
+            {busy ? 'Signing in…' : useToken ? 'Enter' : 'Sign in'}
+          </button>
+        </form>
+        <button className="admin-gate-link" onClick={switchMode} type="button">
+          {useToken ? 'Use a username and password' : 'Use an admin token instead'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Forced password change — shown after signing in with a password the
+// operator did not choose. Nothing else in the console is reachable first.
+// ---------------------------------------------------------------------------
+
+function ChangePasswordGate({
+  token,
+  onChanged,
+  onSignOut,
+}: {
+  token: string
+  onChanged: (token: string) => void
+  onSignOut: () => void
+}) {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    if (next !== confirm) {
+      setError('The new passwords do not match.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const session = await changeAdminPassword(token, current, next)
+      onChanged(session.token)
+    } catch (err) {
+      if (err instanceof AdminApiError && err.status === 401) {
+        onSignOut()
+        return
+      }
       setError(
-        err instanceof AdminApiError && err.status === 401
-          ? 'Invalid admin token.'
-          : 'Could not reach the admin API. Check the token and try again.',
+        err instanceof AdminApiError && err.message
+          ? err.message
+          : 'Could not change the password. Try again.',
       )
     } finally {
       setBusy(false)
@@ -89,26 +237,49 @@ function TokenGate({ onVerified }: { onVerified: (token: string) => void }) {
         <span className="admin-gate-mark" aria-hidden="true">
           <ShieldCheck size={22} />
         </span>
-        <h1>Quberi Platform Admin</h1>
+        <h1>Choose a new password</h1>
         <p>
-          Paste the <code>QUBERI_PLATFORM_ADMIN_TOKEN</code> bearer token for this
-          deployment. It is kept only in this tab's session storage — closing the tab
-          clears it.
+          This account still uses a password it was given. Choose your own (12 to 128
+          characters) to continue.
         </p>
         <form onSubmit={submit}>
           <input
+            aria-label="Current password"
+            autoComplete="current-password"
             autoFocus
-            autoComplete="off"
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="Platform admin token"
+            onChange={(e) => setCurrent(e.target.value)}
+            placeholder="Current password"
             type="password"
-            value={value}
+            value={current}
           />
-          {error && <div className="admin-gate-error">{error}</div>}
-          <button disabled={!value.trim() || busy} type="submit">
-            {busy ? 'Verifying…' : 'Enter'}
+          <input
+            aria-label="New password"
+            autoComplete="new-password"
+            onChange={(e) => setNext(e.target.value)}
+            placeholder="New password"
+            type="password"
+            value={next}
+          />
+          <input
+            aria-label="Confirm new password"
+            autoComplete="new-password"
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="Confirm new password"
+            type="password"
+            value={confirm}
+          />
+          {error && (
+            <div className="admin-gate-error" role="alert">
+              {error}
+            </div>
+          )}
+          <button disabled={busy || !current || !next || !confirm} type="submit">
+            {busy ? 'Saving…' : 'Change password'}
           </button>
         </form>
+        <button className="admin-gate-link" onClick={onSignOut} type="button">
+          Sign out
+        </button>
       </div>
     </div>
   )

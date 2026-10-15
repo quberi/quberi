@@ -62,6 +62,31 @@ docker compose --env-file .env --profile app logs api | grep "DEV verification c
 
 Do not run with `QUBERI_ENVIRONMENT=development` on a machine that others can reach.
 
+### Platform admin console
+
+The operator's console lives at <http://localhost:8080/admin>. It is separate from
+member sign-in and is for looking after organizations, platform models and usage.
+
+On first boot the API creates one platform admin account (`admin`) with a random
+password and writes it **once** to the API log:
+
+```bash
+docker compose --env-file .env --profile app logs api | grep "PLATFORM ADMIN CREATED"
+```
+
+Sign in with it; the console asks you to choose your own password (12 to 128
+characters) before anything else. There is no built-in default password. To pick
+the first password yourself, set `QUBERI_BOOTSTRAP_ADMIN_PASSWORD` in `.env`
+before the first start; a weak value is ignored and a random one is generated.
+
+Because the generated password is printed to the container log, change it right
+away, and treat old logs as sensitive until you have.
+
+`QUBERI_PLATFORM_ADMIN_TOKEN` still works as a bearer token for scripts and as a
+fallback on the sign-in page ("Use an admin token instead"). Leave it empty if you
+do not need it. Sign-in is rate limited: 5 failed attempts on an account lock it
+until 15 minutes after the first of those failures, even for the right password.
+
 ### First run and resources
 
 - The first question or upload loads the BGE-M3 embedding model, which is

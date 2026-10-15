@@ -15,7 +15,7 @@ from quberi_api.core.config import get_settings
 from quberi_api.core.logging import configure_logging
 from quberi_api.health.router import router as health_router
 from quberi_api.infrastructure.registry import Infrastructure
-from quberi_api.services import ai_providers, demo_seed
+from quberi_api.services import ai_providers, demo_seed, platform_admin
 
 _log = logging.getLogger(__name__)
 
@@ -38,6 +38,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
     except Exception:  # pragma: no cover — logged; boot proceeds
         _log.exception("failed to bootstrap platform AI defaults")
+
+    # Create the first platform admin account if there is none, so the operator
+    # can sign in to /admin. Idempotent; a failure must not stop boot (the
+    # QUBERI_PLATFORM_ADMIN_TOKEN path keeps working).
+    try:
+        async with infrastructure.session_factory() as session:
+            await platform_admin.ensure_bootstrap_admin(session, settings=settings)
+    except Exception:  # pragma: no cover — logged; boot proceeds
+        _log.exception("failed to bootstrap the platform admin account")
 
     # Materialise the demo/sample org so unauthenticated guests have
     # something to browse. Idempotent; a failure must not stop boot.

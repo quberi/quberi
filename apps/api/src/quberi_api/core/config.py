@@ -156,6 +156,16 @@ class Settings(BaseSettings):
     # Session token TTL (seconds). The token is a Fernet-sealed payload
     # carried as a bearer credential; TTL is enforced on read.
     session_ttl_seconds: int = 60 * 60 * 24 * 14  # 14 days
+
+    # --- Platform admin (the operator's /admin console) ---
+    # The first account is created at boot when none exists. With no password
+    # configured, a random one is generated and written to the log ONCE; that
+    # account must change it at first sign-in. There is never a built-in
+    # default password.
+    bootstrap_admin_username: str = "admin"
+    bootstrap_admin_password: Optional[SecretStr] = None
+    # How long an admin console session lasts. Shorter than a member session.
+    platform_admin_session_ttl_seconds: int = 60 * 60 * 12  # 12 hours
     # Verification code lifetime + per-email send cooldown (seconds).
     verification_code_ttl_seconds: int = 60 * 10  # 10 minutes
     verification_code_cooldown_seconds: int = 60  # 1 send / minute / email
