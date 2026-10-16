@@ -322,6 +322,9 @@ class DocumentsResponse(BaseModel):
     total: int
     # Pass back as ``cursor`` for the next page; null on the last page.
     next_cursor: Optional[str] = None
+    # The kind filter that was applied, echoed so a tool can tell a server that
+    # honoured it from an older one that ignored the parameter.
+    type: Optional[str] = None
 
 
 async def _list_rate_limit(infra: Infrastructure, ext: core.ExternalCaller) -> None:
@@ -529,7 +532,11 @@ async def list_documents(
         session, ext, what="documents", space_id=str(view.space.id), result_count=len(documents)
     )
     return DocumentsResponse(
-        space_name=view.space.name, documents=documents, total=total, next_cursor=next_cursor
+        space_name=view.space.name,
+        documents=documents,
+        total=total,
+        next_cursor=next_cursor,
+        type=type or None,
     )
 
 

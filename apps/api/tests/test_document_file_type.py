@@ -115,7 +115,8 @@ async def test_external_listing_can_be_narrowed_to_one_kind(
     pdfs = (await http.get(f"{DOCUMENTS}?space=图库&type=pdf", headers=headers)).json()
     sheets = (await http.get(f"{DOCUMENTS}?space=图库&type=spreadsheet", headers=headers)).json()
 
-    assert everything["total"] == 3
+    assert everything["total"] == 3 and everything["type"] is None
+    assert images["type"] == "image"  # echoed, so a tool can tell the filter was applied
     assert images["total"] == 2
     assert {d["name"] for d in images["documents"]} == {"a.png", "b.jpg"}
     assert [d["name"] for d in pdfs["documents"]] == ["c.pdf"]
