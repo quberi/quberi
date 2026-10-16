@@ -7,7 +7,7 @@ name = "quberi-api"
 version = "0.1.0"
 description = "Quberi platform API"
 license = "AGPL-3.0-only"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "alembic==1.14.0",
   "arq==0.26.3",
@@ -32,12 +32,18 @@ dependencies = [
   # Pinned to <6 for arq compatibility. Redis 5.x client works fine
   # against Redis 6/7/8 servers (the protocol is backward-compatible).
   "redis==5.2.1",
+  # Images are decoded and resized with Pillow (python-pptx already pulls it
+  # in; pinned here because the image search path relies on it directly).
+  "pillow==12.3.0",
   # BGE-M3 (and later Qwen3-Embedding-0.6B) run in-process; the model
   # weights get pulled to /root/.cache/huggingface on first boot and
   # cached in the container image thereafter. CPU inference is fine for
   # our current throughput; GPU can be swapped in later without touching
-  # the provider abstraction.
-  "sentence-transformers==3.3.1",
+  # the provider abstraction. 6.x also loads the multimodal BGE-VL model
+  # used for image search. Moving from 3.3.1 was checked to leave BGE-M3
+  # vectors unchanged (same texts, cosine 1.00000), so existing text
+  # indexes stay valid. Needs Python 3.10+.
+  "sentence-transformers==6.1.0",
   "sqlalchemy[asyncio]==2.0.36",
   "urllib3==2.6.3",
   "uvicorn[standard]==0.34.2",
@@ -61,7 +67,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 100
 # Alembic-generated migrations contain long DDL lines that don't fit the app
 # style; leave the folder to Alembic's own formatting.

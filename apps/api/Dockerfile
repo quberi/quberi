@@ -10,12 +10,12 @@ WORKDIR /app
 # Dockerfile edit. Defaults are the official indexes. Some third-party
 # mirrors (e.g. Aliyun's pytorch-wheels) serve a JS-rendered browse page
 # instead of a plain PEP 503 index, which pip can't parse, and disambiguate
-# accelerator variants via a PEP 440 local version (``2.6.0+cpu``) instead
+# accelerator variants via a PEP 440 local version (``2.14.1+cpu``) instead
 # of URL path — if you swap in a mirror, verify it serves a plain index
 # page and set TORCH_VERSION to match its version string.
 ARG PIP_INDEX_URL=https://pypi.org/simple/
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
-ARG TORCH_VERSION=2.6.0
+ARG TORCH_VERSION=2.14.1
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
 # --- Layer 1: CPU-only PyTorch (own layer, never invalidated by src) ----

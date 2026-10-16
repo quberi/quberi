@@ -169,7 +169,7 @@ docker image inspect pgsty/silo:latest --format '{{.Created}}'   # 看本地缓�
 ```bash
 docker build --build-arg PIP_INDEX_URL=https://pypi.org/simple/ \
              --build-arg PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu \
-             --build-arg TORCH_VERSION=2.6.0 \
+             --build-arg TORCH_VERSION=2.14.1 \
              -t quberi-api apps/api
 ```
 
