@@ -189,6 +189,27 @@ _EMBEDDING_MODELS: tuple[ModelSpec, ...] = (
 
 
 # ---------------------------------------------------------------------------
+# Image embedding models — images and text into one shared vector space, so a
+# picture or a sentence can both be used to find pictures. Kept apart from the
+# text embeddings above: their vectors are a different space and size, and are
+# stored in their own collection.
+# ---------------------------------------------------------------------------
+
+_IMAGE_EMBEDDING_MODELS: tuple[ModelSpec, ...] = (
+    ModelSpec(
+        model_id="bge-vl-base",
+        provider_kind="local_image_embedding",
+        purpose="image_embedding",
+        display_name="BAAI BGE-VL base (local, CLIP-style)",
+        vector_dim=512,
+        context_window=77,
+        notes="MIT licence, ~150M parameters, ~0.5 GB in memory. Loaded from a "
+        "pinned revision; its remote code is hash-checked before it runs.",
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
 # Rerankers — cross-encoders that score (query, chunk) pairs jointly.
 # ---------------------------------------------------------------------------
 
@@ -205,7 +226,8 @@ _RERANKER_MODELS: tuple[ModelSpec, ...] = (
 
 
 MODEL_REGISTRY: dict[str, ModelSpec] = {
-    m.model_id: m for m in (*_CHAT_MODELS, *_EMBEDDING_MODELS, *_RERANKER_MODELS)
+    m.model_id: m
+    for m in (*_CHAT_MODELS, *_EMBEDDING_MODELS, *_IMAGE_EMBEDDING_MODELS, *_RERANKER_MODELS)
 }
 
 

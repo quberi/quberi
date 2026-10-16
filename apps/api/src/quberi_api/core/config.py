@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     default_openai_key: Optional[SecretStr] = None
     default_chat_model: str = "deepseek-chat"
     default_embedding_model: str = "bge-m3"
+    # Image search (BGE-VL). On by default; the model is loaded the first
+    # time an image is indexed or searched, never at start-up, so an
+    # instance nobody sends images to pays nothing for it. The switch is
+    # an emergency brake (for example a host that runs short of memory), not
+    # a per-organisation or per-space option.
+    image_search_enabled: bool = True
+    default_image_embedding_model: str = "bge-vl-base"
 
     # Free monthly chat-message quota when an org uses the platform-shared
     # model (no BYOK key). Counted per org, reset on the 1st of each month.
