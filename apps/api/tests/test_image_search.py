@@ -20,7 +20,7 @@ from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services import members as members_service
 from quberi_api.services import space_bindings as space_bindings_service
-from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM
+from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM, prepare_image
 from quberi_api.services.rag import image_search
 from quberi_api.services.rag.image_store import ImageVectorStore
 from tests.test_image_indexing import _doc, _space
@@ -48,9 +48,10 @@ class FakeEmbedder:
     """Pictures and sentences meet in one space: the colour decides the direction."""
 
     async def embed_images(self, images):
+        # The real decoder, so bad files are refused exactly as in production.
         out = []
         for data in images:
-            r, g, b = Image.open(io.BytesIO(data)).convert("RGB").getpixel((0, 0))
+            r, g, b = prepare_image(data).getpixel((0, 0))
             out.append(_onehot(max(range(3), key=lambda i: (r, g, b)[i])))
         return out
 

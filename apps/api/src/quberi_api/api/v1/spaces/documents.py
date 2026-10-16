@@ -13,6 +13,8 @@ Slice-B effective-binding evaluator.
 
 from __future__ import annotations
 
+import asyncio
+import io
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -363,6 +365,68 @@ async def download_document(
         stream,
         media_type=doc.mime_type or "application/octet-stream",
         headers=headers,
+    )
+
+
+_THUMBNAIL_SIDE = 320
+_THUMBNAIL_MAX_SOURCE_BYTES = 26 * 1024 * 1024
+
+
+@router.get(
+    "/{space_id}/documents/{document_id}/thumbnail",
+    summary="A small JPEG preview of a picture document",
+    responses={200: {"content": {"image/jpeg": {}}}},
+)
+async def document_thumbnail(
+    space_id: uuid.UUID,
+    document_id: uuid.UUID,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """A downscaled copy of a picture, for result grids.
+
+    Same access rule as the download. The preview is always *re-encoded* as a plain
+    JPEG by Pillow, so whatever the stored file was (even something that only
+    claims to be an image) the browser receives pixels and nothing it could run.
+    """
+
+    from quberi_api.services.ai.local_image_embedding import ImageDecodeError, prepare_image
+    from quberi_api.services.rag.indexer import is_picture
+
+    doc, stream = await documents_service.open_download_stream(
+        session,
+        document_id=document_id,
+        organization_id=caller.organization.id,
+        space_id=space_id,
+        caller_user_id=caller.user.id,
+    )
+    if not is_picture(doc.mime_type):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not a picture")
+    buf = bytearray()
+    async for chunk in stream:
+        buf.extend(chunk)
+        if len(buf) > _THUMBNAIL_MAX_SOURCE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="picture too large"
+            )
+
+    def _render() -> bytes:
+        image = prepare_image(bytes(buf))
+        image.thumbnail((_THUMBNAIL_SIDE, _THUMBNAIL_SIDE))
+        out = io.BytesIO()
+        image.save(out, format="JPEG", quality=80)
+        return out.getvalue()
+
+    try:
+        data = await asyncio.to_thread(_render)
+    except ImageDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)
+        ) from exc
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"},
     )
 
 

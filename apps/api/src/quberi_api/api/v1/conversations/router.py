@@ -6,6 +6,7 @@ Routes
 * POST /api/v1/spaces/{space_id}/conversations
 * GET  /api/v1/conversations/{conversation_id}/messages
 * POST /api/v1/conversations/{conversation_id}/messages
+* POST /api/v1/conversations/{conversation_id}/image-search
 
 Every endpoint hangs off ``require_caller`` and the service layer checks
 that the caller can see the conversation's Space. When a caller cannot see
@@ -19,11 +20,22 @@ import uuid
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from typing import Optional
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quberi_api.api.dependencies import get_db_session
+from quberi_api.api.dependencies import get_db_session, get_infrastructure
 from quberi_api.api.security import CallerContext, require_caller
 from quberi_api.api.v1.conversations.schemas import (
     AddScopeSourceRequest,
@@ -43,9 +55,13 @@ from quberi_api.api.v1.conversations.schemas import (
     SetScopeModeRequest,
 )
 from quberi_api.domain.conversations.models import Conversation, Message
+from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import conversations as conversations_service
 from quberi_api.services import send_review
 from quberi_api.services import usage as usage_service
+from quberi_api.services.ai.local_image_embedding import ImageDecodeError
+from quberi_api.services.oauth import core as oauth_core
+from quberi_api.services.rag.image_search import ImageSearchDisabled, ImageSearchError
 
 space_scoped_router = APIRouter(prefix="/spaces", tags=["conversations"])
 conversation_router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -190,6 +206,85 @@ async def send_message(
         identity_id=caller.user.identity_id,
         text=payload.text,
     )
+    is_owner = pair.conversation.created_by_user_id == caller.user.id
+    return SendMessageResponse(
+        conversation=_summary(pair.conversation, is_owner=is_owner),
+        user_message=_message_summary(pair.user_message),
+        assistant_message=_message_summary(pair.assistant_message),
+    )
+
+
+# A picture used as a query. Generous for a photo, small enough that a request cannot
+# tie the server up; the decoder also enforces a pixel limit.
+_MAX_QUERY_PICTURE_BYTES = 10 * 1024 * 1024
+_IMAGE_SEARCH_PER_MINUTE = 20
+
+
+async def _read_picture(upload: UploadFile) -> bytes:
+    """Read the uploaded query picture in pieces, stopping as soon as it is too big."""
+
+    buf = bytearray()
+    while True:
+        piece = await upload.read(1024 * 1024)
+        if not piece:
+            return bytes(buf)
+        buf.extend(piece)
+        if len(buf) > _MAX_QUERY_PICTURE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="the picture is larger than 10 MB",
+            )
+
+
+@conversation_router.post(
+    "/{conversation_id}/image-search",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SendMessageResponse,
+    summary="Find similar pictures from a picture and/or a description",
+)
+async def image_search_message(
+    conversation_id: uuid.UUID,
+    file: Optional[UploadFile] = File(default=None),
+    text: Optional[str] = Form(default=None, max_length=500),
+    top_k: int = Form(default=12, ge=1, le=30),
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> SendMessageResponse:
+    """Search the pictures this conversation may see; the query picture is never kept.
+
+    The answer is stored as an ordinary assistant message whose content carries
+    ``image_matches``. No language model is called.
+    """
+
+    try:
+        await oauth_core.rate_limit(
+            infra.redis,
+            key=f"quberi:imagesearch:{caller.user.id}",
+            limit=_IMAGE_SEARCH_PER_MINUTE,
+            window_seconds=60,
+        )
+    except oauth_core.OAuthError as exc:
+        raise HTTPException(
+            status_code=exc.status,
+            detail="too many picture searches; wait a minute",
+            headers={"Retry-After": "60"} if exc.status == 429 else None,
+        ) from exc
+    picture = await _read_picture(file) if file is not None else None
+    try:
+        pair = await conversations_service.send_image_search(
+            session,
+            conversation_id=conversation_id,
+            organization_id=caller.organization.id,
+            user_id=caller.user.id,
+            image=picture,
+            text=text,
+            top_k=top_k,
+        )
+    except ImageSearchDisabled as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except (ImageDecodeError, ImageSearchError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     is_owner = pair.conversation.created_by_user_id == caller.user.id
     return SendMessageResponse(
         conversation=_summary(pair.conversation, is_owner=is_owner),

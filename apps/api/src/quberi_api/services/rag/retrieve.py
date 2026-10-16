@@ -66,21 +66,18 @@ class ScopedRetrieval:
 # ---------------------------------------------------------------------------
 
 
-async def retrieve_for_conversation(
+async def effective_scope_for_conversation(
     session: AsyncSession,
     *,
-    qdrant: AsyncQdrantClient,
     conversation: Conversation,
     caller_user_id: uuid.UUID,
-    query: str,
-    top_k: int = DEFAULT_TOP_K,
-) -> ScopedRetrieval:
-    """End-to-end retrieval for a specific conversation + question.
+) -> tuple[list[uuid.UUID], str]:
+    """The spaces a conversation may search right now, and its scope mode.
 
-    Never raises for "empty scope" or "no chunks" — those are legitimate
-    empty results the caller should convey to the LLM as "I don't have
-    supporting documents". Only misconfiguration (no embedding provider
-    for the org, Qdrant down) raises.
+    Always starts from the caller's live permissions. A ``custom`` conversation
+    then keeps only the spaces the person picked that they can *still* read (an
+    intersection); ``auto`` is everything they can read. Shared by text and
+    picture retrieval so both look in exactly the same places.
     """
 
     org_id = conversation.organization_id
@@ -116,6 +113,30 @@ async def retrieve_for_conversation(
         )
     else:  # auto
         effective = sorted(live_accessible, key=str)
+    return effective, scope_mode
+
+
+async def retrieve_for_conversation(
+    session: AsyncSession,
+    *,
+    qdrant: AsyncQdrantClient,
+    conversation: Conversation,
+    caller_user_id: uuid.UUID,
+    query: str,
+    top_k: int = DEFAULT_TOP_K,
+) -> ScopedRetrieval:
+    """End-to-end retrieval for a specific conversation + question.
+
+    Never raises for "empty scope" or "no chunks" — those are legitimate
+    empty results the caller should convey to the LLM as "I don't have
+    supporting documents". Only misconfiguration (no embedding provider
+    for the org, Qdrant down) raises.
+    """
+
+    org_id = conversation.organization_id
+    effective, scope_mode = await effective_scope_for_conversation(
+        session, conversation=conversation, caller_user_id=caller_user_id
+    )
 
     chunks, model_id, collection = await _search_scoped_spaces(
         session,

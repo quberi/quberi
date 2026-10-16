@@ -56,7 +56,10 @@ from quberi_api.services.rag.generate import (
     generate_answer_stream,
     outgoing_messages,
 )
-from quberi_api.services.rag.retrieve import retrieve_for_conversation
+from quberi_api.services.rag.retrieve import (
+    effective_scope_for_conversation,
+    retrieve_for_conversation,
+)
 from quberi_api.services.retrieval_audit import (
     document_ids_from_chunks,
     document_ids_from_trace,
@@ -583,6 +586,161 @@ async def send_message(
             )
         )
         await session.flush()
+        await session.refresh(conversation, attribute_names=["updated_at"])
+
+    return MessagePair(
+        user_message=user_message,
+        assistant_message=assistant_message,
+        conversation=conversation,
+    )
+
+
+async def send_image_search(
+    session: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    image: bytes | None,
+    text: str | None,
+    top_k: int = 12,
+) -> MessagePair:
+    """Answer a picture and/or a description with similar pictures from the knowledge base.
+
+    The search looks only in the spaces this conversation may search (the person's live
+    permissions, narrowed to the spaces they picked), and every result is confirmed
+    against the database. No model is called, so no tokens are spent.
+
+    The uploaded picture is turned into a vector in memory and dropped: it is not saved,
+    not attached to the message and not logged. The stored user message records only
+    *that* a picture was used, plus any words. Nothing is written if the query cannot be
+    read (a bad file, an empty query, search switched off): those raise before any message
+    exists.
+    """
+
+    from quberi_api.services.rag import image_search
+
+    words = (text or "").strip()
+    correlation_id = uuid.uuid4().hex
+
+    # ---- Read phase: access, scope, query vector, search. Nothing is written yet. ----
+    view = await get_conversation_for_user(
+        session,
+        conversation_id=conversation_id,
+        organization_id=organization_id,
+        user_id=user_id,
+    )
+    conversation = view.conversation
+    scope, scope_mode = await effective_scope_for_conversation(
+        session, conversation=conversation, caller_user_id=user_id
+    )
+    vector = await image_search.embed_query(image=image, text=words or None)
+    qdrant = create_qdrant_client(get_settings())
+    try:
+        found = await image_search.search_images(
+            session,
+            qdrant=qdrant,
+            organization_id=organization_id,
+            space_ids=scope,
+            query_vector=vector,
+            top_k=top_k,
+        )
+    finally:
+        await qdrant.close()
+    matches = [
+        {
+            "document_id": str(m.document_id),
+            "document_name": m.document_name,
+            "space_id": str(m.space_id),
+            "space_name": m.space_name,
+            "mime_type": m.mime_type,
+            "size_bytes": m.size_bytes,
+            "score": round(m.score, 4),
+        }
+        for m in found.matches
+    ]
+    # The reads above began a transaction; end it before the write transaction.
+    await session.commit()
+
+    # ---- Write phase: both messages, the counters and the audit event together. ----
+    used = {"picture": image is not None, "description": bool(words)}
+    reply = (
+        f"找到 {len(matches)} 张相似的图片。"
+        if matches
+        else "没有找到相似的图片。图片需要先上传到你有权限的空间，并等待索引完成。"
+    )
+    async with session.begin():
+        conversation = (
+            await session.execute(select(Conversation).where(Conversation.id == conversation_id))
+        ).scalar_one()
+        user_message = Message(
+            conversation_id=conversation.id,
+            organization_id=organization_id,
+            role="user",
+            content={"type": "text", "text": words, "image_query": used},
+            author_user_id=user_id,
+            tokens={},
+            cost={},
+            correlation_id=correlation_id,
+            status="completed",
+        )
+        session.add(user_message)
+        await session.flush()
+        assistant_message = Message(
+            conversation_id=conversation.id,
+            organization_id=organization_id,
+            role="assistant",
+            content={
+                "type": "text",
+                "text": reply,
+                "image_matches": matches,
+                "meta": {
+                    "kind": "image_search",
+                    "scope_mode": scope_mode,
+                    "scope_space_ids": [str(sid) for sid in found.space_ids],
+                    "retrieved_count": len(matches),
+                },
+            },
+            author_user_id=None,
+            tokens={},
+            cost={"amount": 0, "currency": "USD"},
+            correlation_id=correlation_id,
+            status="completed",
+        )
+        session.add(assistant_message)
+        await session.flush()
+
+        conversation.message_count = conversation.message_count + 2
+        conversation.last_message_at = assistant_message.created_at
+        if not conversation.title:
+            conversation.title = words[:_TITLE_MAX] if words else "以图搜图"
+        session.add(
+            AuditEvent(
+                organization_id=organization_id,
+                actor_type="user",
+                actor_id=user_id,
+                action="message.sent",
+                resource_type="conversation",
+                resource_id=conversation.id,
+                space_id=conversation.space_id,
+                request_id=correlation_id,
+                payload={
+                    "kind": "image_search",
+                    "conversation_id": str(conversation.id),
+                    "user_message_id": str(user_message.id),
+                    "assistant_message_id": str(assistant_message.id),
+                    "citation_count": 0,
+                    "model_id": None,
+                    # Ids only; neither the picture nor the words are recorded.
+                    "retrieved_document_ids": [m["document_id"] for m in matches],
+                    "query": used,
+                    "scope_mode": scope_mode,
+                    "error": None,
+                },
+            )
+        )
+        await session.flush()
+        await session.refresh(user_message, attribute_names=["created_at"])
         await session.refresh(conversation, attribute_names=["updated_at"])
 
     return MessagePair(
