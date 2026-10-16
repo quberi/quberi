@@ -18,16 +18,18 @@ from __future__ import annotations
 
 import io
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session, get_infrastructure
 from quberi_api.domain.audit.models import AuditEvent
+from quberi_api.domain.documents.models import Document
 from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import documents as documents_service
@@ -50,6 +52,11 @@ _SEARCH_RATE_LIMIT = 60  # per grant per minute
 _SAVE_RATE_LIMIT = 30  # per grant per minute — writes are rarer than searches
 _UPLOAD_RATE_LIMIT = 10  # per grant per minute — files are heavier than notes
 _MAX_PASSAGE_CHARS = 4_000
+# How many still-indexing documents a search response names, and how recently
+# one must have changed to count (a stuck or abandoned row is not "in progress").
+_MAX_PENDING_LISTED = 10
+_PENDING_WINDOW = timedelta(hours=2)
+_PENDING_STATES = ("not_indexed", "indexing")
 
 
 async def require_external_caller(
@@ -94,10 +101,25 @@ class Passage(BaseModel):
     score: float
 
 
+class PendingDocument(BaseModel):
+    """A document in a searched space that cannot be found yet."""
+
+    document_name: str
+    space_name: str
+    # 'not_indexed' (queued) or 'indexing' (being read right now).
+    state: str
+
+
 class SearchResponse(BaseModel):
     organization: str
     passages: list[Passage]
     searched_spaces: int
+    # Documents in the spaces just searched that are still being indexed, so a
+    # tool can say "that file is still processing" instead of presenting
+    # unrelated passages as the answer. Newest first, capped; the total is
+    # reported separately.
+    pending_documents: list[PendingDocument] = Field(default_factory=list)
+    pending_total: int = 0
 
 
 @router.post("/search", response_model=SearchResponse, summary="Search readable knowledge")
@@ -137,11 +159,19 @@ async def search(
     chunks = result.chunks[: payload.top_k]
 
     space_ids = {c.space_id for c in chunks}
+    # Only spaces this person can read (the retrieval's own live scope), so
+    # naming a pending document tells them nothing a space listing would not.
+    pending_total, pending_rows = await _pending_documents(
+        session,
+        organization_id=ext.organization.id,
+        readable_space_ids=result.space_ids,
+    )
     names: dict[uuid.UUID, str] = {}
-    if space_ids:
+    wanted_names = space_ids | {sid for _name, sid, _state in pending_rows}
+    if wanted_names:
         rows = await session.execute(
             select(Space.id, Space.name).where(
-                Space.id.in_(space_ids),
+                Space.id.in_(wanted_names),
                 Space.organization_id == ext.organization.id,
             )
         )
@@ -183,7 +213,52 @@ async def search(
             )
             for c in chunks
         ],
+        pending_documents=[
+            PendingDocument(
+                document_name=name,
+                space_name=names.get(space_id, ""),
+                state=state,
+            )
+            for name, space_id, state in pending_rows
+        ],
+        pending_total=pending_total,
     )
+
+
+async def _pending_documents(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    readable_space_ids: list[uuid.UUID],
+) -> tuple[int, list[tuple[str, uuid.UUID, str]]]:
+    """Recently changed documents in these spaces that are not searchable yet.
+
+    Returns the total and the newest few as plain ``(name, space_id, state)``
+    tuples (not ORM rows: the session is committed before the response is built).
+    """
+
+    if not readable_space_ids:
+        return 0, []
+    cutoff = datetime.now(timezone.utc) - _PENDING_WINDOW
+    where = (
+        Document.organization_id == organization_id,
+        Document.space_id.in_(readable_space_ids),
+        Document.status != "archived",
+        Document.indexing_state.in_(_PENDING_STATES),
+        Document.updated_at >= cutoff,
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(Document).where(*where))
+    ).scalar_one()
+    if total == 0:
+        return 0, []
+    rows = await session.execute(
+        select(Document.name, Document.space_id, Document.indexing_state)
+        .where(*where)
+        .order_by(Document.updated_at.desc())
+        .limit(_MAX_PENDING_LISTED)
+    )
+    return int(total), [(name, sid, state) for name, sid, state in rows.all()]
 
 
 # ---------------------------------------------------------------------------
