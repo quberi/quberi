@@ -203,6 +203,43 @@ class SaveRequest(BaseModel):
     source_url: Optional[str] = Field(default=None, max_length=2000)
 
 
+_MAX_SPACE_CHOICES = 20
+
+
+async def _resolve_space(
+    session: AsyncSession, ext: core.ExternalCaller, name: Optional[str]
+) -> spaces_service.SpaceView:
+    """Pick the space a save or upload goes to, or answer with a clear hint.
+
+    With no name, the target is the person's personal space. If they have
+    none, say so (409 ``space_required``) and list the spaces they can reach so
+    the tool can ask which one - never drop the content into a shared space
+    the person did not choose.
+    """
+
+    try:
+        return await spaces_service.resolve_target_space(
+            session,
+            organization_id=ext.organization.id,
+            user_id=ext.user.id,
+            name=name,
+        )
+    except spaces_service.PersonalSpaceMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "space_required",
+                "message": "You have no personal space; say which space to use.",
+                "spaces": exc.candidates[:_MAX_SPACE_CHOICES],
+            },
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "space_not_found", "message": str(exc)},
+        ) from exc
+
+
 class SaveResponse(BaseModel):
     document_id: uuid.UUID
     space_id: uuid.UUID
@@ -243,18 +280,7 @@ async def save(
 
     # Resolve the target space from a human-friendly name (or the personal
     # default). The write permission itself is re-checked inside save_note.
-    try:
-        target = await spaces_service.resolve_target_space(
-            session,
-            organization_id=ext.organization.id,
-            user_id=ext.user.id,
-            name=payload.space,
-        )
-    except NotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "space_not_found", "message": str(exc)},
-        ) from exc
+    target = await _resolve_space(session, ext, payload.space)
     # resolve_target_space opened a read transaction; close it before writing.
     await session.commit()
 
@@ -406,18 +432,7 @@ async def upload(
             detail={"code": "invalid_file", "message": str(exc)},
         ) from exc
 
-    try:
-        target = await spaces_service.resolve_target_space(
-            session,
-            organization_id=ext.organization.id,
-            user_id=ext.user.id,
-            name=space,
-        )
-    except NotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "space_not_found", "message": str(exc)},
-        ) from exc
+    target = await _resolve_space(session, ext, space)
     # resolve_target_space opened a read transaction; close it before writing.
     await session.commit()
 

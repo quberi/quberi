@@ -149,6 +149,18 @@ def _is_owner(space: Space, *, user_id: uuid.UUID) -> bool:
     return space.owner_type == "user" and space.owner_id == user_id
 
 
+class PersonalSpaceMissingError(NotFoundError):
+    """No space was named and the caller has no personal space to default to.
+
+    ``candidates`` holds the names of the spaces the caller can reach (their
+    own scope, so nothing is leaked) for the tool to offer back to the person.
+    """
+
+    def __init__(self, candidates: Sequence[str]) -> None:
+        self.candidates: list[str] = list(candidates)
+        super().__init__("no personal space to default to; a space name is required")
+
+
 async def resolve_target_space(
     session: AsyncSession,
     *,
@@ -164,7 +176,10 @@ async def resolve_target_space(
 
     * ``name is None``/blank → the caller's **personal space** (every user
       gets one at onboarding: ``preset='personal'``, owned by the user). If
-      somehow absent, fall back to the first space they can reach.
+      somehow absent, raise :class:`PersonalSpaceMissingError` carrying the
+      names of the spaces they can reach, so the caller can ask the person
+      which one to use. It never guesses: a silent fallback would put a note
+      or file into a shared space the person did not choose.
     * ``name`` given → a case-insensitive, whitespace-trimmed match against
       the names of spaces the caller can reach. An exact (case-folded) match
       wins; otherwise raise ``NotFoundError`` listing nothing (existence is
@@ -189,7 +204,11 @@ async def resolve_target_space(
             (s for s in spaces if s.space.preset == "personal" and s.is_owner),
             None,
         )
-        return personal or spaces[0]
+        if personal is None:
+            raise PersonalSpaceMissingError(
+                [(s.space.name or "").strip() for s in spaces if (s.space.name or "").strip()]
+            )
+        return personal
 
     folded = wanted.casefold()
     match = next(
