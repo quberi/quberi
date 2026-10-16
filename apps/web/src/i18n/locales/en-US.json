@@ -298,6 +298,17 @@
       "pager": {
         "range": "{{start}} – {{end}} of {{total}}",
         "perPage": "Per page"
+      },
+      "fileType": {
+        "label": "File type",
+        "all": "All",
+        "image": "Images",
+        "pdf": "PDF",
+        "word": "Word",
+        "spreadsheet": "Spreadsheets",
+        "presentation": "Presentations",
+        "text": "Text",
+        "other": "Other"
       }
     },
     "detail": {
@@ -1349,8 +1360,7 @@
     },
     "sendHint": "Send (⌘/Ctrl + Enter)",
     "attach": {
-      "label": "Attachment",
-      "soon": "File attachments are coming soon."
+      "label": "Attachment"
     },
     "rename": "Rename conversation",
     "trace": {
@@ -1438,6 +1448,29 @@
         "internal_ip": "internal IP"
       },
       "editedBadgeHint": "Before sending you edited the content or dropped some passages, so the citations show the original text while the model saw a slightly different version."
+    },
+    "imageSearch": {
+      "pick": "Search with a picture",
+      "pickHint": "Pick a picture to find similar ones in the spaces you can read. You can also paste or drop one into the box.",
+      "byWordsTitle": "Search pictures by description",
+      "byWordsMenuHint": "Describe the picture you want in words. No upload needed.",
+      "byWordsHint": "Describe the picture you want",
+      "placeholder": "Add a description (optional), then press Enter to search",
+      "notSaved": "Used for this search only, not saved",
+      "remove": "Cancel picture search",
+      "dropHint": "Drop to search with this picture",
+      "notPicture": "Only picture files can be used to search.",
+      "tooBig": "The picture must be {{mb}} MB or smaller.",
+      "askedWithPicture": "Picture search (picture not saved)",
+      "askedWithWords": "Picture search by description",
+      "showPictures_one": "Show {{count}} picture on the right",
+      "showPictures_other": "Show {{count}} pictures on the right",
+      "railTitle": "Similar pictures",
+      "railCount_one": "{{count}} picture",
+      "railCount_other": "{{count}} pictures",
+      "score": "Similarity {{score}}",
+      "open": "View larger",
+      "noPreview": "Preview unavailable"
     }
   },
   "orgSpaces": {

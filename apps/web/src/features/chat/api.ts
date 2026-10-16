@@ -58,6 +58,76 @@ export function sendMessage(
   )
 }
 
+/** Largest picture the server accepts as a query (bytes). Checked here too, to fail before uploading. */
+export const MAX_QUERY_PICTURE_BYTES = 10 * 1024 * 1024
+/** Longest description that can go with (or replace) a query picture. */
+export const MAX_IMAGE_QUERY_TEXT = 500
+
+async function failureOf(response: Response): Promise<ApiError> {
+  let detail = ''
+  try {
+    const payload = (await response.json()) as { detail?: unknown }
+    if (typeof payload.detail === 'string') detail = payload.detail
+    else if (payload.detail) detail = JSON.stringify(payload.detail)
+  } catch {
+    /* no JSON body: the status is all we have */
+  }
+  return new ApiError(response.status, detail)
+}
+
+/**
+ * Find similar pictures from a picture, a description, or both. The reply is
+ * an ordinary message pair; the answer carries ``image_matches``. The query
+ * picture is read by the server in memory and never stored.
+ *
+ * The first search after a server start loads the picture model, which can
+ * take a while, so this waits longer than ``apiFetch`` does.
+ */
+export async function sendImageSearch(
+  credentials: DevCredentials,
+  conversationId: string,
+  picture: File | null,
+  text: string,
+  signal?: AbortSignal,
+): Promise<SendMessageResponse> {
+  const form = new FormData()
+  if (picture) form.append('file', picture, picture.name)
+  if (text.trim()) form.append('text', text.trim())
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), 180_000)
+  if (signal) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+  try {
+    // No Content-Type: the browser adds the multipart boundary itself.
+    const response = await fetch(`${API_BASE}/api/v1/conversations/${conversationId}/image-search`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', ...buildAuthHeaders(credentials) },
+      body: form,
+      signal: controller.signal,
+    })
+    if (!response.ok) throw await failureOf(response)
+    return (await response.json()) as SendMessageResponse
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+/** A small preview (JPEG, at most 320 px) of a stored picture, fetched with the person's credentials. */
+export async function fetchThumbnail(
+  credentials: DevCredentials,
+  spaceId: string,
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/spaces/${spaceId}/documents/${documentId}/thumbnail`,
+    { headers: buildAuthHeaders(credentials), signal },
+  )
+  if (!response.ok) throw await failureOf(response)
+  return response.blob()
+}
 
 // ---------------------------------------------------------------------------
 // Streaming chat (SSE over POST)

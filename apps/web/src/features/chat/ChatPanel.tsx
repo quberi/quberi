@@ -8,6 +8,8 @@ import {
   Cpu,
   FileText,
   Hash,
+  ImagePlus,
+  Images,
   KeyRound,
   Layers,
   MessageSquarePlus,
@@ -19,6 +21,7 @@ import {
   Sparkles,
   UserRound,
   Wrench,
+  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -39,7 +42,9 @@ import { describeModel } from '../settings/modelDescriptions'
 import { listAgents } from '../agent/api'
 import type { AgentSummary } from '../agent/types'
 
+import { MAX_IMAGE_QUERY_TEXT, MAX_QUERY_PICTURE_BYTES } from './api'
 import { useChat } from './ChatContext'
+import { ImageMatchesRail } from './ImageMatches'
 import { NewConversationDialog } from './NewConversationDialog'
 import { ReviewCard } from './ReviewCard'
 import { ScopeChipStrip } from './ScopeChipStrip'
@@ -50,6 +55,7 @@ import type {
   MessageContent,
   MessageSummary,
 } from './types'
+import { messageImageMatches, messageImageQuery } from './types'
 import { useFormatDate } from '../../i18n/formatDate'
 import { getGuestStarters } from './guestApi'
 import {
@@ -125,16 +131,23 @@ function ThreadWorkspace() {
     setHighlightIndex(null)
   }, [currentConversationId])
 
-  const citedMessages = useMemo(() => {
+  // Answers that have something for the right-hand rail: cited passages or found pictures.
+  const railMessages = useMemo(() => {
     if (messages.kind !== 'ready') return []
-    return messages.items.filter((m) => messageCitations(m.content).length > 0)
+    return messages.items.filter(
+      (m) =>
+        messageCitations(m.content).length > 0 ||
+        messageImageMatches(m.content).length > 0,
+    )
   }, [messages])
 
   const activeMessage =
-    citedMessages.find((m) => m.id === activeMessageId) ??
-    citedMessages[citedMessages.length - 1] ??
+    railMessages.find((m) => m.id === activeMessageId) ??
+    railMessages[railMessages.length - 1] ??
     null
   const citations = activeMessage ? messageCitations(activeMessage.content) : []
+  const imageMatches = activeMessage ? messageImageMatches(activeMessage.content) : []
+  const hasRail = citations.length > 0 || imageMatches.length > 0
 
   const jumpToCitation = useCallback((messageId: string, index: number) => {
     setActiveMessageId(messageId)
@@ -152,7 +165,7 @@ function ThreadWorkspace() {
   }, [])
 
   return (
-    <div className={citations.length > 0 ? 'chat-workspace has-citations' : 'chat-workspace'}>
+    <div className={hasRail ? 'chat-workspace has-citations' : 'chat-workspace'}>
       <ConversationsColumn />
       <ThreadColumn onCiteClick={jumpToCitation} />
       {citations.length > 0 && (
@@ -161,6 +174,9 @@ function ThreadWorkspace() {
           highlightIndex={highlightIndex}
           railRef={railRef}
         />
+      )}
+      {citations.length === 0 && imageMatches.length > 0 && (
+        <ImageMatchesRail matches={imageMatches} railRef={railRef} />
       )}
     </div>
   )
@@ -978,6 +994,8 @@ function MessageBubble({
   const placeholder =
     (message.content as { placeholder?: unknown }).placeholder === true
   const citations = messageCitations(message.content)
+  const foundPictures = messageImageMatches(message.content).length
+  const pictureQuery = isUser ? messageImageQuery(message.content) : null
   const trace = messageTrace(message.content)
   const reviewMeta = (
     message.content as {
@@ -1024,15 +1042,35 @@ function MessageBubble({
         {!isUser && trace.length > 0 && (
           <AgentTracePanel trace={trace} defaultOpen={streaming && !text} />
         )}
-        <AnswerText
-          text={text}
-          citationCount={citations.length}
-          onCiteClick={
-            citations.length > 0
-              ? (index) => onCiteClick(message.id, index)
-              : undefined
-          }
-        />
+        {pictureQuery && (
+          <p className="chat-picture-query">
+            <Images size={13} aria-hidden="true" />
+            {pictureQuery.picture
+              ? t('chat.imageSearch.askedWithPicture')
+              : t('chat.imageSearch.askedWithWords')}
+          </p>
+        )}
+        {(text || !pictureQuery) && (
+          <AnswerText
+            text={text}
+            citationCount={citations.length}
+            onCiteClick={
+              citations.length > 0
+                ? (index) => onCiteClick(message.id, index)
+                : undefined
+            }
+          />
+        )}
+        {!isUser && foundPictures > 0 && (
+          <button
+            className="link-button chat-show-pictures"
+            onClick={() => onCiteClick(message.id, -1)}
+            type="button"
+          >
+            <Images size={13} aria-hidden="true" />
+            {t('chat.imageSearch.showPictures', { count: foundPictures })}
+          </button>
+        )}
       </div>
     </article>
   )
@@ -1256,11 +1294,12 @@ function trimPreview(text: string, limit = 220): string {
   return `${clean.slice(0, limit)}…`
 }
 
-function Composer() {
+export function Composer() {
   const { t } = useTranslation()
   const {
     sending,
     sendUserMessage,
+    sendImageSearch,
     guestQuota,
     currentConversationId,
     currentConversation,
@@ -1281,10 +1320,54 @@ function Composer() {
   const [usage, setUsage] = useState<UsageStatus | null>(null)
   const [mention, setMention] = useState<'closed' | 'root' | 'space' | 'agent'>('closed')
   const [attachOpen, setAttachOpen] = useState(false)
+  // Picture search: a picture staged for the next send, and/or "search by words" mode.
+  const [picture, setPicture] = useState<File | null>(null)
+  const [wordsOnly, setWordsOnly] = useState(false)
+  const [pictureError, setPictureError] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
   const [agents, setAgents] = useState<AgentSummary[]>([])
   const mentionRef = useRef<HTMLDivElement>(null)
   const attachRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const searchingPictures = picture !== null || wordsOnly
+
+  // A small preview of the staged picture; released when it changes or goes.
+  useEffect(() => {
+    if (!picture) {
+      setPreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(picture)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [picture])
+
+  /** Stage a picture for searching; refuses anything that is not a picture or is too big. */
+  const stagePicture = (file: File | null | undefined) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setPictureError(t('chat.imageSearch.notPicture'))
+      return
+    }
+    if (file.size > MAX_QUERY_PICTURE_BYTES) {
+      setPictureError(
+        t('chat.imageSearch.tooBig', { mb: Math.round(MAX_QUERY_PICTURE_BYTES / 1024 / 1024) }),
+      )
+      return
+    }
+    setPictureError(null)
+    setPicture(file)
+    setAttachOpen(false)
+    textareaRef.current?.focus()
+  }
+
+  const clearPictureSearch = () => {
+    setPicture(null)
+    setWordsOnly(false)
+    setPictureError(null)
+  }
 
   const refreshUsage = useCallback(async () => {
     if (!credentials || isGuest) return
@@ -1303,6 +1386,9 @@ function Composer() {
   useEffect(() => {
     setText('')
     setMention('closed')
+    setPicture(null)
+    setWordsOnly(false)
+    setPictureError(null)
     textareaRef.current?.focus()
   }, [currentConversationId])
 
@@ -1350,8 +1436,10 @@ function Composer() {
     pendingReview !== null && pendingReview.conversationId === currentConversationId
   const agentBlocksReview =
     reviewBeforeSend && !isGuest && Boolean(currentConversation?.agent_choice?.agent_id)
-  const canSend =
-    text.trim().length > 0 && !sending.active && !heldHere && !agentBlocksReview
+  // A picture search calls no model, so a held prompt or an agent does not get in its way.
+  const canSend = searchingPictures
+    ? (picture !== null || text.trim().length > 0) && !sending.active
+    : text.trim().length > 0 && !sending.active && !heldHere && !agentBlocksReview
 
   const submit = async () => {
     if (guestExhausted) {
@@ -1360,11 +1448,32 @@ function Composer() {
     }
     if (!canSend) return
     const value = text.trim()
+    if (searchingPictures) {
+      // Keep the picture and words if the search fails, so it can be tried again.
+      const ok = await sendImageSearch(picture, value)
+      if (ok) {
+        setText('')
+        clearPictureSearch()
+      }
+      textareaRef.current?.focus()
+      return
+    }
     setText('')
     await sendUserMessage(value)
     void refreshUsage()
     textareaRef.current?.focus()
   }
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (isGuest) return
+    const file = Array.from(event.clipboardData.files).find((f) => f.type.startsWith('image/'))
+    if (!file) return // plain text paste goes through as usual
+    event.preventDefault()
+    stagePicture(file)
+  }
+
+  const carriesFiles = (event: React.DragEvent) =>
+    !isGuest && Array.from(event.dataTransfer.types).includes('Files')
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // "#" opens the mention menu (spaces / agents) instead of typing.
@@ -1533,7 +1642,25 @@ function Composer() {
   return (
     <div className="chat-composer-wrap">
       <form
-        className="chat-composer"
+        className={dragging ? 'chat-composer is-dragging' : 'chat-composer'}
+        onDragLeave={(event) => {
+          // Moving over a child fires leave on the form; only a real exit counts.
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
+        }}
+        onDragOver={(event) => {
+          if (!carriesFiles(event)) return
+          event.preventDefault()
+          setDragging(true)
+        }}
+        onDrop={(event) => {
+          if (!carriesFiles(event)) return
+          event.preventDefault()
+          setDragging(false)
+          stagePicture(
+            Array.from(event.dataTransfer.files).find((f) => f.type.startsWith('image/')) ??
+              event.dataTransfer.files[0],
+          )
+        }}
         onSubmit={(event) => {
           event.preventDefault()
           void submit()
@@ -1574,11 +1701,50 @@ function Composer() {
         {agentBlocksReview && (
           <div className="chat-quota-hint exhausted">{t('chat.review.agentUnsupported')}</div>
         )}
+        {searchingPictures && (
+          <div className="chat-picture-stage">
+            {previewUrl ? (
+              <img alt="" className="chat-picture-stage-thumb" src={previewUrl} />
+            ) : (
+              <span className="chat-picture-stage-thumb chat-picture-stage-words">
+                <Images size={16} />
+              </span>
+            )}
+            <span className="chat-picture-stage-text">
+              <strong>
+                {picture ? picture.name : t('chat.imageSearch.byWordsTitle')}
+              </strong>
+              <small>
+                {picture ? t('chat.imageSearch.notSaved') : t('chat.imageSearch.byWordsHint')}
+              </small>
+            </span>
+            <button
+              aria-label={t('chat.imageSearch.remove')}
+              className="icon-button"
+              onClick={clearPictureSearch}
+              type="button"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        {pictureError && <div className="chat-quota-hint exhausted">{pictureError}</div>}
+        {dragging && (
+          <div className="chat-drop-hint" aria-hidden="true">
+            {t('chat.imageSearch.dropHint')}
+          </div>
+        )}
         <textarea
+          maxLength={searchingPictures ? MAX_IMAGE_QUERY_TEXT : undefined}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={t(
-            isGuest ? 'chat.guest.placeholder' : 'chat.composerPlaceholderMention',
+            isGuest
+              ? 'chat.guest.placeholder'
+              : searchingPictures
+                ? 'chat.imageSearch.placeholder'
+                : 'chat.composerPlaceholderMention',
           )}
           ref={textareaRef}
           rows={2}
@@ -1622,14 +1788,52 @@ function Composer() {
               )}
             </div>
             <div className="chat-tool-anchor" ref={attachRef}>
+              <input
+                accept="image/*"
+                aria-label={t('chat.imageSearch.pick')}
+                className="sr-only"
+                onChange={(event) => {
+                  stagePicture(event.target.files?.[0])
+                  event.target.value = '' // picking the same file again should still fire
+                }}
+                ref={fileInputRef}
+                tabIndex={-1}
+                type="file"
+              />
               {attachOpen && (
-                <div className="chat-mention-menu chat-soon-menu">
-                  <p className="chat-mention-hint">{t('chat.attach.soon')}</p>
+                <div className="chat-mention-menu chat-attach-menu">
+                  <button
+                    className="chat-attach-item"
+                    onClick={() => fileInputRef.current?.click()}
+                    type="button"
+                  >
+                    <ImagePlus size={14} />
+                    <span>
+                      <strong>{t('chat.imageSearch.pick')}</strong>
+                      <small>{t('chat.imageSearch.pickHint')}</small>
+                    </span>
+                  </button>
+                  <button
+                    className="chat-attach-item"
+                    onClick={() => {
+                      setWordsOnly(true)
+                      setAttachOpen(false)
+                      textareaRef.current?.focus()
+                    }}
+                    type="button"
+                  >
+                    <Images size={14} />
+                    <span>
+                      <strong>{t('chat.imageSearch.byWordsTitle')}</strong>
+                      <small>{t('chat.imageSearch.byWordsMenuHint')}</small>
+                    </span>
+                  </button>
                 </div>
               )}
               <button
                 aria-label={t('chat.attach.label')}
-                className="chat-tool-button"
+                aria-expanded={attachOpen}
+                className={searchingPictures ? 'chat-tool-button is-active' : 'chat-tool-button'}
                 disabled={isGuest}
                 onClick={() => {
                   setMention('closed')

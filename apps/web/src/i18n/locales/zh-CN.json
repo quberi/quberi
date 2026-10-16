@@ -298,6 +298,17 @@
       "pager": {
         "range": "第 {{start}} – {{end}} 条 / 共 {{total}} 条",
         "perPage": "每页"
+      },
+      "fileType": {
+        "label": "文件类型",
+        "all": "全部",
+        "image": "图片",
+        "pdf": "PDF",
+        "word": "Word",
+        "spreadsheet": "表格",
+        "presentation": "演示文稿",
+        "text": "文本",
+        "other": "其他"
       }
     },
     "detail": {
@@ -1349,8 +1360,7 @@
     },
     "sendHint": "发送（⌘/Ctrl + Enter）",
     "attach": {
-      "label": "附件",
-      "soon": "上传附件即将推出。"
+      "label": "附件"
     },
     "rename": "重命名对话",
     "trace": {
@@ -1438,6 +1448,29 @@
         "internal_ip": "内网 IP"
       },
       "editedBadgeHint": "这次发送前，你修改过内容或去掉了部分参考资料，所以引用里显示的是知识库原文，模型看到的不完全一样。"
+    },
+    "imageSearch": {
+      "pick": "上传图片搜图",
+      "pickHint": "选择一张图片，找出你有权限的空间里相似的图片。也可以直接粘贴或拖进输入框。",
+      "byWordsTitle": "按描述搜图",
+      "byWordsMenuHint": "用文字描述想找的图片，不需要上传。",
+      "byWordsHint": "用文字描述想找的图片",
+      "placeholder": "可补充描述（可选），按 Enter 开始搜图",
+      "notSaved": "仅用于本次搜索，不会保存",
+      "remove": "取消搜图",
+      "dropHint": "松开即可用这张图片搜图",
+      "notPicture": "只能用图片文件搜图。",
+      "tooBig": "图片不能超过 {{mb}} MB。",
+      "askedWithPicture": "以图搜图（图片未保存）",
+      "askedWithWords": "按描述搜图",
+      "showPictures_other": "在右侧查看 {{count}} 张图片",
+      "showPictures_one": "在右侧查看 {{count}} 张图片",
+      "railTitle": "相似图片",
+      "railCount_other": "{{count}} 张",
+      "railCount_one": "{{count}} 张",
+      "score": "相似度 {{score}}",
+      "open": "查看大图",
+      "noPreview": "无法显示预览"
     }
   },
   "orgSpaces": {

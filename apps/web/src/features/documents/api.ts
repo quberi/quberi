@@ -32,6 +32,7 @@ export function listDocuments(
   const search = new URLSearchParams()
   if (params.q) search.set('q', params.q)
   if (params.source_kind) search.set('source_kind', params.source_kind)
+  if (params.file_type) search.set('file_type', params.file_type)
   if (params.order_by) search.set('order_by', params.order_by)
   if (params.order) search.set('order', params.order)
   if (params.include_archived !== undefined)

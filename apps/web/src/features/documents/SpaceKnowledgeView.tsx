@@ -32,7 +32,7 @@ import { DocumentDetailDrawer } from './DocumentDetailDrawer'
 import { formatBytes } from './DocumentRow'
 import { DocumentsProvider, useDocuments } from './DocumentsContext'
 import { UploadDropZone } from './UploadDropZone'
-import type { DocumentSourceKind, DocumentSummary } from './types'
+import type { DocumentFileType, DocumentSourceKind, DocumentSummary } from './types'
 import { useFormatDate } from '../../i18n/formatDate'
 import { localizedName } from '../../i18n/localizedName'
 
@@ -198,6 +198,7 @@ function SpaceKnowledgeViewInner({
 
       <section className="panel space-view-browser">
         <Toolbar />
+        <FileTypeTags />
         <DocumentsTable
           onSelectDetail={(id) => setDetailId(id)}
           selectedId={detailId}
@@ -372,6 +373,62 @@ const SOURCE_OPTIONS: Array<{ value: '' | DocumentSourceKind; key: string }> = [
   { value: 'oss_aliyun', key: 'oss_aliyun' },
   { value: 's3_aws', key: 's3_aws' },
 ]
+
+const FILE_TYPE_ORDER: DocumentFileType[] = [
+  'image',
+  'pdf',
+  'word',
+  'spreadsheet',
+  'presentation',
+  'text',
+  'other',
+]
+
+/**
+ * File-type tags, like the kind filter of a file manager. One tag is on at a
+ * time; "All" clears it. Only kinds the space actually holds are offered (plus
+ * the selected one, so it can always be switched off).
+ */
+export function FileTypeTags() {
+  const { t } = useTranslation()
+  const { params, setParams, stats } = useDocuments()
+  const counts = stats.kind === 'ready' ? stats.stats.by_mime_group : {}
+  const selected = params.file_type
+  const kinds = FILE_TYPE_ORDER.filter((k) => (counts[k] ?? 0) > 0 || k === selected)
+  if (kinds.length === 0 && !selected) return null
+
+  const choose = (next: DocumentFileType | undefined) =>
+    setParams((prev) => ({ ...prev, file_type: next, offset: 0 }))
+
+  return (
+    <div
+      aria-label={t('knowledge.view.fileType.label')}
+      className="file-type-tags"
+      role="group"
+    >
+      <button
+        aria-pressed={!selected}
+        className={selected ? 'file-type-tag' : 'file-type-tag is-active'}
+        onClick={() => choose(undefined)}
+        type="button"
+      >
+        {t('knowledge.view.fileType.all')}
+      </button>
+      {kinds.map((kind) => (
+        <button
+          aria-pressed={selected === kind}
+          className={selected === kind ? 'file-type-tag is-active' : 'file-type-tag'}
+          key={kind}
+          onClick={() => choose(selected === kind ? undefined : kind)}
+          type="button"
+        >
+          {t(`knowledge.view.fileType.${kind}`)}
+          {counts[kind] !== undefined && <small>{counts[kind]}</small>}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function Toolbar() {
   const { t } = useTranslation()

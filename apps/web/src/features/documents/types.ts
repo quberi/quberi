@@ -85,6 +85,7 @@ export interface DocumentSummary {
 export interface DocumentListFilters {
   q: string | null
   source_kind: DocumentSourceKind | null
+  file_type?: DocumentFileType | null
   order_by: 'created_at' | 'updated_at' | 'name' | 'size_bytes'
   order: 'asc' | 'desc'
   include_archived: boolean
@@ -107,9 +108,20 @@ export interface DocumentStats {
   by_indexing_state: Record<string, number>
 }
 
+/** The file-type groups a list can be narrowed to (same names as ``by_mime_group``). */
+export type DocumentFileType =
+  | 'image'
+  | 'pdf'
+  | 'word'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'text'
+  | 'other'
+
 export interface ListDocumentsParams {
   q?: string
   source_kind?: DocumentSourceKind
+  file_type?: DocumentFileType
   order_by?: 'created_at' | 'updated_at' | 'name' | 'size_bytes'
   order?: 'asc' | 'desc'
   include_archived?: boolean

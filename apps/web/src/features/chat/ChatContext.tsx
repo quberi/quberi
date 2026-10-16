@@ -20,6 +20,7 @@ import {
   renameConversation as apiRenameConversation,
   cancelReview as apiCancelReview,
   previewReview as apiPreviewReview,
+  sendImageSearch as apiSendImageSearch,
   streamApprovedReview,
   streamMessage as apiStreamMessage,
   updateScopeMode as apiUpdateScopeMode,
@@ -85,6 +86,13 @@ interface ChatContextValue {
   /** ``opts.starter`` is the key of a clicked suggested question (guests only; counted for popularity). */
   sendUserMessage: (text: string, opts?: { starter?: string }) => Promise<void>
   sending: SendingState
+  /**
+   * Find similar pictures from a picture and/or a description. The answer is
+   * added to the thread like any other. No language model is involved, so the
+   * "check before sending" step does not apply. Signed-in users only.
+   * Resolves true when the search ran, false when it failed (the error is in ``sending``).
+   */
+  sendImageSearch: (picture: File | null, text: string) => Promise<boolean>
   /**
    * "Check before sending": hold each prompt for the person to read and edit
    * before the model is called. Per browser; signed-in users only.
@@ -669,6 +677,43 @@ export function ChatProvider({ children }: PropsWithChildren) {
     },
     [credentials, currentConversationId, sendGuestMessage, runStream, reviewBeforeSend, pendingReview],
   )
+  const sendImageSearch = useCallback(
+    async (picture: File | null, text: string): Promise<boolean> => {
+      if (!credentials || credentials.isGuest || !currentConversationId) return false
+      if (!picture && !text.trim()) return false
+      const convId = currentConversationId
+      setSending({ active: true, error: null })
+      try {
+        const res = await apiSendImageSearch(credentials, convId, picture, text)
+        // Only show it if the person is still looking at this conversation;
+        // otherwise it is saved and appears when they come back.
+        if (loadedConversationRef.current === convId) {
+          setMessages((prev) => ({
+            kind: 'ready',
+            items: [
+              ...(prev.kind === 'ready' ? prev.items : []),
+              res.user_message,
+              res.assistant_message,
+            ],
+          }))
+        }
+        setConversations((prev) =>
+          prev.kind === 'ready'
+            ? {
+                kind: 'ready',
+                items: prev.items.map((c) => (c.id === res.conversation.id ? res.conversation : c)),
+              }
+            : prev,
+        )
+        setSending({ active: false, error: null })
+        return true
+      } catch (error) {
+        setSending({ active: false, error: toMessage(error) })
+        return false
+      }
+    },
+    [credentials, currentConversationId],
+  )
   const approveReview = useCallback(
     async (edits: ReviewEditsBody) => {
       const held = pendingReview
@@ -876,6 +921,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       messages,
       reloadMessages,
       sendUserMessage,
+      sendImageSearch,
       sending,
       reviewBeforeSend,
       setReviewBeforeSend,
@@ -907,6 +953,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       messages,
       reloadMessages,
       sendUserMessage,
+      sendImageSearch,
       sending,
       reviewBeforeSend,
       setReviewBeforeSend,

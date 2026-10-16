@@ -25,6 +25,23 @@ export interface MessageCitation {
   char_end: number
 }
 
+/** One picture found by a picture search (see ``POST /conversations/{id}/image-search``). */
+export interface ImageMatch {
+  document_id: string
+  document_name: string
+  space_id: string
+  space_name: string
+  mime_type: string
+  size_bytes: number
+  score: number
+}
+
+/** What a picture-search question was made of. The picture itself is never kept. */
+export interface ImageQueryUsed {
+  picture: boolean
+  description: boolean
+}
+
 /** One step in an agent's reasoning trace (tool call / result / note). */
 export interface AgentTraceStep {
   kind?: string // 'tool_call' | 'tool_result' | 'note' | 'answer'
@@ -128,4 +145,18 @@ export interface SendMessageResponse {
   conversation: ConversationSummary
   user_message: MessageSummary
   assistant_message: MessageSummary
+}
+
+/** The pictures a picture-search answer found (empty for any other message). */
+export function messageImageMatches(content: MessageContent): ImageMatch[] {
+  const raw = (content as { image_matches?: unknown }).image_matches
+  return Array.isArray(raw) ? (raw as ImageMatch[]) : []
+}
+
+/** What the person asked with, if this message is a picture-search question. */
+export function messageImageQuery(content: MessageContent): ImageQueryUsed | null {
+  const raw = (content as { image_query?: unknown }).image_query
+  if (!raw || typeof raw !== 'object') return null
+  const q = raw as Partial<ImageQueryUsed>
+  return { picture: q.picture === true, description: q.description === true }
 }
