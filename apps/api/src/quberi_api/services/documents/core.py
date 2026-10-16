@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import AsyncIterator, BinaryIO, Optional
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.audit.models import AuditEvent
@@ -147,6 +147,58 @@ def _mime_bucket(mime: str) -> str:
     if m.startswith("text/") or m == "application/json":
         return "text"
     return "other"
+
+
+# The file-type groups a library can be filtered by. Same names as the
+# ``by_mime_group`` keys in the stats, so the UI uses one vocabulary.
+FILE_TYPES = ("image", "pdf", "word", "spreadsheet", "presentation", "text", "other")
+
+
+def _bucket_conditions(column):
+    """SQL twin of ``_mime_bucket``: one condition per bucket, in the same
+    first-match-wins order."""
+
+    m = func.lower(func.coalesce(column, ""))
+    return [
+        ("image", m.like("image/%")),
+        ("pdf", m == "application/pdf"),
+        ("word", or_(m.like("%word%"), m.like("%opendocument.text%"))),
+        (
+            "spreadsheet",
+            or_(
+                m.like("%sheet%"),
+                m.like("%excel%"),
+                m.like("%opendocument.spreadsheet%"),
+            ),
+        ),
+        (
+            "presentation",
+            or_(
+                m.like("%presentation%"),
+                m.like("%powerpoint%"),
+                m.like("%opendocument.presentation%"),
+            ),
+        ),
+        ("text", or_(m.like("text/%"), m == "application/json")),
+    ]
+
+
+def file_type_clause(column, file_type: str):
+    """Condition selecting the documents whose mime type falls in ``file_type``.
+
+    Raises ``DocumentValidationError`` for an unknown group so a typo cannot
+    silently show everything (or nothing).
+    """
+
+    if file_type not in FILE_TYPES:
+        raise DocumentValidationError(f"unknown file type: {file_type!r}")
+    earlier = []
+    for name, cond in _bucket_conditions(column):
+        if name == file_type:
+            return and_(cond, *[not_(c) for c in earlier])
+        earlier.append(cond)
+    # "other": matches none of the named groups.
+    return and_(*[not_(c) for c in earlier])
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +359,7 @@ async def list_documents_in_space(
     include_archived: bool = False,
     q: Optional[str] = None,
     source_kind: Optional[str] = None,
+    file_type: Optional[str] = None,
     order_by: str = "created_at",
     order: str = "desc",
     limit: int = 50,
@@ -318,6 +371,10 @@ async def list_documents_in_space(
     filters against the resolved connector kind — we join ``document_sources``
     only when this filter is set to keep the common "list everything" path
     on a single-table scan.
+
+    ``file_type`` is one of ``FILE_TYPES`` (image, pdf, word, spreadsheet,
+    presentation, text, other); an unknown value raises
+    ``DocumentValidationError``.
 
     ``order_by`` is validated against a whitelist; anything else falls back
     to ``created_at``.
@@ -347,6 +404,8 @@ async def list_documents_in_space(
     if q:
         pattern = f"%{q.strip()}%"
         base = base.where(Document.name.ilike(pattern))
+    if file_type:
+        base = base.where(file_type_clause(Document.mime_type, file_type))
     if source_kind:
         # ``source_kind`` is not on the ``documents`` row directly — it lives
         # on ``document_sources``. Local uploads may also have ``source_id``

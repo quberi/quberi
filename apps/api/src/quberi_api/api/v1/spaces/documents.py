@@ -93,6 +93,7 @@ class DocumentListFilters(BaseModel):
 
     q: Optional[str] = None
     source_kind: Optional[str] = None
+    file_type: Optional[str] = None
     order_by: str = "created_at"
     order: str = "desc"
     include_archived: bool = False
@@ -174,6 +175,11 @@ async def list_documents(
     space_id: uuid.UUID,
     q: Optional[str] = Query(default=None, max_length=200),
     source_kind: Optional[str] = Query(default=None, max_length=32),
+    file_type: Optional[str] = Query(
+        default=None,
+        pattern="^(image|pdf|word|spreadsheet|presentation|text|other)$",
+        description="Only documents of this kind (image, pdf, word, spreadsheet, presentation, text, other).",
+    ),
     order_by: str = Query(
         default="created_at",
         pattern="^(created_at|updated_at|name|size_bytes)$",
@@ -194,6 +200,7 @@ async def list_documents(
         include_archived=include_archived,
         q=q,
         source_kind=source_kind,
+        file_type=file_type,
         order_by=order_by,
         order=order,
         limit=limit,
@@ -207,6 +214,7 @@ async def list_documents(
         filters=DocumentListFilters(
             q=q,
             source_kind=source_kind,
+            file_type=file_type,
             order_by=order_by,
             order=order,
             include_archived=include_archived,

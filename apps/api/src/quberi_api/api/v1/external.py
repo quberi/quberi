@@ -454,6 +454,11 @@ async def list_documents(
     space: str = Query(min_length=1, max_length=200),
     cursor: Optional[str] = Query(default=None, max_length=500),
     limit: int = Query(default=_MAX_DOCUMENTS_PER_PAGE, ge=1, le=_MAX_DOCUMENTS_PER_PAGE),
+    type: Optional[str] = Query(
+        default=None,
+        pattern="^(image|pdf|word|spreadsheet|presentation|text|other)$",
+        description="Only documents of this kind.",
+    ),
     ext: core.ExternalCaller = Depends(require_external_caller),
     session: AsyncSession = Depends(get_db_session),
     infra: Infrastructure = Depends(get_infrastructure),
@@ -482,6 +487,8 @@ async def list_documents(
         Document.space_id == view.space.id,
         Document.status != "archived",
     )
+    if type:
+        base = (*base, documents_core.file_type_clause(Document.mime_type, type))
     count_stmt = select(func.count()).select_from(Document).where(*base)
     total = int((await session.execute(count_stmt)).scalar_one())
     stmt = select(

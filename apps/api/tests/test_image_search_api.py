@@ -551,3 +551,19 @@ async def test_an_oversized_source_is_not_decoded(
         db_session, org_and_owner, space, blobs, b"\x89PNG\r\n\x1a\n" + b"0" * 9000
     )
     assert (await client.get(_thumb(space, doc))).status_code == 413
+
+
+async def test_the_space_list_can_be_narrowed_to_one_kind(client, db_session, org_and_owner):
+    space = await _space(db_session, org_and_owner, "Mixed")
+    await _doc(db_session, org_and_owner, space, "a.png", mime="image/png", state="indexed")
+    await _doc(db_session, org_and_owner, space, "b.pdf", mime="application/pdf", state="indexed")
+    url = f"/api/v1/spaces/{space.id}/documents"
+
+    images = (await client.get(url, params={"file_type": "image"})).json()
+    everything = (await client.get(url)).json()
+    bad = await client.get(url, params={"file_type": "videos"})
+
+    assert [d["name"] for d in images["items"]] == ["a.png"]
+    assert images["total"] == 1 and images["filters"]["file_type"] == "image"
+    assert everything["total"] == 2 and everything["filters"]["file_type"] is None
+    assert bad.status_code == 422
