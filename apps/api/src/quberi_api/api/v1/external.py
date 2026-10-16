@@ -16,15 +16,28 @@ What is different, on purpose:
 
 from __future__ import annotations
 
+import base64
+import binascii
 import io
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session, get_infrastructure
@@ -34,6 +47,7 @@ from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import documents as documents_service
 from quberi_api.services import spaces as spaces_service
+from quberi_api.services.documents import core as documents_core
 from quberi_api.services.documents import external_upload
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
@@ -57,6 +71,9 @@ _MAX_PASSAGE_CHARS = 4_000
 _MAX_PENDING_LISTED = 10
 _PENDING_WINDOW = timedelta(hours=2)
 _PENDING_STATES = ("not_indexed", "indexing")
+_LIST_RATE_LIMIT = 60  # per grant per minute, shared by both listing endpoints
+_MAX_SPACES_LISTED = 100
+_MAX_DOCUMENTS_PER_PAGE = 50
 
 
 async def require_external_caller(
@@ -259,6 +276,254 @@ async def _pending_documents(
         .limit(_MAX_PENDING_LISTED)
     )
     return int(total), [(name, sid, state) for name, sid, state in rows.all()]
+
+
+# ---------------------------------------------------------------------------
+# Browse: which spaces, and which documents in one (requires knowledge:read)
+# ---------------------------------------------------------------------------
+#
+# Metadata only. Neither endpoint returns any document text (search is the one
+# path for that) or who uploaded what. Both read through the same live access
+# rules as search: a space or document the person cannot see in Quberi is not
+# listed here.
+
+
+class SpaceInfo(BaseModel):
+    name: str
+    # 'personal' (the person's own space) or 'shared'.
+    kind: str
+    # Whether save and upload would be allowed there (editor or above).
+    can_edit: bool
+    document_count: int
+
+
+class SpacesResponse(BaseModel):
+    organization: str
+    spaces: list[SpaceInfo]
+    # How many spaces the person can read in all (the list is capped).
+    total: int
+
+
+class DocumentInfo(BaseModel):
+    name: str
+    mime_type: str
+    size_bytes: int
+    updated_at: datetime
+    # 'ready' (searchable), 'indexing' (being processed now) or
+    # 'not_searchable' (processing failed or never finished, or a kind of file
+    # that cannot be searched by content, such as an image).
+    status: str
+
+
+class DocumentsResponse(BaseModel):
+    space_name: str
+    documents: list[DocumentInfo]
+    # Documents in this space in all, so a tool can say "50 of 212".
+    total: int
+    # Pass back as ``cursor`` for the next page; null on the last page.
+    next_cursor: Optional[str] = None
+
+
+async def _list_rate_limit(infra: Infrastructure, ext: core.ExternalCaller) -> None:
+    try:
+        await core.rate_limit(
+            infra.redis,
+            key=f"quberi:external:list:{ext.grant_id}",
+            limit=_LIST_RATE_LIMIT,
+            window_seconds=60,
+        )
+    except core.OAuthError as exc:
+        raise HTTPException(
+            status_code=exc.status,
+            detail={"code": exc.error, "message": exc.description},
+            headers={"Retry-After": "60"} if exc.status == 429 else None,
+        ) from exc
+
+
+def _require_read(ext: core.ExternalCaller) -> None:
+    if not ext.has_scope(clients.SCOPE_KNOWLEDGE_READ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "insufficient_scope", "message": "knowledge:read is required"},
+        )
+
+
+def _public_status(state: str, updated_at: datetime, now: datetime) -> str:
+    if state == "indexed":
+        return "ready"
+    if state in _PENDING_STATES and now - updated_at <= _PENDING_WINDOW:
+        return "indexing"
+    return "not_searchable"
+
+
+def _encode_cursor(updated_at: datetime, doc_id: uuid.UUID) -> str:
+    raw = json.dumps({"t": updated_at.isoformat(), "i": str(doc_id)}, separators=(",", ":"))
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded.encode()))
+        when = datetime.fromisoformat(data["t"])
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return when, uuid.UUID(data["i"])
+    except (ValueError, KeyError, TypeError, binascii.Error, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "invalid_cursor", "message": "the page cursor is not valid"},
+        ) from exc
+
+
+async def _audit_listing(
+    session: AsyncSession, ext: core.ExternalCaller, **payload: object
+) -> None:
+    # The read transaction is still open; close it before writing the audit row.
+    await session.commit()
+    async with session.begin():
+        session.add(
+            AuditEvent(
+                organization_id=ext.organization.id,
+                actor_type="user",
+                actor_id=ext.user.id,
+                action="knowledge.external_list",
+                resource_type="oauth_grant",
+                resource_id=ext.grant_id,
+                payload={"grant_id": str(ext.grant_id), "client_name": ext.client_name, **payload},
+            )
+        )
+
+
+@router.get("/spaces", response_model=SpacesResponse, summary="List the spaces the person can read")
+async def list_spaces(
+    ext: core.ExternalCaller = Depends(require_external_caller),
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> SpacesResponse:
+    _require_read(ext)
+    await _list_rate_limit(infra, ext)
+
+    views = [
+        v
+        for v in await spaces_service.list_spaces_for_user(
+            session, organization_id=ext.organization.id, user_id=ext.user.id
+        )
+        if v.space.status == "active"
+    ]
+    shown = views[:_MAX_SPACES_LISTED]
+    counts: dict[uuid.UUID, int] = {}
+    if shown:
+        rows = await session.execute(
+            select(Document.space_id, func.count())
+            .where(
+                Document.organization_id == ext.organization.id,
+                Document.space_id.in_([v.space.id for v in shown]),
+                Document.status != "archived",
+            )
+            .group_by(Document.space_id)
+        )
+        counts = {sid: int(n) for sid, n in rows.all()}
+    spaces: list[SpaceInfo] = []
+    for view in shown:
+        can_edit = await documents_core.caller_has_space_role(
+            session,
+            user_id=ext.user.id,
+            organization_id=ext.organization.id,
+            space_id=view.space.id,
+            required="editor",
+        )
+        spaces.append(
+            SpaceInfo(
+                name=view.space.name,
+                kind="personal" if view.space.preset == "personal" and view.is_owner else "shared",
+                can_edit=can_edit,
+                document_count=counts.get(view.space.id, 0),
+            )
+        )
+    await _audit_listing(session, ext, what="spaces", result_count=len(spaces))
+    return SpacesResponse(organization=ext.organization.name, spaces=spaces, total=len(views))
+
+
+@router.get(
+    "/documents",
+    response_model=DocumentsResponse,
+    summary="List the documents in one space",
+)
+async def list_documents(
+    space: str = Query(min_length=1, max_length=200),
+    cursor: Optional[str] = Query(default=None, max_length=500),
+    limit: int = Query(default=_MAX_DOCUMENTS_PER_PAGE, ge=1, le=_MAX_DOCUMENTS_PER_PAGE),
+    ext: core.ExternalCaller = Depends(require_external_caller),
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> DocumentsResponse:
+    _require_read(ext)
+    await _list_rate_limit(infra, ext)
+    after = _decode_cursor(cursor) if cursor else None
+
+    try:
+        view = await spaces_service.resolve_target_space(
+            session, organization_id=ext.organization.id, user_id=ext.user.id, name=space
+        )
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "space_not_found", "message": str(exc)},
+        ) from exc
+    if view.space.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "space_not_found", "message": "no accessible space with that name"},
+        )
+
+    base = (
+        Document.organization_id == ext.organization.id,
+        Document.space_id == view.space.id,
+        Document.status != "archived",
+    )
+    count_stmt = select(func.count()).select_from(Document).where(*base)
+    total = int((await session.execute(count_stmt)).scalar_one())
+    stmt = select(
+        Document.id,
+        Document.name,
+        Document.mime_type,
+        Document.size_bytes,
+        Document.updated_at,
+        Document.indexing_state,
+    ).where(*base)
+    if after is not None:
+        when, last_id = after
+        stmt = stmt.where(
+            or_(
+                Document.updated_at < when,
+                and_(Document.updated_at == when, Document.id < last_id),
+            )
+        )
+    rows = (
+        await session.execute(
+            stmt.order_by(Document.updated_at.desc(), Document.id.desc()).limit(limit + 1)
+        )
+    ).all()
+    page, more = rows[:limit], len(rows) > limit
+    now = datetime.now(timezone.utc)
+    documents = [
+        DocumentInfo(
+            name=name,
+            mime_type=mime,
+            size_bytes=int(size),
+            updated_at=updated,
+            status=_public_status(state, updated, now),
+        )
+        for _id, name, mime, size, updated, state in page
+    ]
+    next_cursor = _encode_cursor(page[-1][4], page[-1][0]) if more and page else None
+    await _audit_listing(
+        session, ext, what="documents", space_id=str(view.space.id), result_count=len(documents)
+    )
+    return DocumentsResponse(
+        space_name=view.space.name, documents=documents, total=total, next_cursor=next_cursor
+    )
 
 
 # ---------------------------------------------------------------------------
