@@ -223,6 +223,7 @@ async def purge_vectors(
     model_id: str,
     vector_dim: int,
     attempts: int = 3,
+    image_model_id: str | None = None,
 ) -> PurgeResult:
     """Delete a document's vectors and *check* they are gone, retrying.
 
@@ -232,11 +233,22 @@ async def purge_vectors(
     """
 
     store = VectorStore(qdrant, model_id=model_id, vector_dim=vector_dim)
+    # A picture's vector lives in a separate collection; clear and verify it too.
+    stores = [store]
+    if image_model_id:
+        from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM
+        from quberi_api.services.rag.image_store import ImageVectorStore
+
+        stores.append(ImageVectorStore(qdrant, model_id=image_model_id, vector_dim=BGE_VL_DIM))
     left = -1
     for attempt in range(1, attempts + 1):
         try:
-            await store.delete_document(document_id=document_id)
-            left = await store.count_document(document_id=document_id)
+            remaining = 0
+            for each in stores:
+                await each.delete_document(document_id=document_id)
+                remaining += await each.count_document(document_id=document_id)
+            # Only a pass that finished every store may say how many are left.
+            left = remaining
         except Exception:  # noqa: BLE001
             _log.exception(
                 "sandbox: vector purge attempt %d/%d failed for %s",

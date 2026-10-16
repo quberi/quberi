@@ -64,6 +64,7 @@ async def delete_sandbox_document(
             document_id=document_id,
             model_id=model_id,
             vector_dim=vector_dim,
+            image_model_id=get_settings().default_image_embedding_model,
         )
     finally:
         await qdrant.close()

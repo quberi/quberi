@@ -89,17 +89,18 @@ class RetrievedChunk:
 # ---------------------------------------------------------------------------
 
 
-def collection_name_for_model(model_id: str) -> str:
+def collection_name_for_model(model_id: str, prefix: str = _COLLECTION_PREFIX) -> str:
     """Compute a stable Qdrant collection name for an embedding model.
 
     ``bge-m3`` → ``quberi_chunks__bge_m3``; ``text-embedding-3-small`` →
     ``quberi_chunks__text_embedding_3_small``. The mapping must be
     reversible-by-eyeball so ops can find the right collection during
-    debugging.
+    debugging. Image vectors use their own prefix (see
+    :mod:`quberi_api.services.rag.image_store`).
     """
 
     sanitised = re.sub(r"[^a-z0-9]+", "_", model_id.lower()).strip("_")
-    return f"{_COLLECTION_PREFIX}{sanitised}"
+    return f"{prefix}{sanitised}"
 
 
 def _point_id_for(document_id: uuid.UUID, chunk_index: int) -> str:
@@ -127,6 +128,10 @@ class VectorStore:
     is free; the underlying HTTP client is shared.
     """
 
+    # Subclasses that keep a different kind of vector (pictures) override this
+    # so their collection never mixes with the text one.
+    collection_prefix = _COLLECTION_PREFIX
+
     def __init__(
         self,
         client: AsyncQdrantClient,
@@ -136,7 +141,7 @@ class VectorStore:
     ) -> None:
         self._client = client
         self._model_id = model_id
-        self._collection = collection_name_for_model(model_id)
+        self._collection = collection_name_for_model(model_id, self.collection_prefix)
         self._vector_dim = vector_dim
 
     @property

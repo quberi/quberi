@@ -813,6 +813,23 @@ async def delete_document(
     except Exception:  # pragma: no cover — logged, DB truth already correct
         pass
 
+    # A picture keeps its vector in a collection of its own. Removed on its own
+    # path so a failure above (no text-embedding binding, say) cannot skip it.
+    # If this too fails, a search still drops the hit: it checks every result
+    # against the database, and this document's row is gone.
+    try:
+        from quberi_api.core.config import get_settings
+        from quberi_api.infrastructure.qdrant import create_qdrant_client
+        from quberi_api.services.rag.indexer import remove_image_from_index
+
+        qdrant = create_qdrant_client(get_settings())
+        try:
+            await remove_image_from_index(qdrant=qdrant, document_id=doc_id_for_cascade)
+        finally:
+            await qdrant.close()
+    except Exception:  # pragma: no cover — logged, DB truth already correct
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Download

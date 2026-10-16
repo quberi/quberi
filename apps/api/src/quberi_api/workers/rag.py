@@ -160,12 +160,38 @@ async def sweep_guest_sandbox(ctx: dict) -> int:
         )
 
 
+async def backfill_pictures(ctx: dict) -> int:
+    """Queue indexing for pictures that predate picture search. Returns how many."""
+
+    if not get_settings().image_search_enabled:
+        return 0
+    from quberi_api.services.rag.image_backfill import pictures_needing_index
+
+    async with ctx["session_factory"]() as session:
+        ids = await pictures_needing_index(session)
+        await session.commit()
+    queued = 0
+    for document_id in ids:
+        # A stable job id: asking twice for the same picture queues it once.
+        job = await ctx["redis"].enqueue_job(
+            "index_document", str(document_id), _job_id=f"index-picture-{document_id}"
+        )
+        queued += 1 if job is not None else 0
+    if queued:
+        _log.info("picture backfill: queued %d picture(s) for indexing", queued)
+    return queued
+
+
 class WorkerSettings:
     """arq entry point discovered by ``arq quberi_api.workers.rag.WorkerSettings``."""
 
     functions = [index_document, sync_feishu_source]
     # Every hour, on the hour: expire guest-sandbox uploads.
-    cron_jobs = [cron(sweep_guest_sandbox, minute=0, run_at_startup=True)]
+    cron_jobs = [
+        cron(sweep_guest_sandbox, minute=0, run_at_startup=True),
+        # Pictures uploaded before picture search existed; cheap when there is none.
+        cron(backfill_pictures, minute=7, run_at_startup=True),
+    ]
     on_startup = on_startup
     on_shutdown = on_shutdown
     redis_settings = build_redis_settings()

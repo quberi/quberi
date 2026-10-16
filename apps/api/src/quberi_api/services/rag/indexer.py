@@ -8,7 +8,9 @@ Flow
    show "processing" and any concurrent second job for the same doc
    will observe the state and bail.
 3. Download the blob from MinIO.
-4. Extract text via :mod:`extract`.
+4. Extract text via :mod:`extract`. (A picture skips steps 4-8: it is
+   turned into one vector by the image model and stored in the picture
+   collection instead; see :func:`_index_image`.)
 5. Chunk via :mod:`chunk`.
 6. Resolve the org's embedding provider + model.
 7. Embed all chunks in a single batch (or as many batches as the
@@ -36,11 +38,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from qdrant_client import AsyncQdrantClient
 
+from quberi_api.core.config import get_settings
 from quberi_api.domain.documents.models import Document
 from quberi_api.services.ai import resolve_embedding_provider
+from quberi_api.services.ai.local_image_embedding import (
+    BGE_VL_DIM,
+    ImageDecodeError,
+    get_image_embedder,
+)
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.rag.chunk import chunk_text
 from quberi_api.services.rag.extract import ExtractError, extract_text
+from quberi_api.services.rag.image_store import ImageVectorStore
 from quberi_api.services.rag.vector_store import ChunkPoint, VectorStore
 
 _log = logging.getLogger(__name__)
@@ -130,6 +139,22 @@ async def remove_document_from_index(
         _log.exception("qdrant delete_document failed for %s", document_id)
 
 
+async def remove_image_from_index(
+    *,
+    qdrant: AsyncQdrantClient,
+    document_id: uuid.UUID,
+    model_id: str | None = None,
+) -> None:
+    """Best-effort removal of a picture's vector. Missing collection → no-op."""
+
+    model = model_id or get_settings().default_image_embedding_model
+    store = ImageVectorStore(qdrant, model_id=model, vector_dim=BGE_VL_DIM)
+    try:
+        await store.delete_document(document_id=document_id)
+    except Exception:  # pragma: no cover — logged, doc row already gone
+        _log.exception("qdrant image delete_document failed for %s", document_id)
+
+
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
@@ -167,6 +192,8 @@ async def _run_pipeline(
 
     try:
         blob = await _download_blob(doc.storage_key)
+        if is_picture(doc.mime_type):
+            return await _index_image(session, qdrant=qdrant, doc=doc, blob=blob)
         try:
             extracted = extract_text(
                 blob=blob, filename=doc.name, mime_type=doc.mime_type
@@ -182,6 +209,56 @@ async def _run_pipeline(
         if doc.indexing_state != "failed":
             await _mark_failed(session, doc, f"{type(exc).__name__}: {exc}")
         raise
+
+
+def is_picture(mime_type: str | None) -> bool:
+    """Whether a document is filed as a picture (and so indexed by what it shows)."""
+
+    return (mime_type or "").lower().startswith("image/")
+
+
+async def _index_image(
+    session: AsyncSession,
+    *,
+    qdrant: AsyncQdrantClient,
+    doc: Document,
+    blob: bytes,
+) -> IndexingResult:
+    """Turn one picture into one vector and file it in the picture collection.
+
+    The picture is decoded in memory only; nothing is written anywhere but the
+    vector (with the ids that keep it inside its organisation and space).
+    """
+
+    settings = get_settings()
+    if not settings.image_search_enabled:
+        await _mark_failed(session, doc, "image: picture search is turned off on this server")
+        raise RuntimeError("image search is disabled")
+    model_id = settings.default_image_embedding_model
+    try:
+        vectors = await get_image_embedder(model_id).embed_images([blob])
+    except ImageDecodeError as exc:
+        await _mark_failed(session, doc, f"image: {exc}")
+        raise
+    store = ImageVectorStore(qdrant, model_id=model_id, vector_dim=BGE_VL_DIM)
+    await store.upsert_image(
+        organization_id=doc.organization_id,
+        space_id=doc.space_id,
+        document_id=doc.id,
+        document_name=doc.name,
+        mime_type=doc.mime_type,
+        document_checksum=doc.checksum_sha256,
+        vector=vectors[0],
+    )
+    doc.indexing_state = "indexed"
+    doc.chunk_count = 1
+    doc.last_indexed_at = datetime.now(timezone.utc)
+    doc.indexing_error = None
+    await session.commit()
+    _log.info("indexed picture %s in %s (model=%s)", doc.id, store.collection, model_id)
+    return IndexingResult(
+        document_id=doc.id, chunk_count=1, collection=store.collection, model_id=model_id
+    )
 
 
 async def index_document_from_text(
