@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # document-source binding that stores an API key. See
     # ``quberi_api.services.security.crypto``.
     encryption_key: Optional[SecretStr] = None
+    # Key that signs the short-lived preview links handed to outside tools
+    # (``services.external_image_links``). Falls back to ``encryption_key``; with
+    # neither set, no links are issued and picture search answers without previews.
+    external_link_signing_key: Optional[SecretStr] = None
 
     # Platform-provided AI defaults. When ``default_deepseek_key`` is
     # set, a matching ``is_platform_default`` ``ai_provider_bindings``

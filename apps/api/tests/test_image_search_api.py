@@ -33,6 +33,7 @@ from quberi_api.services import conversations as conversations_service
 from quberi_api.services import members as members_service
 from quberi_api.services import space_bindings as space_bindings_service
 from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM
+from quberi_api.services.documents import thumbnail as thumbnail_module
 from quberi_api.services.rag import image_search
 from quberi_api.services.rag.image_store import ImageVectorStore
 from tests.test_image_indexing import _doc, _space
@@ -545,7 +546,7 @@ async def test_a_thumbnail_from_the_wrong_space_is_not_found(
 async def test_an_oversized_source_is_not_decoded(
     client, db_session, org_and_owner, blobs, monkeypatch
 ):
-    monkeypatch.setattr(documents_router, "_THUMBNAIL_MAX_SOURCE_BYTES", 2048)
+    monkeypatch.setattr(thumbnail_module, "MAX_SOURCE_BYTES", 2048)
     space = await _space(db_session, org_and_owner, "Parts")
     doc = await _stored_picture(
         db_session, org_and_owner, space, blobs, b"\x89PNG\r\n\x1a\n" + b"0" * 9000

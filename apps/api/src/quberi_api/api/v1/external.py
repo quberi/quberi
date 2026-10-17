@@ -32,6 +32,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -41,8 +42,11 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session, get_infrastructure
+from quberi_api.core.config import get_settings
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document
+from quberi_api.domain.identity.models import Organization, User
+from quberi_api.domain.oauth.models import OAuthGrant
 from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import documents as documents_service
@@ -56,6 +60,10 @@ from quberi_api.services.documents.errors import (
 )
 from quberi_api.services.errors import NotFoundError
 from quberi_api.services.oauth import clients, core
+from quberi_api.services import external_image_links
+from quberi_api.services.documents.thumbnail import ThumbnailError, render_thumbnail
+from quberi_api.services.rag import image_search
+from quberi_api.services.rag.indexer import is_picture
 from quberi_api.services.rag.retrieve import retrieve_for_user
 from quberi_api.services.retrieval_audit import document_ids_from_chunks
 
@@ -537,6 +545,280 @@ async def list_documents(
         total=total,
         next_cursor=next_cursor,
         type=type or None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Picture search with previews (requires knowledge:read)
+# ---------------------------------------------------------------------------
+#
+# Finds pictures by a description, in the spaces the person can read now. Each
+# result carries a short-lived preview link (see ``services.external_image_links``)
+# because an outside tool cannot show a picture behind a bearer token. No picture
+# bytes are returned here, and nothing the person types is kept.
+
+_IMAGE_SEARCH_RATE_LIMIT = 30  # per grant per minute: each search runs the picture model
+_PREVIEW_RATE_LIMIT = 240  # per grant per minute: one search can show up to 10 previews
+_MAX_IMAGE_RESULTS = 10
+
+
+class ImageSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=image_search.MAX_QUERY_TEXT_CHARS)
+    top_k: int = Field(default=6, ge=1, le=_MAX_IMAGE_RESULTS)
+    # Name of one space to look in; omit to look in every space the person can read.
+    space: Optional[str] = Field(default=None, max_length=200)
+
+
+class ImageResult(BaseModel):
+    name: str
+    space_name: str
+    mime_type: str
+    size_bytes: int
+    # 0..1 closeness; only useful for ordering and for judging a weak match.
+    score: float
+    # Absolute link to a small JPEG preview, valid for ``preview_expires_in`` seconds.
+    # Null when this server has no signing key (the picture is still listed).
+    preview_url: Optional[str] = None
+
+
+class ImageSearchResponse(BaseModel):
+    organization: str
+    images: list[ImageResult]
+    searched_spaces: int
+    preview_expires_in: int
+
+
+def _public_origin(request: Request) -> str:
+    configured = get_settings().public_base_url
+    return (configured or str(request.base_url)).rstrip("/")
+
+
+@router.post(
+    "/images/search",
+    response_model=ImageSearchResponse,
+    summary="Find pictures by a description",
+)
+async def search_images_by_description(
+    payload: ImageSearchRequest,
+    request: Request,
+    ext: core.ExternalCaller = Depends(require_external_caller),
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> ImageSearchResponse:
+    _require_read(ext)
+    try:
+        await core.rate_limit(
+            infra.redis,
+            key=f"quberi:external:imagesearch:{ext.grant_id}",
+            limit=_IMAGE_SEARCH_RATE_LIMIT,
+            window_seconds=60,
+        )
+    except core.OAuthError as exc:
+        raise HTTPException(
+            status_code=exc.status,
+            detail={"code": exc.error, "message": exc.description},
+            headers={"Retry-After": "60"} if exc.status == 429 else None,
+        ) from exc
+
+    requested: Optional[list[uuid.UUID]] = None
+    if payload.space is not None and payload.space.strip():
+        try:
+            view = await spaces_service.resolve_target_space(
+                session,
+                organization_id=ext.organization.id,
+                user_id=ext.user.id,
+                name=payload.space,
+            )
+        except NotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "space_not_found", "message": str(exc)},
+            ) from exc
+        requested = [view.space.id]
+    scope = await image_search.resolve_image_scope(
+        session,
+        organization_id=ext.organization.id,
+        caller_user_id=ext.user.id,
+        requested_space_ids=requested,
+    )
+    try:
+        vector = await image_search.embed_query(image=None, text=payload.query)
+        found = await image_search.search_images(
+            session,
+            qdrant=infra.qdrant,
+            organization_id=ext.organization.id,
+            space_ids=scope,
+            query_vector=vector,
+            top_k=payload.top_k,
+        )
+    except image_search.ImageSearchDisabled as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "image_search_disabled", "message": str(exc)},
+        ) from exc
+    except image_search.ImageSearchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "bad_query", "message": str(exc)},
+        ) from exc
+
+    settings = get_settings()
+    origin = _public_origin(request)
+    can_link = external_image_links.links_available(settings)
+    images = [
+        ImageResult(
+            name=m.document_name,
+            space_name=m.space_name,
+            mime_type=m.mime_type,
+            size_bytes=m.size_bytes,
+            score=round(m.score, 4),
+            preview_url=(
+                f"{origin}/api/v1/external/preview/"
+                + external_image_links.sign(
+                    settings,
+                    user_id=ext.user.id,
+                    grant_id=ext.grant_id,
+                    document_id=m.document_id,
+                )
+                + ".jpg"
+                if can_link
+                else None
+            ),
+        )
+        for m in found.matches
+    ]
+    organization_name = ext.organization.name
+    document_ids = [str(m.document_id) for m in found.matches]
+    await session.commit()  # end the read transaction before the audit write
+    async with session.begin():
+        session.add(
+            AuditEvent(
+                organization_id=ext.organization.id,
+                actor_type="user",
+                actor_id=ext.user.id,
+                action="knowledge.external_image_search",
+                resource_type="oauth_grant",
+                resource_id=ext.grant_id,
+                payload={
+                    "grant_id": str(ext.grant_id),
+                    "client_name": ext.client_name,
+                    "result_count": len(images),
+                    # Ids only; the description is not recorded.
+                    "retrieved_document_ids": document_ids,
+                },
+            )
+        )
+    return ImageSearchResponse(
+        organization=organization_name,
+        images=images,
+        searched_spaces=len(found.space_ids),
+        preview_expires_in=external_image_links.LINK_TTL_SECONDS,
+    )
+
+
+def _gone() -> HTTPException:
+    # One answer for every reason (bad link, expired, revoked, no access, deleted):
+    # the link tells a stranger nothing about which.
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+
+@router.get(
+    "/preview/{token}.jpg",
+    summary="A small JPEG preview named by a short-lived link",
+    responses={200: {"content": {"image/jpeg": {}}}},
+)
+async def preview_by_link(
+    token: str,
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> Response:
+    """No bearer header: the link is the credential, and it is re-checked on every use.
+
+    Fails closed with a plain 404 unless the link is genuine and unexpired **and**
+    the grant behind it is still live, the person still has the permission to read
+    the space and the picture, and the picture still exists and is not archived.
+    """
+
+    link = external_image_links.verify(get_settings(), token)
+    if link is None:
+        raise _gone()
+    try:
+        await core.rate_limit(
+            infra.redis,
+            key=f"quberi:external:preview:{link.grant_id}",
+            limit=_PREVIEW_RATE_LIMIT,
+            window_seconds=60,
+        )
+    except core.OAuthError as exc:
+        raise HTTPException(
+            status_code=exc.status,
+            detail="too many requests",
+            headers={"Retry-After": "60"} if exc.status == 429 else None,
+        ) from exc
+
+    now = datetime.now(timezone.utc)
+    row = (
+        await session.execute(
+            select(OAuthGrant, User, Organization)
+            .join(User, User.id == OAuthGrant.user_id)
+            .join(Organization, Organization.id == OAuthGrant.organization_id)
+            .where(OAuthGrant.id == link.grant_id, OAuthGrant.user_id == link.user_id)
+        )
+    ).first()
+    if row is None:
+        raise _gone()
+    grant, user, org = row
+    if (
+        grant.revoked_at is not None
+        or grant.absolute_expires_at <= now
+        or user.status != "active"
+        or org.status != "active"
+        or not org.allow_external_tools
+        or clients.SCOPE_KNOWLEDGE_READ not in grant.scope.split()
+    ):
+        raise _gone()
+
+    doc = (
+        await session.execute(
+            select(Document, Space.status)
+            .join(Space, Space.id == Document.space_id)
+            .where(
+                Document.id == link.document_id,
+                Document.organization_id == org.id,
+                Space.organization_id == org.id,
+            )
+        )
+    ).first()
+    if doc is None:
+        raise _gone()
+    document, space_status = doc
+    if document.status == "archived" or space_status != "active" or not is_picture(document.mime_type):
+        raise _gone()
+    try:
+        # The same permission check as a signed-in download of this document.
+        document, stream = await documents_core.open_download_stream(
+            session,
+            document_id=document.id,
+            organization_id=org.id,
+            space_id=document.space_id,
+            caller_user_id=user.id,
+        )
+        data = await render_thumbnail(stream)
+    except (NotFoundError, DocumentPermissionError):
+        raise _gone() from None
+    except ThumbnailError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": "default-src 'none'",
+        },
     )
 
 
