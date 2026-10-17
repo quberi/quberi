@@ -607,7 +607,7 @@ async def test_full_login_over_http_then_search_as_the_granting_person(
     seen = {}
     doc, space = uuid.uuid4(), uuid.uuid4()
 
-    async def fake_retrieve(session, *, qdrant, organization_id, caller_user_id, query, top_k):
+    async def fake_retrieve(session, *, qdrant, organization_id, caller_user_id, query, top_k, **_more):
         seen.update(org=organization_id, user=caller_user_id, query=query, top_k=top_k)
         chunk = SimpleNamespace(
             document_id=doc, space_id=space, document_name="Handbook.md",

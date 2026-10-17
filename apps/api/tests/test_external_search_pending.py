@@ -81,7 +81,7 @@ async def _doc(db, boot, space, name, *, state="indexing", status="uploaded", ag
 
 
 def _stub_retrieval(monkeypatch, space_ids):
-    async def fake_retrieve(session, *, qdrant, organization_id, caller_user_id, query, top_k):
+    async def fake_retrieve(session, *, qdrant, organization_id, caller_user_id, query, top_k, **_more):
         return SimpleNamespace(chunks=[], space_ids=list(space_ids))
 
     monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)

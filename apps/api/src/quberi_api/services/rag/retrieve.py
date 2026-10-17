@@ -163,6 +163,7 @@ async def retrieve_for_user(
     caller_user_id: uuid.UUID,
     query: str,
     top_k: int = DEFAULT_TOP_K,
+    space_ids: Sequence[uuid.UUID] | None = None,
 ) -> ScopedRetrieval:
     """Conversation-free retrieval over *all* spaces the caller can see.
 
@@ -171,11 +172,17 @@ async def retrieve_for_user(
     simply the caller's live-accessible spaces (the "auto" scope). Same
     live-permission recompute + defensive re-check as the conversation
     path — the agent can never retrieve from a space its caller can't see.
+
+    ``space_ids`` narrows the search to those spaces *within* what the caller can
+    read: it is intersected with the live set, never added to it, so naming a space
+    you cannot read finds nothing. ``None`` means every readable space.
     """
 
     live_accessible = await list_accessible_space_ids(
         session, user_id=caller_user_id, organization_id=organization_id
     )
+    if space_ids is not None:
+        live_accessible = live_accessible & set(space_ids)
     effective = sorted(live_accessible, key=str)
     chunks, model_id, collection = await _search_scoped_spaces(
         session,

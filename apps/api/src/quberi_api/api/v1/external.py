@@ -114,6 +114,8 @@ class SearchRequest(BaseModel):
 
     query: str = Field(min_length=1, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=10)
+    # Name of one space to look in; omit to look in every space the person can read.
+    space: Optional[str] = Field(default=None, max_length=200)
 
 
 class Passage(BaseModel):
@@ -173,6 +175,21 @@ async def search(
             headers={"Retry-After": "60"} if exc.status == 429 else None,
         ) from exc
 
+    requested: Optional[list[uuid.UUID]] = None
+    if payload.space is not None and payload.space.strip():
+        try:
+            view = await spaces_service.resolve_target_space(
+                session,
+                organization_id=ext.organization.id,
+                user_id=ext.user.id,
+                name=payload.space,
+            )
+        except NotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "space_not_found", "message": str(exc)},
+            ) from exc
+        requested = [view.space.id]
     result = await retrieve_for_user(
         session,
         qdrant=infra.qdrant,
@@ -180,6 +197,7 @@ async def search(
         caller_user_id=ext.user.id,
         query=payload.query,
         top_k=payload.top_k,
+        space_ids=requested,
     )
     chunks = result.chunks[: payload.top_k]
 
