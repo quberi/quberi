@@ -32,6 +32,7 @@ import { DocumentDetailDrawer } from './DocumentDetailDrawer'
 import { formatBytes } from './DocumentRow'
 import { DocumentsProvider, useDocuments } from './DocumentsContext'
 import { UploadDropZone } from './UploadDropZone'
+import { UploadReviewSection } from './UploadReview'
 import type { DocumentFileType, DocumentSourceKind, DocumentSummary } from './types'
 import { useFormatDate } from '../../i18n/formatDate'
 import { localizedName } from '../../i18n/localizedName'
@@ -84,6 +85,8 @@ function SpaceKnowledgeViewInner({
 }) {
   const { t } = useTranslation()
   const { page, reloadPage, reloadStats, stats } = useDocuments()
+  const { reload: reloadSpaces } = useSpaces()
+  const reloadAll = () => Promise.all([reloadPage(), reloadStats(), reloadSpaces()])
 
   // Kick off the first page fetch on mount — the provider only enters
   // "browser mode" once we call ``reloadPage`` at least once.
@@ -154,7 +157,14 @@ function SpaceKnowledgeViewInner({
       </section>
 
       <StatsBar />
-
+      {space && (
+        <UploadReviewSection
+          onChanged={() => void reloadAll()}
+          required={space.require_upload_approval === true}
+          role={space.caller_role}
+          spaceId={space.id}
+        />
+      )}
       <section className="panel space-view-sources">
         <div className="panel-heading">
           <div>

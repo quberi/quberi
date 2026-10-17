@@ -42,6 +42,7 @@ async def pictures_needing_index(
         .where(
             func.lower(Document.mime_type).like("image/%"),
             Document.status != "archived",
+            Document.review_state == "approved",
             Space.status == "active",
             or_(
                 Document.indexing_state == "not_indexed",

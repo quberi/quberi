@@ -204,6 +204,7 @@ async def search_images(
                 ),
                 Document.id.not_in(doc_access.denied),
                 Document.status != "archived",
+                Document.review_state == "approved",
                 Document.indexing_state == "indexed",
                 Space.organization_id == organization_id,
                 Space.status == "active",

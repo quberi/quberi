@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth/AuthContext'
 import { useAuthModal } from '../auth/AuthModalContext'
 import { AccessRequestInbox } from '../accessRequests/AccessRequestInbox'
+import { PendingReviewInbox } from './PendingReviewInbox'
 import { CreateSpaceDialog } from '../spaces/CreateSpaceDialog'
 import { useSpaces } from '../spaces/SpacesContext'
 import type { SpaceSummary } from '../spaces/types'
@@ -64,6 +65,7 @@ export function KnowledgePanel({
   return (
     <>
       <AccessRequestInbox />
+      <PendingReviewInbox onOpenSpace={onOpenSpace} />
       <section className="panel knowledge-header">
         <div className="knowledge-header-lockup">
           <span className="knowledge-header-mark">

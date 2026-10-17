@@ -30,6 +30,8 @@ from quberi_api.api.v1.spaces.schemas import (
     SpaceSummary,
 )
 from quberi_api.services import access_requests, space_owners
+from quberi_api.services.documents import core as documents_core
+from quberi_api.services.documents.review import space_requires_review
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.authz import caller_has_org_role, list_accessible_space_ids
 router = APIRouter(prefix="/spaces", tags=["spaces"])
@@ -65,6 +67,7 @@ def _summary(view: spaces_service.SpaceView) -> SpaceSummary:
     summary = SpaceSummary.model_validate(view.space)
     return summary.model_copy(
         update={
+            "require_upload_approval": space_requires_review(view.space.attributes),
             "is_owner": view.is_owner,
             "locale": _locale(view),
             "shared_only_documents": view.shared_only_documents,
@@ -76,6 +79,7 @@ def _detail(view: spaces_service.SpaceView) -> SpaceDetail:
     detail = SpaceDetail.model_validate(view.space)
     return detail.model_copy(
         update={
+            "require_upload_approval": space_requires_review(view.space.attributes),
             "is_owner": view.is_owner,
             "locale": _locale(view),
             "shared_only_documents": view.shared_only_documents,
@@ -99,6 +103,12 @@ async def list_spaces(
         include_shared=True,
     )
     items = [_summary(view) for view in views]
+    organization_id, user_id = caller.organization.id, caller.user.id
+    for view, item in zip(views, items):
+        if view.shared_only_documents == 0:
+            item.caller_role = await documents_core._caller_space_role(
+                session, user_id=user_id, organization_id=organization_id, space_id=view.space.id
+            )
     return SpaceList(items=items, total=len(items))
 
 
@@ -244,7 +254,15 @@ async def get_space(
         user_id=caller.user.id,
         include_shared=True,
     )
-    return _detail(view)
+    detail = _detail(view)
+    if view.shared_only_documents == 0:
+        detail.caller_role = await documents_core._caller_space_role(
+            session,
+            user_id=caller.user.id,
+            organization_id=caller.organization.id,
+            space_id=view.space.id,
+        )
+    return detail
 
 
 @router.post(

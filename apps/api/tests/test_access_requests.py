@@ -73,7 +73,8 @@ async def test_an_admin_asks_and_the_space_owner_approves(db_session, org_and_ow
     actions = (
         await db.execute(select(AuditEvent.action).where(AuditEvent.action.like("space.access_request%")))
     ).scalars().all()
-    assert actions == ["space.access_requested", "space.access_request_approved"]
+    # (the test runs in one long transaction, so created_at cannot order them)
+    assert sorted(actions) == ["space.access_request_approved", "space.access_requested"]
     await db.commit()
     assert await svc.list_to_decide(db, organization_id=boot.organization_id, user_id=w.admin.id) == []
 

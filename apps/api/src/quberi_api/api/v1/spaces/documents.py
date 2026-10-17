@@ -80,6 +80,9 @@ class DocumentView(BaseModel):
     chunk_count: int = 0
     last_indexed_at: Optional[datetime] = None
     indexing_error: Optional[str] = None
+    # 'approved', or 'pending' / 'rejected' in a space that approves uploads (see the note).
+    review_state: str = "approved"
+    review_note: Optional[str] = None
     # True only for a guest-sandbox file uploaded from the requesting browser
     # (matched by the hash of its X-Guest-Token). Never true for anyone else.
     is_mine: bool = False
@@ -140,6 +143,8 @@ def _serialise(v, guest_token: Optional[str] = None) -> DocumentView:
         chunk_count=doc.chunk_count,
         last_indexed_at=doc.last_indexed_at,
         indexing_error=doc.indexing_error,
+        review_state=doc.review_state,
+        review_note=doc.review_note,
         is_mine=guest_sandbox.is_owned_by(doc.attributes, guest_token),
     )
 

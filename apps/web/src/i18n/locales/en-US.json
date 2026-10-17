@@ -1577,5 +1577,32 @@
     "setAccess": "Set access",
     "prev": "Previous",
     "next": "Next"
+  },
+  "uploadReview": {
+    "title": "Upload approval",
+    "hintReviewer": "When this is on, files uploaded by editors wait here. Nothing is indexed, searched or quoted until an owner or admin approves it. Owners and admins upload straight in.",
+    "hintEditor": "Uploads to this space are approved by an owner or admin first. Your files appear as pending until then.",
+    "toggle": "Uploads need approval",
+    "tab": {
+      "pending": "Waiting",
+      "rejected": "Rejected"
+    },
+    "empty": {
+      "pending": "Nothing is waiting for approval.",
+      "rejected": "No rejected uploads."
+    },
+    "openToJudge": "Download to review",
+    "note": "Reason",
+    "notePlaceholder": "Reason (required to reject)",
+    "needReason": "Say why you are rejecting it.",
+    "approve": "Approve",
+    "reject": "Reject",
+    "badge": {
+      "pending": "Pending approval",
+      "rejected": "Rejected"
+    },
+    "inboxTitle": "Uploads waiting for your approval",
+    "inboxLine": "{{space}}: {{count}} waiting",
+    "inboxOpen": "Review"
   }
 }

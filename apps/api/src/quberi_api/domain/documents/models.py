@@ -40,8 +40,10 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -50,6 +52,7 @@ from quberi_api.db.base import Base
 from quberi_api.db.types import TimestampMixin, UUIDPk
 from quberi_api.domain._constraints import in_values
 from quberi_api.domain.enums import (
+    DOCUMENT_REVIEW_STATES,
     DOCUMENT_ACCESS_EFFECTS,
     DOCUMENT_ACCESS_SUBJECT_TYPES,
     DOCUMENT_CACHING_POLICY,
@@ -175,7 +178,14 @@ class Document(TimestampMixin, Base):
         in_values(
             "indexing_state", DOCUMENT_INDEXING_STATES, name="indexing_state"
         ),
+        in_values("review_state", DOCUMENT_REVIEW_STATES, name="review_state"),
         Index("ix_documents_organization_id", "organization_id"),
+        Index(
+            "ix_documents_space_id_review_state",
+            "space_id",
+            "review_state",
+            postgresql_where=text("review_state <> 'approved'"),
+        ),
         Index("ix_documents_space_id_created_at", "space_id", "created_at"),
         Index("ix_documents_uploaded_by_user_id", "uploaded_by_user_id"),
         Index("ix_documents_source_id", "source_id"),
@@ -234,8 +244,20 @@ class Document(TimestampMixin, Base):
     indexing_error: Mapped[Optional[str]] = mapped_column(
         String(1024), nullable=True
     )
-
-
+    # ---- Upload approval -------------------------------------------------
+    # A space can ask for approval of what editors upload. Until a reviewer
+    # approves, the document is ``pending``: nothing is indexed and only the
+    # uploader and the reviewers can see it. See ``services.documents.review``.
+    review_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="approved", server_default="approved"
+    )
+    reviewed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional["DateTime"]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 class DocumentAccessRule(TimestampMixin, Base):
     """One document-level exception to its space's permissions.
 

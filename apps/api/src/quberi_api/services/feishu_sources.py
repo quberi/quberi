@@ -27,7 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.documents.models import DocumentSource, FeishuFolderClaim
 from quberi_api.domain.integrations.models import Integration
+from quberi_api.domain.spaces.models import Space
 from quberi_api.services.errors import (
+    ForbiddenError,
     AlreadyExistsError,
     InvalidInputError,
     NotFoundError,
@@ -85,7 +87,7 @@ async def prepare_config(
     """
 
     from quberi_api.services.documents.core import caller_has_space_role
-
+    from quberi_api.services.documents.review import space_requires_review
     folder_token = parse_folder_token(config)
     space_id = parse_target_space_id(config)
     allowed = await caller_has_space_role(
@@ -101,6 +103,25 @@ async def prepare_config(
         raise NotFoundError(
             "目标空间不存在，或你没有在其中添加文档的权限。 "
             "The target space does not exist, or you cannot add documents to it."
+        )
+    attributes = (
+        await session.execute(
+            select(Space.attributes).where(
+                Space.id == space_id, Space.organization_id == organization_id
+            )
+        )
+    ).scalar_one_or_none()
+    if space_requires_review(attributes) and not await caller_has_space_role(
+        session,
+        user_id=actor_user_id,
+        organization_id=organization_id,
+        space_id=space_id,
+        required="admin",
+    ):
+        # Synced files are not reviewed one by one, so only a reviewer may connect a folder.
+        raise ForbiddenError(
+            "这个空间的上传需要审批，只有空间所有者或管理员可以连接飞书文件夹。 "
+            "Uploads to this space need approval; only an owner or admin can connect a Feishu folder."
         )
     return {"folder_token": folder_token, "target_space_id": str(space_id)}, folder_token
 

@@ -296,6 +296,7 @@ async def _pending_documents(
         ),
         Document.id.not_in(doc_access.denied),
         Document.status != "archived",
+        Document.review_state == "approved",
         Document.indexing_state.in_(_PENDING_STATES),
         Document.updated_at >= cutoff,
     )
@@ -470,6 +471,7 @@ async def list_spaces(
             .where(
                 Document.organization_id == ext.organization.id,
                 Document.status != "archived",
+                Document.review_state == "approved",
                 or_(
                     and_(
                         Document.space_id.in_(whole_ids),
@@ -554,6 +556,7 @@ async def list_documents(
         Document.organization_id == ext.organization.id,
         Document.space_id == view.space.id,
         Document.status != "archived",
+        Document.review_state == "approved",
         visibility_clause(access, whole_space=view.shared_only_documents == 0),
     )
     if type:

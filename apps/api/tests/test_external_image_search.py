@@ -136,9 +136,17 @@ def test_a_link_round_trips_and_is_short():
 def test_changing_any_character_breaks_the_link():
     settings = get_settings()
     token = links.sign(settings, user_id=uuid.uuid4(), grant_id=uuid.uuid4(), document_id=uuid.uuid4())
+    import base64
+
+    def decoded(value: str) -> bytes:
+        return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
     for i in range(len(token)):
         flipped = "A" if token[i] != "A" else "B"
-        assert links.verify(settings, token[:i] + flipped + token[i + 1 :]) is None, i
+        changed = token[:i] + flipped + token[i + 1 :]
+        if decoded(changed) == decoded(token):
+            continue  # the last character can carry unused bits: nothing actually changed
+        assert links.verify(settings, changed) is None, i
     assert links.verify(settings, token[:-1]) is None
     assert links.verify(settings, token + "A") is None
     assert links.verify(settings, "") is None

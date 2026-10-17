@@ -5894,3 +5894,23 @@ details.review-part > summary { cursor: pointer; }
   min-height: 40px;
   padding: 10px 12px;
 }
+
+.upload-review-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.upload-review-list {
+  display: grid;
+  gap: 10px;
+}
+.upload-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.upload-review-actions input {
+  flex: 1 1 220px;
+}

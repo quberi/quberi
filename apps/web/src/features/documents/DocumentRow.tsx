@@ -111,6 +111,18 @@ export function DocumentRow({ doc }: { doc: DocumentSummary }) {
           {doc.uploader_display_name || t('documents.unknownUploader')}
           <span className="dot-sep">·</span>
           {formatDate(doc.created_at)}
+          {doc.review_state === 'pending' && (
+            <span className="badge badge-pending">{t('uploadReview.badge.pending')}</span>
+          )}
+          {doc.review_state === 'rejected' && (
+            <span
+              className="badge badge-pending"
+              title={doc.review_note ?? undefined}
+            >
+              {t('uploadReview.badge.rejected')}
+              {doc.review_note ? `: ${doc.review_note}` : ''}
+            </span>
+          )}
         </small>
       </span>
       <span className="document-row-actions">

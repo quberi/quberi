@@ -13,6 +13,10 @@ export interface SpaceSummary {
   is_owner: boolean
   /** Only on the organisation's space list: no owner of the space can act any more. */
   owner_unavailable?: boolean
+  /** Do uploads to this space wait for approval? */
+  require_upload_approval?: boolean
+  /** The caller's role on it: owner, admin, editor, viewer or none. */
+  caller_role?: string | null
   /** Only on the organisation's space list: can the caller read it / their pending request. */
   caller_can_read?: boolean | null
   caller_pending_request_id?: string | null

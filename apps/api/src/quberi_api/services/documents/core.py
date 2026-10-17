@@ -31,6 +31,7 @@ from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services import access_guard, doc_acl, document_sources
+from quberi_api.services.documents import review as review_service
 from quberi_api.services.authz import resolve_effective_role_codes
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.documents.errors import (
@@ -297,8 +298,8 @@ async def _read_gate(
     user_id: uuid.UUID,
     organization_id: uuid.UUID,
     space_id: uuid.UUID,
-) -> tuple[bool, doc_acl.DocAccess]:
-    """What this person may read in one space: ``(whole_space, document_rules)``.
+) -> tuple[bool, doc_acl.DocAccess, review_service.ReviewScope]:
+    """What this person may read in one space: ``(whole_space, document_rules, review)``.
 
     ``whole_space`` is true when their role lets them read the space; then only the
     documents hidden from them are subtracted. Otherwise they may read only the
@@ -316,15 +317,26 @@ async def _read_gate(
     if not whole and space_id not in access.granted.values():
         # 404-ish: hide existence rather than leak.
         raise NotFoundError(f"space not accessible: {space_id}")
-    return whole, access
+    return whole, access, review_service.review_scope_for_role(user_id, role)
 
 
 def _require_visible(
-    doc: Document, *, whole_space: bool, access: doc_acl.DocAccess
+    doc: Document,
+    *,
+    whole_space: bool,
+    access: doc_acl.DocAccess,
+    review: review_service.ReviewScope,
 ) -> None:
-    """Raise ``NotFoundError`` unless this document may be read under ``_read_gate``."""
+    """Raise ``NotFoundError`` unless this document may be read under ``_read_gate``.
 
-    if doc.id in access.denied or not (whole_space or doc.id in access.granted):
+    A document waiting for approval is visible to its uploader and the space's reviewers only.
+    """
+
+    if (
+        doc.id in access.denied
+        or not (whole_space or doc.id in access.granted)
+        or not review.allows(doc)
+    ):
         raise NotFoundError(f"document not found: {doc.id}")
 async def caller_has_space_role(
     session: AsyncSession,
@@ -425,7 +437,7 @@ async def list_documents_in_space(
     to ``created_at``.
     """
 
-    whole_space, access = await _read_gate(
+    whole_space, access, review = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
@@ -441,6 +453,7 @@ async def list_documents_in_space(
         Document.organization_id == organization_id,
         Document.space_id == space_id,
         doc_acl.visibility_clause(access, whole_space=whole_space),
+        review.clause(),
     )
     if not include_archived:
         base = base.where(Document.status != "archived")
@@ -491,7 +504,7 @@ async def stats_for_space(
     pulling the full document list. Excludes archived rows.
     """
 
-    whole_space, access = await _read_gate(
+    whole_space, access, review = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
@@ -507,6 +520,7 @@ async def stats_for_space(
             Document.space_id == space_id,
             Document.status != "archived",
             doc_acl.visibility_clause(access, whole_space=whole_space),
+            review.clause(),
         )
         .subquery()
     )
@@ -578,7 +592,7 @@ async def get_document(
     space_id: uuid.UUID,
     caller_user_id: uuid.UUID,
 ) -> DocumentView:
-    whole_space, access = await _read_gate(
+    whole_space, access, review = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
@@ -596,7 +610,7 @@ async def get_document(
     ).scalar_one_or_none()
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
-    _require_visible(doc, whole_space=whole_space, access=access)
+    _require_visible(doc, whole_space=whole_space, access=access, review=review)
     return await _to_view(session, doc)
 
 
@@ -635,7 +649,9 @@ async def upload_local(
 
     filename = _sanitize_filename(filename)
     mime = _validate_mime(content_type)
-
+    review_state = await review_service.initial_state(
+        session, space_id=space_id, organization_id=organization_id, role=role
+    )
     # Ensure the local source row exists (idempotent).
     local_source = await document_sources.ensure_local_source(
         session, organization_id=organization_id
@@ -674,6 +690,7 @@ async def upload_local(
             external_ref={},
             sync_state="local_only",
             status="uploaded",
+            review_state=review_state,
             attributes=dict(attributes or {}),
         )
         session.add(doc)
@@ -691,6 +708,7 @@ async def upload_local(
                     "mime": mime,
                     "size_bytes": stored.size_bytes,
                     "checksum_sha256": stored.checksum_sha256,
+                    "review_state": review_state,
                 },
             )
         )
@@ -703,8 +721,9 @@ async def upload_local(
     # only logs — the upload itself has already committed, and the user
     # can retry indexing from the UI. The DB default keeps the row at
     # ``indexing_state='not_indexed'`` until the worker flips it.
-    await enqueue_index_document(doc.id)
-
+    # A file waiting for approval is not indexed; approving it queues the job.
+    if review_state == "approved":
+        await enqueue_index_document(doc.id)
     return await _to_view(session, doc)
 
 
@@ -963,7 +982,7 @@ async def get_document_text(
     changed since indexing (same ``storage_key`` / checksum).
     """
 
-    whole_space, access = await _read_gate(
+    whole_space, access, review = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
@@ -981,7 +1000,7 @@ async def get_document_text(
     ).scalar_one_or_none()
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
-    _require_visible(doc, whole_space=whole_space, access=access)
+    _require_visible(doc, whole_space=whole_space, access=access, review=review)
     if doc.storage_key is None:
         raise NotFoundError(
             "document has no local blob (reference-only source; not yet supported)"
@@ -1012,7 +1031,7 @@ async def open_download_stream(
     document metadata.
     """
 
-    whole_space, access = await _read_gate(
+    whole_space, access, review = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
@@ -1030,7 +1049,7 @@ async def open_download_stream(
     ).scalar_one_or_none()
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
-    _require_visible(doc, whole_space=whole_space, access=access)
+    _require_visible(doc, whole_space=whole_space, access=access, review=review)
     if doc.storage_key is None:
         # ``reference_only`` sources would need an external connector to
         # stream — not supported in Slice E.

@@ -1577,5 +1577,32 @@
     "setAccess": "设置权限",
     "prev": "上一页",
     "next": "下一页"
+  },
+  "uploadReview": {
+    "title": "上传审批",
+    "hintReviewer": "开启后，编辑者上传的文件先在这里等待。批准之前不会被索引、搜索或引用。所有者和管理员上传的文件直接入库。",
+    "hintEditor": "这个空间的上传需要所有者或管理员先批准，在此之前你的文件显示为待审批。",
+    "toggle": "上传需要审批",
+    "tab": {
+      "pending": "待审批",
+      "rejected": "已拒绝"
+    },
+    "empty": {
+      "pending": "没有待审批的文件。",
+      "rejected": "没有被拒绝的上传。"
+    },
+    "openToJudge": "下载查看",
+    "note": "理由",
+    "notePlaceholder": "理由（拒绝时必填）",
+    "needReason": "请写明拒绝的理由。",
+    "approve": "批准",
+    "reject": "拒绝",
+    "badge": {
+      "pending": "待审批",
+      "rejected": "已拒绝"
+    },
+    "inboxTitle": "有上传等你审批",
+    "inboxLine": "{{space}}：{{count}} 份待审批",
+    "inboxOpen": "去审批"
   }
 }

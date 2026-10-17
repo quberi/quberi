@@ -78,6 +78,9 @@ export interface DocumentSummary {
   chunk_count: number
   last_indexed_at: string | null
   indexing_error: string | null
+  /** 'approved', or 'pending' / 'rejected' in a space that approves uploads. */
+  review_state?: 'approved' | 'pending' | 'rejected'
+  review_note?: string | null
   /** Guest sandbox only: uploaded from the requesting browser. */
   is_mine?: boolean
 }

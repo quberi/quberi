@@ -71,6 +71,10 @@ LEGACY_IMAGE_MODEL = "bge-vl-base"
 # ---------------------------------------------------------------------------
 
 
+class ReviewPendingError(RuntimeError):
+    """The document has not been approved, so nothing of it may be indexed."""
+
+
 @dataclass(frozen=True)
 class IndexingResult:
     document_id: uuid.UUID
@@ -103,7 +107,11 @@ async def index_document(
 
     doc_uuid = uuid.UUID(document_id)
     async with session_factory() as session:
-        result = await _run_pipeline(session, qdrant=qdrant, document_id=doc_uuid)
+        try:
+            result = await _run_pipeline(session, qdrant=qdrant, document_id=doc_uuid)
+        except ReviewPendingError:
+            # Waiting for (or refused) approval: approving queues a fresh job.
+            return {"document_id": document_id, "skipped": "not_approved"}
     return {
         "document_id": str(result.document_id),
         "chunk_count": result.chunk_count,
@@ -187,7 +195,8 @@ async def _run_pipeline(
         raise RuntimeError(f"document {document_id} not found")
     if doc.status == "archived":
         raise RuntimeError(f"document {document_id} is archived; refusing to index")
-
+    if doc.review_state != "approved":
+        raise ReviewPendingError(f"document {document_id} is not approved; not indexing")
     # ``reference_only`` docs carry no storage_key — they'll come with
     # pre-fetched text via :func:`index_document_from_text` instead.
     if not doc.storage_key:
@@ -303,7 +312,8 @@ async def index_document_from_text(
         raise RuntimeError(f"document {document_id} not found")
     if doc.status == "archived":
         raise RuntimeError(f"document {document_id} is archived; refusing to index")
-
+    if doc.review_state != "approved":
+        raise ReviewPendingError(f"document {document_id} is not approved; not indexing")
     doc.indexing_state = "indexing"
     doc.indexing_error = None
     await session.commit()

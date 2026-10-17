@@ -352,6 +352,7 @@ async def list_documents_for_manager(
         Document.organization_id == organization_id,
         Document.space_id == space_id,
         Document.status != "archived",
+        Document.review_state == "approved",
     ]
     if q and q.strip():
         where.append(Document.name.ilike(f"%{q.strip()}%"))

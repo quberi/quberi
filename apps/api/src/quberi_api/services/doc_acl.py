@@ -135,6 +135,7 @@ async def load_doc_access(
                 Document.space_id,
                 Document.status,
                 Space.status,
+                Document.review_state,
             )
             .join(Document, Document.id == DocumentAccessRule.document_id)
             .join(Space, Space.id == Document.space_id)
@@ -145,7 +146,7 @@ async def load_doc_access(
             )
         )
     ).all()
-    denied = {doc_id for effect, doc_id, _s, _ds, _ss in rows if effect == "deny"}
+    denied = {doc_id for effect, doc_id, _s, _ds, _ss, _rs in rows if effect == "deny"}
     if denied:
         # The owner of a space is never denied one of its documents: they are accountable for
         # the space's content and approve who else may read it, so no rule can hide it from
@@ -153,7 +154,7 @@ async def load_doc_access(
         # owner, hand the space to someone else first.
         from quberi_api.services.documents import core as documents_core
 
-        doc_space = {doc_id: space_id for _e, doc_id, space_id, _ds, _ss in rows}
+        doc_space = {doc_id: space_id for _e, doc_id, space_id, _ds, _ss, _rs in rows}
         immune_spaces: set[uuid.UUID] = set()
         for space_id in {doc_space[d] for d in denied}:
             role = await documents_core._caller_space_role(
@@ -164,10 +165,11 @@ async def load_doc_access(
         denied = {d for d in denied if doc_space[d] not in immune_spaces}
     granted = {
         doc_id: space_id
-        for effect, doc_id, space_id, doc_status, space_status in rows
+        for effect, doc_id, space_id, doc_status, space_status, review_state in rows
         if effect == "allow"
         and doc_id not in denied
         and doc_status != "archived"
+        and review_state == "approved"
         and space_status == "active"
     }
     return DocAccess(granted=granted, denied=frozenset(denied))

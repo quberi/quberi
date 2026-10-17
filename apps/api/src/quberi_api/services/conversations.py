@@ -880,6 +880,7 @@ async def plan_picture_turn(
         or_(Document.space_id.in_(scope), Document.id.in_(set(doc_access.granted))),
         Document.id.not_in(doc_access.denied),
         Document.status != "archived",
+        Document.review_state == "approved",
         file_type_clause(Document.mime_type, "image"),
     )
     total = (

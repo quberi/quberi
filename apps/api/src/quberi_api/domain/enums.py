@@ -84,6 +84,10 @@ ROLE_RESOURCE_TYPES = ("organization", "space", "agent")
 SPACE_ACCESS_REQUEST_STATUSES = ("pending", "approved", "rejected", "cancelled")
 SPACE_ACCESS_REQUEST_ROLES = ("viewer", "editor")
 
+# A document in a space that asks for approval before anything is indexed: ``pending`` until
+# a reviewer decides, then ``approved`` (indexed) or ``rejected``. Everything else is
+# ``approved``.
+DOCUMENT_REVIEW_STATES = ("approved", "pending", "rejected")
 DOCUMENT_ACCESS_EFFECTS = ("allow", "deny")
 # The same kinds of principal a space can be shared with, except machines.
 DOCUMENT_ACCESS_SUBJECT_TYPES = (

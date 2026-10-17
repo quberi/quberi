@@ -71,6 +71,10 @@ class SpaceSummary(BaseModel):
     # (they left, were suspended, or hold the role by a leftover grant). The organisation
     # owner can then name a new one.
     owner_unavailable: bool = False
+    # Do uploads to this space wait for approval? And what is the caller's role on it
+    # ('owner', 'admin', 'editor', 'viewer', or none)? Set on the space lists and the detail.
+    require_upload_approval: bool = False
+    caller_role: Optional[str] = None
     # Only on the organisation's space list, for the caller: can they read this space, and
     # do they have a pending request for it?
     caller_can_read: Optional[bool] = None
