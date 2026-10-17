@@ -1538,7 +1538,8 @@
     "effectHint": {
       "allow": "即使不能访问空间，也能读取这份文档",
       "deny": "即使能访问空间，也搜不到、读不了这份文档"
-    }
+    },
+    "allCovered": "这一类的人都已经在上面的列表里了。"
   },
   "accessRequests": {
     "inboxTitle": "有 {{count}} 条访问申请等你处理",

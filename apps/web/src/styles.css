@@ -5888,3 +5888,9 @@ details.review-part > summary { cursor: pointer; }
   gap: 12px;
   margin-top: 10px;
 }
+
+.doc-access-form select {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+}

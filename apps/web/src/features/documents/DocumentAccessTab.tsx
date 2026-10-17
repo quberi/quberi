@@ -1,5 +1,5 @@
 import { Ban, Loader2, Share2, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -53,8 +53,23 @@ export function DocumentAccessTab({
   const [subjectId, setSubjectId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const candidates = useSubjectCandidates(subjectType)
-
+  const allCandidates = useSubjectCandidates(subjectType)
+  const rules = state.kind === 'ready' ? state.items : []
+  // Offer only people who are not already covered: not in the list being added to, and for an
+  // Allow not already denied (a denial wins, so allowing them would do nothing).
+  const candidates = useMemo(
+    () =>
+      allCandidates.filter(
+        (c) =>
+          !rules.some(
+            (r) =>
+              r.subject_type === subjectType &&
+              (subjectType === 'organization' || r.subject_id === c.id) &&
+              (r.effect === effect || (effect === 'allow' && r.effect === 'deny')),
+          ),
+      ),
+    [allCandidates, rules, subjectType, effect],
+  )
   const load = useCallback(async () => {
     if (!credentials) return
     setState({ kind: 'loading' })
@@ -103,7 +118,6 @@ export function DocumentAccessTab({
     )
   }
 
-  const rules = state.items
   const shared = rules.filter((r) => r.effect === 'allow')
   const hidden = rules.filter((r) => r.effect === 'deny')
 
@@ -157,7 +171,7 @@ export function DocumentAccessTab({
         rules={hidden}
         title={t('docAccess.hiddenFrom')}
       />
-      <form className="doc-access-form" onSubmit={(e) => void add(e)}>
+      <form className="doc-access-form dialog-form" onSubmit={(e) => void add(e)}>
         <div className="doc-access-effects" role="radiogroup" aria-label={t('docAccess.effect')}>
           {(['allow', 'deny'] as AccessEffect[]).map((e) => (
             <button
@@ -190,7 +204,7 @@ export function DocumentAccessTab({
           <span>{t('spaceAccess.subject')}</span>
           <select onChange={(e) => setSubjectId(e.target.value)} value={subjectId}>
             {candidates.length === 0 && (
-              <option value="">{t('spaceAccess.addDialog.noCandidates')}</option>
+              <option value="">{t('docAccess.allCovered')}</option>
             )}
             {candidates.map((c) => (
               <option key={c.id} value={c.id}>

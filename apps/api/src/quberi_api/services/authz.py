@@ -997,6 +997,15 @@ async def list_effective_space_members(
         best_role = min(
             paths, key=lambda p: _ROLE_PRIORITY.get(p.role_code, 99)
         ).role_code
+        if best_role in ("owner", "admin") and space.preset != "personal":
+            # The organisation owner of a team or enterprise organisation is not a space
+            # administrator, however the role reached them: show what they can really do.
+            from quberi_api.services import access_guard
+
+            if await access_guard.user_is_restricted_owner(
+                session, organization_id=organization_id, user_id=uid
+            ):
+                best_role = "editor"
         result.append(
             EffectiveMemberView(
                 user_id=uid,

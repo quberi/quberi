@@ -77,6 +77,29 @@ describe('DocumentAccessTab', () => {
     await waitFor(() => expect(api.listAccessRules).toHaveBeenCalledTimes(2))
   })
 
+  it('does not offer someone who is already on the list being added to', async () => {
+    api.listAccessRules.mockResolvedValue({ items: [rule('r2', 'deny', 'Ann')], total: 1 })
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    await screen.findByText('Ann')
+    // Allow is the default: Ann is denied, and a denial wins, so allowing her would do nothing.
+    expect(screen.getByText('docAccess.allCovered')).toBeTruthy()
+    await waitFor(() =>
+      expect((screen.getByText('docAccess.add').closest('button') as HTMLButtonElement).disabled).toBe(true),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: /docAccess.effectName.deny/ }))
+    expect(screen.getByText('docAccess.allCovered')).toBeTruthy()
+  })
+
+  it('still offers a person who is allowed when adding a denial', async () => {
+    api.listAccessRules.mockResolvedValue({ items: [rule('r1', 'allow', 'Ann')], total: 1 })
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    await screen.findByText('Ann')
+    // She is already allowed, so Allow has nobody left; Deny can still pick her.
+    expect(screen.getByText('docAccess.allCovered')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: /docAccess.effectName.deny/ }))
+    expect(screen.getByText('Ann · ann@example.com')).toBeTruthy()
+  })
+
   it('does not send an id for the whole organisation', async () => {
     api.listAccessRules.mockResolvedValue({ items: [], total: 0 })
     api.addAccessRule.mockResolvedValue(rule('r4', 'allow', 'Acme'))

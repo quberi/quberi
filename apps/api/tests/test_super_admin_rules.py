@@ -501,3 +501,26 @@ async def test_the_org_owner_gets_a_clear_refusal_when_creating_a_space(
     )
     assert resp.status_code == 403
     assert "cannot create spaces" in resp.json()["detail"]
+
+
+async def test_the_member_list_shows_the_org_owner_as_the_editor_they_really_are(
+    db_session, org_and_owner
+):
+    from quberi_api.services.authz import list_effective_space_members
+
+    db, boot = db_session, org_and_owner
+    w = await _world(db, boot)
+    role = (
+        await db.execute(select(Role).where(Role.code == "owner", Role.is_system.is_(True)))
+    ).scalar_one()
+    db.add(
+        RoleBinding(
+            organization_id=boot.organization_id, role_id=role.id, subject_type="user",
+            subject_id=w.owner.id, resource_type="space", resource_id=w.space.id, conditions={},
+        )
+    )
+    await db.commit()
+    members = await list_effective_space_members(
+        db, organization_id=boot.organization_id, space_id=w.space.id
+    )
+    assert {m.user_id: m.effective_role for m in members} == {w.admin.id: "owner", w.owner.id: "editor"}

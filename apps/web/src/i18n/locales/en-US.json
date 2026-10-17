@@ -1538,7 +1538,8 @@
     "effectHint": {
       "allow": "Can read this document even without access to the space",
       "deny": "Cannot find or read this document, even with access to the space"
-    }
+    },
+    "allCovered": "Everyone of this kind is already in a list above."
   },
   "accessRequests": {
     "inboxTitle": "{{count}} access request(s) waiting for you",
