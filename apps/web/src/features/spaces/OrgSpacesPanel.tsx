@@ -8,7 +8,8 @@ import { ROLE_CODES, SUBJECT_TYPES, SpaceAccessPanel } from '../spaceAccess/Spac
 import type { AccessSubjectType, SpaceRoleCode } from '../spaceAccess/types'
 import { subjectIdForApi, useSubjectCandidates } from '../spaceAccess/useSubjectCandidates'
 
-import { archiveSpace, createSpace, listOrganizationSpaces } from './api'
+import { useMembers } from '../members/MembersContext'
+import { archiveSpace, createSpace, listOrganizationSpaces, transferSpaceOwner } from './api'
 import { useSpaces } from './SpacesContext'
 import type { SpaceSummary } from './types'
 
@@ -38,7 +39,8 @@ export function OrgSpacesPanel() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const [createOpen, setCreateOpen] = useState(false)
   const [managingId, setManagingId] = useState<string | null>(null)
-
+  const [replacingId, setReplacingId] = useState<string | null>(null)
+  const isOrgOwner = credentials?.orgRole === 'owner'
   const load = useCallback(async () => {
     if (!credentials) return
     setState({ kind: 'loading' })
@@ -116,6 +118,20 @@ export function OrgSpacesPanel() {
                   <span className={archived ? 'badge' : 'badge role-viewer'}>
                     {t(`spaces.status.${space.status}`)}
                   </span>
+                  {!archived && space.owner_unavailable && (
+                    <span className="badge badge-pending" title={t('orgSpaces.noOwnerHint')}>
+                      {t('orgSpaces.noOwner')}
+                    </span>
+                  )}
+                  {!archived && space.owner_unavailable && isOrgOwner && (
+                    <button
+                      className="secondary-button"
+                      onClick={() => setReplacingId(space.id)}
+                      type="button"
+                    >
+                      <span>{t('orgSpaces.replaceOwner')}</span>
+                    </button>
+                  )}
                   {!archived && (
                     <button
                       className={managing ? 'primary-button' : 'secondary-button'}
@@ -144,6 +160,16 @@ export function OrgSpacesPanel() {
       </section>
 
       {managingId && <SpaceAccessPanel spaceId={managingId} />}
+      {replacingId && (
+        <ReplaceOwnerDialog
+          onClose={() => setReplacingId(null)}
+          onDone={async () => {
+            setReplacingId(null)
+            await Promise.all([load(), reloadWorkspaceSpaces()])
+          }}
+          spaceId={replacingId}
+        />
+      )}
 
       <CreateOrgSpaceDialog
         open={createOpen}
@@ -158,6 +184,91 @@ export function OrgSpacesPanel() {
   )
 }
 
+/* ========================================================================
+ * Name a new owner for a space nobody can act for any more
+ * ==================================================================== */
+function ReplaceOwnerDialog({
+  spaceId,
+  onClose,
+  onDone,
+}: {
+  spaceId: string
+  onClose: () => void
+  onDone: () => Promise<void>
+}) {
+  const { t } = useTranslation()
+  const { credentials } = useAuth()
+  const { state } = useMembers()
+  // Only people who can take the role: active, and not the organisation owner.
+  const candidates =
+    state.kind === 'ready'
+      ? state.items.filter((m) => m.status === 'active' && m.role_code !== 'owner')
+      : []
+  const [userId, setUserId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    setUserId((current) => current || candidates[0]?.id || '')
+  }, [candidates])
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!credentials || !userId || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await transferSpaceOwner(credentials, spaceId, userId)
+      await onDone()
+    } catch (err) {
+      setError(toMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="dialog-backdrop" role="dialog" aria-modal="true">
+      <div className="dialog-card">
+        <header className="dialog-header">
+          <h2>{t('orgSpaces.replaceDialog.title')}</h2>
+          <button
+            aria-label={t('orgSpaces.replaceDialog.cancel')}
+            className="dialog-close"
+            disabled={busy}
+            onClick={onClose}
+            type="button"
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <form className="dialog-form" onSubmit={(e) => void submit(e)}>
+          <p className="dialog-hint">{t('orgSpaces.replaceDialog.hint')}</p>
+          <label>
+            <span>{t('orgSpaces.replaceDialog.newOwner')}</span>
+            <select onChange={(e) => setUserId(e.target.value)} value={userId}>
+              {candidates.length === 0 && (
+                <option value="">{t('orgSpaces.replaceDialog.noCandidates')}</option>
+              )}
+              {candidates.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.display_name} · {m.email}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error && <div className="dialog-error">{error}</div>}
+          <div className="dialog-actions">
+            <button className="secondary-button" disabled={busy} onClick={onClose} type="button">
+              {t('orgSpaces.replaceDialog.cancel')}
+            </button>
+            <button className="primary-button" disabled={!userId || busy} type="submit">
+              {busy ? <Loader2 className="spin" size={16} /> : null}
+              <span>{t('orgSpaces.replaceDialog.submit')}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
 /* ========================================================================
  * Create dialog
  * ==================================================================== */

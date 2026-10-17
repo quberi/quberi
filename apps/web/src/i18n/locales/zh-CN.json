@@ -1501,6 +1501,17 @@
       "noGrants": "目前只有你自己可以访问。添加需要使用这个空间的对象。",
       "cancel": "取消",
       "submit": "创建空间"
+    },
+    "noOwner": "没有可用的所有者",
+    "noOwnerHint": "这个空间的所有者都已离职或被停用。",
+    "replaceOwner": "指定新所有者",
+    "replaceDialog": {
+      "title": "指定新所有者",
+      "hint": "这个空间的所有者都已离开。新所有者决定谁能读取它。你不能指定自己，组织 owner 也不能当空间所有者。",
+      "newOwner": "新所有者",
+      "noCandidates": "没有符合条件的已激活成员",
+      "cancel": "取消",
+      "submit": "设为所有者"
     }
   },
   "guestSandbox": {

@@ -67,6 +67,10 @@ class SpaceSummary(BaseModel):
     owner_type: str
     owner_id: uuid.UUID
     is_owner: bool = False
+    # Only set on the organisation's space list: true when no owner of the space can act
+    # (they left, were suspended, or hold the role by a leftover grant). The organisation
+    # owner can then name a new one.
+    owner_unavailable: bool = False
     # More than 0 when only some documents of this space are visible to the caller,
     # each shared with them individually (they cannot read the space as a whole).
     shared_only_documents: int = 0

@@ -18,6 +18,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session
@@ -28,6 +29,7 @@ from quberi_api.api.v1.spaces.schemas import (
     SpaceList,
     SpaceSummary,
 )
+from quberi_api.services import space_owners
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.authz import caller_has_org_role
 
@@ -159,8 +161,59 @@ async def list_organization_spaces(
     views = await spaces_service.list_organization_spaces(
         session, organization_id=caller.organization.id
     )
-    items = [_summary(view) for view in views]
+    unavailable = await space_owners.owners_unavailable_for_spaces(
+        session,
+        organization_id=caller.organization.id,
+        space_ids=[v.space.id for v in views if v.space.status == "active"],
+    )
+    items = [
+        _summary(view).model_copy(update={"owner_unavailable": view.space.id in unavailable})
+        for view in views
+    ]
     return SpaceList(items=items, total=len(items))
+
+
+class TransferOwnerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_owner_user_id: uuid.UUID
+
+
+class TransferOwnerResponse(BaseModel):
+    space_id: uuid.UUID
+    new_owner_user_id: uuid.UUID
+    # "handover" (an owner passes it on) or "replacement" (the organisation owner names a
+    # new one because no owner is available).
+    mode: str
+
+
+@router.post(
+    "/{space_id}/owner",
+    response_model=TransferOwnerResponse,
+    summary="Hand a space to a new owner, or name one when the owners are gone",
+)
+async def transfer_space_owner(
+    space_id: uuid.UUID,
+    payload: TransferOwnerRequest,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> TransferOwnerResponse:
+    # An owner of the space hands it over; the organisation owner may replace owners that
+    # can no longer act. The service decides which applies and refuses anyone else.
+    organization_id, actor_user_id = caller.organization.id, caller.user.id
+    await session.rollback()  # end the read transaction the caller lookup opened
+    result = await space_owners.transfer_owner(
+        session,
+        space_id=space_id,
+        organization_id=organization_id,
+        actor_user_id=actor_user_id,
+        new_owner_user_id=payload.new_owner_user_id,
+    )
+    return TransferOwnerResponse(
+        space_id=result.space_id,
+        new_owner_user_id=result.new_owner_user_id,
+        mode=result.mode,
+    )
 
 
 @router.get(

@@ -36,6 +36,7 @@ from quberi_api.domain.org.models import (
     UserOrganizationUnit,
 )
 from quberi_api.domain.positions.models import Position, UserPosition
+from quberi_api.services import access_guard
 from quberi_api.services.errors import (
     AlreadyExistsError,
     InvalidInputError,
@@ -611,6 +612,9 @@ async def add_member(
     validated_type = _validate_member_type(member_type)
 
     async with session.begin():
+        guard = await access_guard.watch(
+            session, actor_user_id=actor_user_id, organization_id=organization_id
+        )
         group = await _load_group(
             session, group_id=group_id, organization_id=organization_id
         )
@@ -661,8 +665,8 @@ async def add_member(
             )
         )
         await session.flush()
+        await guard.check()
         await session.refresh(link, attribute_names=["created_at", "updated_at"])
-
     return GroupMemberView(
         member=link,
         member_type=validated_type,

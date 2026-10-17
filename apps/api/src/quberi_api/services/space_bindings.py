@@ -21,8 +21,10 @@ from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.org.models import Group, OrganizationUnit
 from quberi_api.domain.positions.models import Position
 from quberi_api.domain.spaces.models import Space
+from quberi_api.services import access_guard
 from quberi_api.services.errors import (
     AlreadyExistsError,
+    ForbiddenError,
     InvalidInputError,
     NotFoundError,
 )
@@ -297,7 +299,17 @@ async def grant_in_transaction(
 
     validated_subject_type = _validate_subject_type(subject_type)
     validated_role = _validate_role_code(role_code)
-
+    guard = await access_guard.watch(
+        session, actor_user_id=actor_user_id, organization_id=organization_id
+    )
+    if (
+        validated_subject_type == "user"
+        and validated_role in ("owner", "admin")
+        and await access_guard.user_is_restricted_owner(
+            session, organization_id=organization_id, user_id=subject_id
+        )
+    ):
+        raise ForbiddenError(access_guard.OWNER_CANNOT_MANAGE_SPACES_MESSAGE)
     display_name, subtitle = await _resolve_subject_display(
         session,
         subject_type=validated_subject_type,
@@ -354,8 +366,8 @@ async def grant_in_transaction(
         )
     )
     await session.flush()
+    await guard.check()
     await session.refresh(binding, attribute_names=["created_at", "updated_at"])
-
     return AccessBindingView(
         binding=binding,
         role_code=validated_role,

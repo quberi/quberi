@@ -1501,6 +1501,17 @@
       "noGrants": "No one has access yet except you. Add who should be able to use this space.",
       "cancel": "Cancel",
       "submit": "Create space"
+    },
+    "noOwner": "No owner can act",
+    "noOwnerHint": "Every owner of this space has left or been suspended.",
+    "replaceOwner": "Name a new owner",
+    "replaceDialog": {
+      "title": "Name a new owner",
+      "hint": "Every owner of this space has left. The new owner decides who can read it. You cannot name yourself, and the organisation owner cannot own a space.",
+      "newOwner": "New owner",
+      "noCandidates": "No eligible active member",
+      "cancel": "Cancel",
+      "submit": "Make owner"
     }
   },
   "guestSandbox": {

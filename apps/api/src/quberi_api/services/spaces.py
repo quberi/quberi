@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.authz.models import Role, RoleBinding
 from quberi_api.domain.spaces.models import Space
-from quberi_api.services import doc_acl, space_bindings
+from quberi_api.services import access_guard, doc_acl, space_bindings
 from quberi_api.services.authz import caller_has_org_role, list_accessible_space_ids
 from quberi_api.services.errors import (
     AlreadyExistsError,
@@ -406,6 +406,11 @@ async def create_collaborative_space(
         )
 
     async with session.begin():
+        # The organisation owner of a team or enterprise organisation is the super
+        # administrator: they do not create spaces (an admin does).
+        await access_guard.forbid_owner_creating_spaces(
+            session, organization_id=organization_id, user_id=creator_user_id
+        )
         # Personal-tier space cap. Counts every active space in the org
         # (including the auto-provisioned personal one) against the limit.
         if tier == "personal":

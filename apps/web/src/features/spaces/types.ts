@@ -11,6 +11,8 @@ export interface SpaceSummary {
   owner_type: 'user' | 'group' | 'organization_unit' | 'organization'
   owner_id: string
   is_owner: boolean
+  /** Only on the organisation's space list: no owner of the space can act any more. */
+  owner_unavailable?: boolean
   /** More than 0 when only that many documents of this space are visible to the caller,
    * each shared with them individually. They cannot read the space as a whole. */
   shared_only_documents?: number

@@ -34,3 +34,23 @@ export function createSpace(
     credentials,
   })
 }
+
+export interface TransferOwnerResult {
+  space_id: string
+  new_owner_user_id: string
+  /** "handover" (an owner passes it on) or "replacement" (the organisation owner names one). */
+  mode: string
+}
+
+/** Hand a space to a new owner, or (organisation owner only) name one when none can act. */
+export function transferSpaceOwner(
+  credentials: DevCredentials,
+  spaceId: string,
+  newOwnerUserId: string,
+): Promise<TransferOwnerResult> {
+  return apiFetch<TransferOwnerResult>(`/api/v1/spaces/${spaceId}/owner`, {
+    method: 'POST',
+    body: { new_owner_user_id: newOwnerUserId },
+    credentials,
+  })
+}

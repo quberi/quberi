@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document, DocumentAccessRule
 from quberi_api.domain.enums import DOCUMENT_ACCESS_EFFECTS, DOCUMENT_ACCESS_SUBJECT_TYPES
-from quberi_api.services import space_bindings
+from quberi_api.services import access_guard, space_bindings
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.authz import caller_has_org_role
 from quberi_api.services.documents import core
@@ -189,6 +189,9 @@ async def add_rule(
     doc_id, doc_name = doc.id, doc.name
     await session.commit()
     async with session.begin():
+        guard = await access_guard.watch(
+            session, actor_user_id=actor_user_id, organization_id=organization_id
+        )
         rule = DocumentAccessRule(
             organization_id=organization_id,
             document_id=doc_id,
@@ -218,6 +221,7 @@ async def add_rule(
             )
         )
         await session.flush()
+        await guard.check()
         await session.refresh(rule, attribute_names=["created_at", "updated_at"])
     return RuleView(rule=rule, subject_display_name=name, subject_subtitle=subtitle)
 
@@ -253,6 +257,9 @@ async def remove_rule(
     effect, subject_type, subject_id = rule.effect, rule.subject_type, rule.subject_id
     await session.commit()
     async with session.begin():
+        guard = await access_guard.watch(
+            session, actor_user_id=actor_user_id, organization_id=organization_id
+        )
         stale = (
             await session.execute(
                 select(DocumentAccessRule).where(DocumentAccessRule.id == rule_id)
@@ -278,8 +285,8 @@ async def remove_rule(
                 },
             )
         )
-
-
+        await session.flush()
+        await guard.check()
 # ---------------------------------------------------------------------------
 # Finding the document to set rules on, without being able to read the space
 # ---------------------------------------------------------------------------

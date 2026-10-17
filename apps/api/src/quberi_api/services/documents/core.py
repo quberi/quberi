@@ -30,7 +30,7 @@ from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
-from quberi_api.services import doc_acl, document_sources
+from quberi_api.services import access_guard, doc_acl, document_sources
 from quberi_api.services.authz import resolve_effective_role_codes
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.documents.errors import (
@@ -268,10 +268,20 @@ async def _caller_space_role(
         return None
     if space.owner_type == "user" and space.owner_id == user_id:
         codes = codes | {"owner"}
-
     if not codes:
         return None
-    return max(codes, key=lambda c: _ROLE_STRENGTH.get(c, -1))
+    role = max(codes, key=lambda c: _ROLE_STRENGTH.get(c, -1))
+    if (
+        role in ("owner", "admin")
+        and space.preset != "personal"
+        and await access_guard.user_is_restricted_owner(
+            session, organization_id=organization_id, user_id=user_id
+        )
+    ):
+        # The organisation owner of a team or enterprise organisation is not a space
+        # administrator, however the role reached them (a group, a unit, an old grant).
+        return "editor" if _ROLE_STRENGTH.get(role, -1) >= _ROLE_STRENGTH["editor"] else role
+    return role
 
 
 def _at_least(role: Optional[str], required: str) -> bool:

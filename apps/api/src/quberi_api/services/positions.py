@@ -33,6 +33,7 @@ from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.org.models import OrganizationUnit
 from quberi_api.domain.positions.models import Position, UserPosition
+from quberi_api.services import access_guard
 from quberi_api.services.errors import (
     AlreadyExistsError,
     InvalidInputError,
@@ -608,8 +609,10 @@ async def assign_user_to_position(
     archived, if the headcount budget is exceeded, or if the user already
     has an active tenure in this position.
     """
-
     async with session.begin():
+        guard = await access_guard.watch(
+            session, actor_user_id=actor_user_id, organization_id=organization_id
+        )
         position = await _load_position(
             session, position_id=position_id, organization_id=organization_id
         )
@@ -683,8 +686,8 @@ async def assign_user_to_position(
             )
         )
         await session.flush()
+        await guard.check()
         await session.refresh(link, attribute_names=["created_at", "updated_at"])
-
     return PositionOccupantView(
         user=user,
         tenure_id=link.id,
@@ -692,8 +695,6 @@ async def assign_user_to_position(
         start_date=link.start_date,
         end_date=link.end_date,
     )
-
-
 async def end_position_tenure(
     session: AsyncSession,
     *,

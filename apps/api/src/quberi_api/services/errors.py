@@ -26,3 +26,7 @@ class InvalidInputError(ServiceError):
 
 class QuotaExceededError(ServiceError):
     """A plan/tier resource limit would be exceeded (e.g. max spaces)."""
+
+
+class ForbiddenError(ServiceError):
+    """The caller may not do this, even though they can see it (HTTP 403)."""

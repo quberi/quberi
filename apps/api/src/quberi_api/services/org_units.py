@@ -30,6 +30,7 @@ from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.enums import ORG_UNIT_TYPES
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.org.models import OrganizationUnit, UserOrganizationUnit
+from quberi_api.services import access_guard
 from quberi_api.services.errors import (
     AlreadyExistsError,
     InvalidInputError,
@@ -436,8 +437,10 @@ async def move_org_unit(
     new_parent_id: Optional[uuid.UUID],
 ) -> OrgUnitView:
     """Reparent a unit. ``new_parent_id=None`` promotes it to the root."""
-
     async with session.begin():
+        guard = await access_guard.watch(
+            session, actor_user_id=actor_user_id, organization_id=organization_id
+        )
         unit = await _load_unit(
             session, unit_id=unit_id, organization_id=organization_id
         )
@@ -484,6 +487,7 @@ async def move_org_unit(
             )
         )
         await session.flush()
+        await guard.check()
         await session.refresh(unit, attribute_names=["updated_at"])
         ancestors = await _ancestor_chain(session, unit=unit)
 
@@ -565,8 +569,10 @@ async def assign_user_to_unit(
     make_primary: bool = False,
 ) -> OrgUnitMemberView:
     """Assign ``user`` to ``unit``. ``make_primary=True`` demotes any prior primary."""
-
     async with session.begin():
+        guard = await access_guard.watch(
+            session, actor_user_id=actor_user_id, organization_id=organization_id
+        )
         unit = await _load_unit(
             session, unit_id=unit_id, organization_id=organization_id
         )
@@ -633,8 +639,8 @@ async def assign_user_to_unit(
             )
         )
         await session.flush()
+        await guard.check()
         await session.refresh(link, attribute_names=["created_at", "updated_at"])
-
     return OrgUnitMemberView(user=user, is_primary=link.is_primary, membership_id=link.id)
 
 

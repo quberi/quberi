@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 from quberi_api.services.errors import (
     AlreadyExistsError,
+    ForbiddenError,
     InvalidInputError,
     NotFoundError,
     QuotaExceededError,
@@ -60,6 +61,13 @@ async def _handle_quota_exceeded(_: Request, exc: QuotaExceededError) -> JSONRes
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
         content={"detail": str(exc), "code": "quota_exceeded"},
+    )
+
+
+async def _handle_forbidden(_: Request, exc: ForbiddenError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content={"detail": str(exc), "code": "forbidden"},
     )
 
 
@@ -148,6 +156,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(OccupantsRemainError, _handle_occupants_remain)
     app.add_exception_handler(HeadcountExceededError, _handle_headcount_exceeded)
     app.add_exception_handler(FrozenPositionError, _handle_frozen_position)
+    app.add_exception_handler(ForbiddenError, _handle_forbidden)
     app.add_exception_handler(AlreadyExistsError, _handle_already_exists)
     app.add_exception_handler(NotFoundError, _handle_not_found)
     app.add_exception_handler(ServiceError, _handle_service_error)

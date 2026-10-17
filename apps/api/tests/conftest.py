@@ -177,3 +177,31 @@ async def org_and_owner(db_session: AsyncSession):
         tier="team",
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Super-administrator rules
+# ---------------------------------------------------------------------------
+# In team and enterprise organisations the owner cannot create spaces or hold owner/admin
+# on one, and nobody can give themselves access (``services.access_guard``). Most tests
+# predate that and use the organisation owner as an ordinary user who creates and manages
+# spaces, so the rules are off by default here. Tests of the rules ask for ``strict_rules``.
+
+from quberi_api.services import access_guard as _access_guard  # noqa: E402
+
+_REAL_IS_RESTRICTED_ORG = _access_guard.is_restricted_org
+
+
+@pytest.fixture(autouse=True)
+def _super_admin_rules_off(monkeypatch):
+    async def _off(_session, *, organization_id):
+        return False
+
+    monkeypatch.setattr(_access_guard, "is_restricted_org", _off)
+
+
+@pytest.fixture
+def strict_rules(monkeypatch):
+    """Turn the super-administrator rules back on for one test."""
+
+    monkeypatch.setattr(_access_guard, "is_restricted_org", _REAL_IS_RESTRICTED_ORG)
