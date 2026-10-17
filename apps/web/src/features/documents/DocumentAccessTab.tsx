@@ -158,13 +158,21 @@ export function DocumentAccessTab({
         title={t('docAccess.hiddenFrom')}
       />
       <form className="doc-access-form" onSubmit={(e) => void add(e)}>
-        <label>
-          <span>{t('docAccess.effect')}</span>
-          <select onChange={(e) => setEffect(e.target.value as AccessEffect)} value={effect}>
-            <option value="allow">{t('docAccess.effectAllow')}</option>
-            <option value="deny">{t('docAccess.effectDeny')}</option>
-          </select>
-        </label>
+        <div className="doc-access-effects" role="radiogroup" aria-label={t('docAccess.effect')}>
+          {(['allow', 'deny'] as AccessEffect[]).map((e) => (
+            <button
+              aria-checked={effect === e}
+              className={`doc-access-effect doc-access-effect-${e}${effect === e ? ' active' : ''}`}
+              key={e}
+              onClick={() => setEffect(e)}
+              role="radio"
+              type="button"
+            >
+              <strong>{t(`docAccess.effectName.${e}`)}</strong>
+              <small>{t(`docAccess.effectHint.${e}`)}</small>
+            </button>
+          ))}
+        </div>
         <label>
           <span>{t('spaceAccess.subjectType')}</span>
           <select
@@ -192,7 +200,6 @@ export function DocumentAccessTab({
             ))}
           </select>
         </label>
-        {effect === 'deny' && <p className="doc-drawer-note">{t('docAccess.denyHint')}</p>}
         {error && <div className="dialog-error">{error}</div>}
         <button className="primary-button" disabled={!subjectId || busy} type="submit">
           {busy ? <Loader2 className="spin" size={14} /> : null}

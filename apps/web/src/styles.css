@@ -3528,6 +3528,39 @@ input[type="radio"] {
   box-shadow: 0 0 0 2px rgba(249, 213, 92, .3);
   scroll-margin: 80px;
 }
+.doc-access {
+  align-content: start;
+}
+.doc-access .doc-drawer-note {
+  margin: 0;
+}
+.doc-access-effects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.doc-access-effect {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid rgba(139, 108, 243, .28);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.doc-access-effect small {
+  color: #6b6b74;
+  line-height: 1.4;
+}
+.doc-access-effect.active.doc-access-effect-allow {
+  border-color: #2f9e6b;
+  background: rgba(47, 158, 107, .08);
+}
+.doc-access-effect.active.doc-access-effect-deny {
+  border-color: #d64545;
+  background: rgba(214, 69, 69, .08);
+}
 .doc-access h3 {
   display: flex;
   align-items: center;

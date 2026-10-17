@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,6 +58,24 @@ class AccessRuleList(BaseModel):
     total: int
 
 
+class ManagedDocumentView(BaseModel):
+    id: uuid.UUID
+    name: str
+    mime_type: str
+    size_bytes: int
+    updated_at: datetime
+    # How many exceptions the document already has.
+    allow_rules: int
+    deny_rules: int
+
+
+class ManagedDocumentList(BaseModel):
+    items: list[ManagedDocumentView] = Field(default_factory=list)
+    total: int
+    limit: int
+    offset: int
+
+
 def _to_response(view: rules_service.RuleView) -> AccessRuleView:
     rule = view.rule
     return AccessRuleView(
@@ -78,6 +96,51 @@ def _forbidden(exc: DocumentPermissionError) -> HTTPException:
 _PATH = "/{space_id}/documents/{document_id}/access-rules"
 
 
+@router.get(
+    "/{space_id}/access-rules/documents",
+    response_model=ManagedDocumentList,
+    summary="Names of a space's documents, for choosing one to set access on (managers only)",
+)
+async def list_managed_documents(
+    space_id: uuid.UUID,
+    q: Optional[str] = Query(default=None, max_length=200),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> ManagedDocumentList:
+    """Metadata only: no text, no download. Lets an organisation admin find the document
+    to share or hide in an enterprise space they cannot read themselves."""
+
+    try:
+        page = await rules_service.list_documents_for_manager(
+            session,
+            organization_id=caller.organization.id,
+            actor_user_id=caller.user.id,
+            space_id=space_id,
+            q=q,
+            limit=limit,
+            offset=offset,
+        )
+    except DocumentPermissionError as exc:
+        raise _forbidden(exc) from exc
+    return ManagedDocumentList(
+        items=[
+            ManagedDocumentView(
+                id=d.id,
+                name=d.name,
+                mime_type=d.mime_type,
+                size_bytes=d.size_bytes,
+                updated_at=d.updated_at,  # type: ignore[arg-type]
+                allow_rules=d.allow_rules,
+                deny_rules=d.deny_rules,
+            )
+            for d in page.items
+        ],
+        total=page.total,
+        limit=page.limit,
+        offset=page.offset,
+    )
 @router.get(_PATH, response_model=AccessRuleList, summary="Who a document is shared with or hidden from")
 async def list_access_rules(
     space_id: uuid.UUID,

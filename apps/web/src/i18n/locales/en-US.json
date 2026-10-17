@@ -1510,18 +1510,23 @@
     "mine": "Mine"
   },
   "docAccess": {
-    "intro": "Everyone who can read this space can read this document, plus anyone it is shared with below, except anyone it is hidden from. Hiding always wins. Changes apply immediately.",
+    "intro": "Anyone who can read this space can read this document. Add an Allow rule to let someone outside the space read just this one, or a Deny rule to hide it from someone inside. Deny always wins. Changes apply immediately.",
     "forbidden": "Only a space admin or owner can see or change who can read this document.",
     "retry": "Try again",
-    "sharedWith": "Also shared with",
-    "hiddenFrom": "Hidden from",
-    "noneShared": "Not shared with anyone outside the space.",
-    "noneHidden": "Not hidden from anyone.",
-    "effect": "Action",
-    "effectAllow": "Share this document with",
-    "effectDeny": "Hide this document from",
-    "denyHint": "They will not find it in search, lists, counts, downloads or chat answers, even if they can read the rest of the space.",
+    "sharedWith": "Allowed (outside the space)",
+    "hiddenFrom": "Denied",
+    "noneShared": "No one outside the space is allowed.",
+    "noneHidden": "No one is denied.",
+    "effect": "Rule",
     "add": "Add",
-    "remove": "Remove"
+    "remove": "Remove",
+    "effectName": {
+      "allow": "Allow",
+      "deny": "Deny"
+    },
+    "effectHint": {
+      "allow": "Can read this document even without access to the space",
+      "deny": "Cannot find or read this document, even with access to the space"
+    }
   }
 }

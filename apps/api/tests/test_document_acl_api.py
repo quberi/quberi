@@ -499,3 +499,27 @@ async def test_the_rules_api_adds_lists_and_removes_with_the_right_status_codes(
     ).scalars().all()
     # deny added + removed, whole-organisation allow added + removed
     assert sorted(actions) == ["document.access_rule_added"] * 2 + ["document.access_rule_removed"] * 2
+
+
+async def test_the_manager_document_listing_gives_names_and_counts_only(
+    web, db_session, redis_client, qdrant, blobs
+):
+    boot, space, pics, outsider = await _team(db_session, redis_client, qdrant, blobs)
+    viewer = await _member(db_session, boot)
+    await _grant(db_session, boot, space, viewer)
+    await _rule(db_session, boot, space, pics.secret, "deny", viewer.id)
+    url = f"/api/v1/spaces/{space.id}/access-rules/documents"
+
+    await _as(web, db_session, boot, boot.user_id)
+    body = (await web.get(url)).json()
+    assert body["total"] == 3
+    assert set(body["items"][0]) == {
+        "id", "name", "mime_type", "size_bytes", "updated_at", "allow_rules", "deny_rules"
+    }
+    assert {i["name"]: i["deny_rules"] for i in body["items"]}["secret.png"] == 1
+    assert [i["name"] for i in (await web.get(url, params={"q": "sec"})).json()["items"]] == ["secret.png"]
+
+    await _as(web, db_session, boot, viewer.id)
+    assert (await web.get(url)).status_code == 403
+    await _as(web, db_session, boot, outsider.id)
+    assert (await web.get(url)).status_code == 404

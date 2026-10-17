@@ -755,3 +755,128 @@ async def test_a_vector_filed_under_the_wrong_space_is_not_taken_as_a_share(
         chunks=[ChunkPoint(chunk_index=0, text="x", vector=[1.0] + [0.0] * 7, char_start=0, char_end=1)],
     )
     assert await _search_names(db, w.boot, qdrant, w.member) == []
+
+
+# ---------------------------------------------------------------------------
+# An organisation admin who cannot read an enterprise space can still set access
+# ---------------------------------------------------------------------------
+
+
+async def _enterprise_space(db, boot):
+    """An organisation-owned space created by another admin; the org owner has no binding."""
+    creator = await _member(db, boot, role="admin")
+    await db.commit()
+    view = await spaces_service.create_collaborative_space(
+        db,
+        organization_id=boot.organization_id,
+        creator_user_id=creator.id,
+        name="Tech",
+        slug=f"t-{uuid.uuid4().hex[:8]}",
+        tier="team",
+        owner="organization",
+    )
+    await db.commit()
+    return SimpleNamespace(id=view.space.id), creator
+
+
+async def test_an_org_admin_who_cannot_read_a_space_can_still_find_its_documents_and_set_access(
+    db_session, org_and_owner, qdrant
+):
+    db, boot = db_session, org_and_owner
+    space, _creator = await _enterprise_space(db, boot)
+    doc = await _text_doc(db, boot, qdrant, space, "salaries.pdf")
+    await _text_doc(db, boot, qdrant, space, "handbook.pdf")
+    reader = await _member(db, boot)
+    await _grant(db, boot, space, reader)
+
+    # The org owner has no role on the space: reading is refused ...
+    await db.commit()
+    with pytest.raises(NotFoundError):
+        await documents_service.list_documents_in_space(
+            db, organization_id=boot.organization_id, space_id=space.id,
+            caller_user_id=boot.user_id,
+        )
+    await db.rollback()
+    # ... but the names are listed, with how many exceptions each has, and nothing else.
+    page = await rules.list_documents_for_manager(
+        db, organization_id=boot.organization_id, actor_user_id=boot.user_id, space_id=space.id
+    )
+    assert sorted(d.name for d in page.items) == ["handbook.pdf", "salaries.pdf"]
+    assert page.total == 2
+    assert {f for f in vars(page.items[0])} == {
+        "id", "name", "mime_type", "size_bytes", "updated_at", "allow_rules", "deny_rules"
+    }
+    await db.commit()
+
+    # They can hide a document from the reader without ever being able to read it.
+    await _rule(db, boot, space, doc, "deny", "user", reader.id)
+    assert await _search_names(db, boot, qdrant, reader) == ["handbook.pdf"]
+    page = await rules.list_documents_for_manager(
+        db, organization_id=boot.organization_id, actor_user_id=boot.user_id, space_id=space.id
+    )
+    assert {d.name: d.deny_rules for d in page.items} == {"salaries.pdf": 1, "handbook.pdf": 0}
+    await db.commit()
+    assert await _can(db, boot, SimpleNamespace(id=boot.user_id), doc) is False  # still cannot read
+
+    # Using the listing is audited.
+    actions = (
+        await db.execute(
+            select(AuditEvent.action).where(AuditEvent.action == "space.documents_listed_for_access")
+        )
+    ).scalars().all()
+    assert len(actions) == 2
+
+
+async def test_the_manager_listing_searches_pages_and_refuses_everyone_else(
+    db_session, org_and_owner, qdrant
+):
+    db, boot = db_session, org_and_owner
+    space, creator = await _enterprise_space(db, boot)
+    for name in ("a1.pdf", "a2.pdf", "b1.pdf"):
+        await _text_doc(db, boot, qdrant, space, name)
+    viewer = await _member(db, boot)
+    await _grant(db, boot, space, viewer)
+    stranger = await _member(db, boot)
+
+    found = await rules.list_documents_for_manager(
+        db, organization_id=boot.organization_id, actor_user_id=boot.user_id,
+        space_id=space.id, q="A", limit=1, offset=0,
+    )
+    assert found.total == 2 and len(found.items) == 1
+    await db.commit()
+
+    for who in (viewer,):
+        with pytest.raises(DocumentPermissionError):
+            await rules.list_documents_for_manager(
+                db, organization_id=boot.organization_id, actor_user_id=who.id, space_id=space.id
+            )
+        await db.rollback()
+    with pytest.raises(NotFoundError):
+        await rules.list_documents_for_manager(
+            db, organization_id=boot.organization_id, actor_user_id=stranger.id, space_id=space.id
+        )
+    await db.rollback()
+    # The space's own creator (an owner) may.
+    ok = await rules.list_documents_for_manager(
+        db, organization_id=boot.organization_id, actor_user_id=creator.id, space_id=space.id
+    )
+    assert ok.total == 3
+
+
+async def test_an_org_admin_cannot_use_it_on_someone_elses_personal_or_team_space(
+    db_session, org_and_owner, qdrant
+):
+    """Only enterprise spaces are open to organisation admins; others stay invisible to them."""
+    db, boot = db_session, org_and_owner
+    owner = await _member(db, boot)
+    await db.commit()
+    mine = await spaces_service.create_collaborative_space(
+        db, organization_id=boot.organization_id, creator_user_id=owner.id,
+        name="Private", slug=f"p-{uuid.uuid4().hex[:8]}",
+    )
+    await db.commit()
+    with pytest.raises(NotFoundError):
+        await rules.list_documents_for_manager(
+            db, organization_id=boot.organization_id, actor_user_id=boot.user_id,
+            space_id=mine.space.id,
+        )

@@ -65,7 +65,7 @@ describe('DocumentAccessTab', () => {
     api.addAccessRule.mockResolvedValue(rule('r3', 'deny', 'Ann'))
     render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
     await screen.findByText('docAccess.noneShared')
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'deny' } })
+    fireEvent.click(screen.getByRole('radio', { name: /docAccess.effectName.deny/ }))
     fireEvent.click(screen.getByText('docAccess.add'))
     await waitFor(() =>
       expect(api.addAccessRule).toHaveBeenCalledWith({ sessionToken: 't' }, 's1', 'd1', {
@@ -82,7 +82,7 @@ describe('DocumentAccessTab', () => {
     api.addAccessRule.mockResolvedValue(rule('r4', 'allow', 'Acme'))
     render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
     await screen.findByText('docAccess.noneShared')
-    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'organization' } })
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'organization' } })
     fireEvent.click(screen.getByText('docAccess.add'))
     await waitFor(() => expect(api.addAccessRule).toHaveBeenCalled())
     const body = api.addAccessRule.mock.calls[0][3]
