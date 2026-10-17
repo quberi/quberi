@@ -81,6 +81,22 @@ describe('ChatContext: check before sending', () => {
     expect(count(h)).toBe(2)
   })
 
+  it('shows a picture answer at once even with the check on: no hold, no streamed text', async () => {
+    const pictures = { ...answerRow, content: { type: 'text', text: '知识库里共有 1 张图片。', image_matches: [{ document_id: 'd1' }] } }
+    api.streamMessage.mockImplementation(() => events([
+      { kind: 'user_message', message: userRow as never },
+      { kind: 'assistant_message', message: pictures as never },
+      { kind: 'done' },
+    ]))
+    const h = await ready()
+    act(() => h.result.current.setReviewBeforeSend(true))
+    await act(async () => { await h.result.current.sendUserMessage('库里有哪些图片') })
+    expect(rows(h).map((m) => m.id)).toEqual(['u1', 'a1'])
+    expect(rows(h)[1].status).toBe('completed')
+    expect(h.result.current.pendingReview).toBeNull()
+    expect(count(h)).toBe(2)
+  })
+
   it('holds the prompt: no answer row, a pending review, and no count change yet', async () => {
     api.streamMessage.mockImplementation(() => events([
       { kind: 'user_message', message: userRow as never },

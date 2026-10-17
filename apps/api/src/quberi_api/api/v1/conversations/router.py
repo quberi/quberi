@@ -193,11 +193,21 @@ async def send_message(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="review before sending needs the streaming endpoint",
         )
-    await usage_service.enforce_free_quota(
+    # A question about pictures is answered from the picture index with no model, so it
+    # neither spends the free allowance nor needs a held prompt.
+    picture_plan = await conversations_service.plan_picture_turn(
         session,
+        conversation_id=conversation_id,
         organization_id=caller.organization.id,
-        tier=caller.organization.tier,
+        user_id=caller.user.id,
+        text=payload.text,
     )
+    if picture_plan is None:
+        await usage_service.enforce_free_quota(
+            session,
+            organization_id=caller.organization.id,
+            tier=caller.organization.tier,
+        )
     pair = await conversations_service.send_message(
         session,
         conversation_id=conversation_id,
@@ -205,6 +215,7 @@ async def send_message(
         user_id=caller.user.id,
         identity_id=caller.user.identity_id,
         text=payload.text,
+        picture_plan=picture_plan,
     )
     is_owner = pair.conversation.created_by_user_id == caller.user.id
     return SendMessageResponse(
@@ -327,9 +338,19 @@ async def send_message_stream(
     only supports GET, so we hand-roll the framing on the POST path).
     """
 
+    # A question about pictures is answered from the picture index with no model:
+    # no free allowance is spent and nothing is held for review, whatever the
+    # "check before sending" switch says (there is nothing to check: no text goes out).
+    picture_plan = await conversations_service.plan_picture_turn(
+        session,
+        conversation_id=conversation_id,
+        organization_id=caller.organization.id,
+        user_id=caller.user.id,
+        text=payload.text,
+    )
     # A held prompt calls no model yet, so the free allowance is reserved when
     # it is approved, not here (a cancelled review must not use any up).
-    if not payload.review:
+    if picture_plan is None and not payload.review:
         await usage_service.enforce_free_quota(
             session,
             organization_id=caller.organization.id,
@@ -346,6 +367,7 @@ async def send_message_stream(
                 identity_id=caller.user.identity_id,
                 text=payload.text,
                 review=payload.review,
+                picture_plan=picture_plan,
             ):
                 payload_str = json.dumps(data, ensure_ascii=False)
                 yield f"event: {kind}\ndata: {payload_str}\n\n"

@@ -176,8 +176,12 @@ export function ImageMatchesRail({
               </span>
               <small className="image-match-meta">
                 <span title={m.space_name}>{m.space_name}</span>
-                <span className="dot-sep">·</span>
-                <span>{t('chat.imageSearch.score', { score: m.score.toFixed(2) })}</span>
+                {m.score !== undefined && (
+                  <>
+                    <span className="dot-sep">·</span>
+                    <span>{t('chat.imageSearch.score', { score: m.score.toFixed(2) })}</span>
+                  </>
+                )}
               </small>
             </button>
           </li>

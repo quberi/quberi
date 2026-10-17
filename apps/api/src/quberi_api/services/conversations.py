@@ -23,7 +23,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.core.config import get_settings
@@ -330,6 +330,7 @@ async def send_message(
     user_id: uuid.UUID,
     identity_id: uuid.UUID | None = None,
     text: str,
+    picture_plan: PicturePlan | None = None,
 ) -> MessagePair:
     """Append a user message and generate a RAG-grounded assistant reply.
 
@@ -355,6 +356,16 @@ async def send_message(
     if len(text) > _MAX_MESSAGE_TEXT:
         raise InvalidInputError(
             f"message text exceeds {_MAX_MESSAGE_TEXT} character limit"
+        )
+
+    if picture_plan is not None:
+        # A picture question, already answered from the picture index (no model).
+        return await _answer_picture_plan(
+            session,
+            plan=picture_plan,
+            conversation_id=conversation_id,
+            organization_id=organization_id,
+            user_id=user_id,
         )
 
     correlation_id = uuid.uuid4().hex
@@ -620,7 +631,6 @@ async def send_image_search(
 
     from quberi_api.services.rag import image_search
 
-    words = (text or "").strip()
     correlation_id = uuid.uuid4().hex
 
     # ---- Read phase: access, scope, query vector, search. Nothing is written yet. ----
@@ -662,13 +672,51 @@ async def send_image_search(
     # The reads above began a transaction; end it before the write transaction.
     await session.commit()
 
-    # ---- Write phase: both messages, the counters and the audit event together. ----
     used = {"picture": image is not None, "description": bool(words)}
     reply = (
         f"找到 {len(matches)} 张相似的图片。"
         if matches
         else "没有找到相似的图片。图片需要先上传到你有权限的空间，并等待索引完成。"
     )
+    return await _persist_image_turn(
+        session,
+        conversation_id=conversation_id,
+        organization_id=organization_id,
+        user_id=user_id,
+        user_content={"type": "text", "text": words, "image_query": used},
+        title=words[:_TITLE_MAX] if words else "以图搜图",
+        reply=reply,
+        matches=matches,
+        kind="image_search",
+        scope_mode=scope_mode,
+        scope_space_ids=found.space_ids,
+        audit_query=used,
+    )
+
+
+async def _persist_image_turn(
+    session: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    user_content: dict,
+    title: str,
+    reply: str,
+    matches: list[dict],
+    kind: str,
+    scope_mode: str,
+    scope_space_ids: list[uuid.UUID],
+    audit_query: dict,
+    correlation_id: str | None = None,
+) -> MessagePair:
+    """Write a picture turn: both messages, the counters and the audit event together.
+
+    No model is called, so the assistant message costs nothing. The caller must have
+    ended its read transaction. Only ids are audited, never the words or a picture.
+    """
+
+    correlation_id = correlation_id or uuid.uuid4().hex
     async with session.begin():
         conversation = (
             await session.execute(select(Conversation).where(Conversation.id == conversation_id))
@@ -677,7 +725,7 @@ async def send_image_search(
             conversation_id=conversation.id,
             organization_id=organization_id,
             role="user",
-            content={"type": "text", "text": words, "image_query": used},
+            content=user_content,
             author_user_id=user_id,
             tokens={},
             cost={},
@@ -695,9 +743,9 @@ async def send_image_search(
                 "text": reply,
                 "image_matches": matches,
                 "meta": {
-                    "kind": "image_search",
+                    "kind": kind,
                     "scope_mode": scope_mode,
-                    "scope_space_ids": [str(sid) for sid in found.space_ids],
+                    "scope_space_ids": [str(sid) for sid in scope_space_ids],
                     "retrieved_count": len(matches),
                 },
             },
@@ -713,7 +761,7 @@ async def send_image_search(
         conversation.message_count = conversation.message_count + 2
         conversation.last_message_at = assistant_message.created_at
         if not conversation.title:
-            conversation.title = words[:_TITLE_MAX] if words else "以图搜图"
+            conversation.title = title
         session.add(
             AuditEvent(
                 organization_id=organization_id,
@@ -725,15 +773,14 @@ async def send_image_search(
                 space_id=conversation.space_id,
                 request_id=correlation_id,
                 payload={
-                    "kind": "image_search",
+                    "kind": kind,
                     "conversation_id": str(conversation.id),
                     "user_message_id": str(user_message.id),
                     "assistant_message_id": str(assistant_message.id),
                     "citation_count": 0,
                     "model_id": None,
-                    # Ids only; neither the picture nor the words are recorded.
                     "retrieved_document_ids": [m["document_id"] for m in matches],
-                    "query": used,
+                    "query": audit_query,
                     "scope_mode": scope_mode,
                     "error": None,
                 },
@@ -741,12 +788,198 @@ async def send_image_search(
         )
         await session.flush()
         await session.refresh(user_message, attribute_names=["created_at"])
+        await session.refresh(assistant_message, attribute_names=["created_at"])
         await session.refresh(conversation, attribute_names=["updated_at"])
 
     return MessagePair(
         user_message=user_message,
         assistant_message=assistant_message,
         conversation=conversation,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Picture questions typed into the ordinary chat box
+# ---------------------------------------------------------------------------
+
+# Below this best score the closest pictures are probably not what was asked for.
+# Chinese descriptions score higher than English ones even for unrelated pictures, so
+# this is a hint to hedge the wording, never a filter.
+WEAK_PICTURE_MATCH = 0.10
+_PICTURE_CHAT_TOP_K = 6
+_PICTURE_LIST_LIMIT = 30
+
+
+@dataclass(frozen=True)
+class PicturePlan:
+    """What a picture question will be answered with. Built before anything is written."""
+
+    text: str
+    kind: str  # "image_list" | "image_search"
+    reply: str
+    matches: list[dict]
+    scope_mode: str
+    scope_space_ids: list[uuid.UUID]
+
+
+def _picture_reply(*, kind: str, shown: int, total: int, best: float | None) -> str:
+    if kind == "image_list":
+        if total > shown:
+            return f"知识库里共有 {total} 张图片，先列出最新的 {shown} 张。"
+        return f"知识库里共有 {total} 张图片。"
+    if best is not None and best < WEAK_PICTURE_MATCH:
+        return f"没有明显吻合的图片，以下是最接近的 {shown} 张，请自行判断是否相关。"
+    return f"找到 {shown} 张相似的图片。"
+
+
+async def plan_picture_turn(
+    session: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    text: str,
+) -> PicturePlan | None:
+    """Decide whether a typed message is a picture question and, if so, answer it.
+
+    Returns ``None`` (the message then goes down the normal text path) unless the text
+    clearly asks for pictures, the conversation is not bound to an agent, picture search
+    is on, and the person can read at least one picture. Looks only where the
+    conversation may search, with the person's live permissions. Writes nothing and ends
+    its own read transaction, so callers can skip the model quota for a plan.
+    """
+
+    from quberi_api.domain.documents.models import Document
+    from quberi_api.services.documents.core import file_type_clause
+    from quberi_api.services.rag import image_search, picture_intent
+
+    intent = picture_intent.classify(text)
+    if intent is None or not get_settings().image_search_enabled:
+        return None
+    view = await get_conversation_for_user(
+        session,
+        conversation_id=conversation_id,
+        organization_id=organization_id,
+        user_id=user_id,
+    )
+    conversation = view.conversation
+    if _agent_binding(conversation) is not None:
+        await session.rollback()
+        return None
+    scope, scope_mode = await effective_scope_for_conversation(
+        session, conversation=conversation, caller_user_id=user_id
+    )
+    if not scope:
+        await session.rollback()
+        return None
+
+    readable = (
+        Document.organization_id == organization_id,
+        Document.space_id.in_(scope),
+        Document.status != "archived",
+        file_type_clause(Document.mime_type, "image"),
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(Document).where(*readable))
+    ).scalar_one()
+    if total == 0:
+        await session.rollback()
+        return None  # no pictures to show: let the text path answer
+
+    matches: list[dict] = []
+    best: float | None = None
+    if intent.kind == "list":
+        rows = (
+            await session.execute(
+                select(Document, Space.name)
+                .join(Space, Space.id == Document.space_id)
+                .where(*readable, Space.status == "active", Space.organization_id == organization_id)
+                .order_by(Document.created_at.desc())
+                .limit(_PICTURE_LIST_LIMIT)
+            )
+        ).all()
+        matches = [
+            {
+                "document_id": str(d.id),
+                "document_name": d.name,
+                "space_id": str(d.space_id),
+                "space_name": space_name,
+                "mime_type": d.mime_type,
+                "size_bytes": int(d.size_bytes or 0),
+            }
+            for d, space_name in rows
+        ]
+        kind = "image_list"
+    else:
+        kind = "image_search"
+        try:
+            vector = await image_search.embed_query(image=None, text=intent.subject)
+            qdrant = create_qdrant_client(get_settings())
+            try:
+                found = await image_search.search_images(
+                    session,
+                    qdrant=qdrant,
+                    organization_id=organization_id,
+                    space_ids=scope,
+                    query_vector=vector,
+                    top_k=_PICTURE_CHAT_TOP_K,
+                )
+            finally:
+                await qdrant.close()
+        except Exception:  # noqa: BLE001 - never let the picture shortcut break chat
+            import logging as _logging
+
+            _logging.getLogger(__name__).exception("picture question failed; using text path")
+            await session.rollback()
+            return None
+        matches = [
+            {
+                "document_id": str(m.document_id),
+                "document_name": m.document_name,
+                "space_id": str(m.space_id),
+                "space_name": m.space_name,
+                "mime_type": m.mime_type,
+                "size_bytes": m.size_bytes,
+                "score": round(m.score, 4),
+            }
+            for m in found.matches
+        ]
+        best = max((m["score"] for m in matches), default=None)
+        if not matches:
+            await session.rollback()
+            return None  # pictures exist but none is indexed yet: let the text path answer
+    await session.commit()
+    return PicturePlan(
+        text=text.strip(),
+        kind=kind,
+        reply=_picture_reply(kind=kind, shown=len(matches), total=total, best=best),
+        matches=matches,
+        scope_mode=scope_mode,
+        scope_space_ids=list(scope),
+    )
+
+
+async def _answer_picture_plan(
+    session: AsyncSession,
+    *,
+    plan: PicturePlan,
+    conversation_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> MessagePair:
+    return await _persist_image_turn(
+        session,
+        conversation_id=conversation_id,
+        organization_id=organization_id,
+        user_id=user_id,
+        user_content={"type": "text", "text": plan.text},
+        title=plan.text[:_TITLE_MAX],
+        reply=plan.reply,
+        matches=plan.matches,
+        kind=plan.kind,
+        scope_mode=plan.scope_mode,
+        scope_space_ids=plan.scope_space_ids,
+        audit_query={"picture": False, "description": plan.kind == "image_search"},
     )
 
 
@@ -759,6 +992,7 @@ async def send_message_stream(
     identity_id: uuid.UUID | None = None,
     text: str,
     review: bool = False,
+    picture_plan: PicturePlan | None = None,
 ):
     """Streaming twin of :func:`send_message`.
 
@@ -791,6 +1025,33 @@ async def send_message_stream(
         raise InvalidInputError(
             f"message text exceeds {_MAX_MESSAGE_TEXT} character limit"
         )
+
+    if picture_plan is not None:
+        # A picture question: no model, no review hold, no quota. Same event order
+        # as a text turn, minus ``retrieved`` and ``delta``.
+        pair = await _answer_picture_plan(
+            session,
+            plan=picture_plan,
+            conversation_id=conversation_id,
+            organization_id=organization_id,
+            user_id=user_id,
+        )
+        um, am = pair.user_message, pair.assistant_message
+        yield "user_message", {
+            "id": str(um.id),
+            "conversation_id": str(conversation_id),
+            "role": "user",
+            "content": um.content,
+            "author_user_id": str(um.author_user_id) if um.author_user_id else None,
+            "status": um.status,
+            "correlation_id": um.correlation_id,
+            "created_at": um.created_at.isoformat(),
+        }
+        yield "assistant_message", _assistant_event(
+            am, am.content, conversation_id, am.correlation_id
+        )
+        yield "done", {}
+        return
 
     correlation_id = uuid.uuid4().hex
 
