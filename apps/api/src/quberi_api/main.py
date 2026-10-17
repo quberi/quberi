@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from quberi_api.core.logging import configure_logging
 from quberi_api.health.router import router as health_router
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import ai_providers, demo_seed, platform_admin
+from quberi_api.services.rag.image_warmup import warm_picture_search
 
 _log = logging.getLogger(__name__)
 
@@ -63,7 +65,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:  # pragma: no cover — logged; boot proceeds
         _log.exception("failed to sync demo content")
 
+    # Load the picture model's text half in the background, but only where there are
+    # pictures to search: see ``services/rag/image_warmup``.
+    warmup = asyncio.create_task(warm_picture_search(infrastructure.session_factory, settings))
     yield
+    warmup.cancel()
     await infrastructure.close()
 
 
