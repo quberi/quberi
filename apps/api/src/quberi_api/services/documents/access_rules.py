@@ -174,6 +174,15 @@ async def add_rule(
         subject_id=subject_id,
         organization_id=organization_id,
     )
+    if effect == "deny" and subject_type == "user":
+        target_role = await core._caller_space_role(
+            session, user_id=subject_id, organization_id=organization_id, space_id=space_id
+        )
+        if target_role == "owner":
+            raise InvalidInputError(
+                "the owner of a space cannot be denied its documents; "
+                "hand the space to someone else first"
+            )
     existing = (
         await session.execute(
             select(DocumentAccessRule.id).where(

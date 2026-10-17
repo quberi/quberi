@@ -880,3 +880,57 @@ async def test_an_org_admin_cannot_use_it_on_someone_elses_personal_or_team_spac
             db, organization_id=boot.organization_id, actor_user_id=boot.user_id,
             space_id=mine.space.id,
         )
+
+
+# ---------------------------------------------------------------------------
+# The owner of a space is never denied its documents
+# ---------------------------------------------------------------------------
+
+
+async def test_the_owner_of_a_space_cannot_be_denied_and_hiding_from_everyone_spares_them(
+    db_session, world
+):
+    w, db = world, db_session
+    boss = await _member(db, w.boot)
+    await _grant(db, w.boot, w.space, boss, role="owner")
+    await _grant(db, w.boot, w.space, w.member)
+
+    # Naming the owner directly is refused, whoever asks (even the owner themselves).
+    for actor in (w.owner.id, boss.id):
+        await db.commit()
+        with pytest.raises(InvalidInputError):
+            await rules.add_rule(
+                db, organization_id=w.boot.organization_id, actor_user_id=actor,
+                space_id=w.space.id, document_id=w.a.id, effect="deny",
+                subject_type="user", subject_id=boss.id,
+            )
+        await db.rollback()
+    # Hiding from the whole organisation reaches everyone except the owners.
+    await _rule(db, w.boot, w.space, w.a, "deny", "organization", w.boot.organization_id)
+    assert await _can(db, w.boot, w.member, w.a) is False
+    assert await _can(db, w.boot, boss, w.a) is True
+    assert await _can(db, w.boot, w.owner, w.a) is True
+    assert await _search_names(db, w.boot, w.qdrant, boss) == ["a.pdf", "b.pdf"]
+    assert await _search_names(db, w.boot, w.qdrant, w.member) == ["b.pdf"]
+    # A space admin who is not an owner can still be denied.
+    admin = await _member(db, w.boot)
+    await _grant(db, w.boot, w.space, admin, role="admin")
+    await _rule(db, w.boot, w.space, w.b, "deny", "user", admin.id)
+    assert await _can(db, w.boot, admin, w.b) is False
+
+
+async def test_handing_the_space_over_makes_the_old_owner_deniable(db_session, world):
+    from quberi_api.services import space_owners
+
+    w, db = world, db_session
+    boss = await _member(db, w.boot)
+    await _grant(db, w.boot, w.space, boss, role="owner")
+    successor = await _member(db, w.boot)
+    await db.commit()
+    await space_owners.transfer_owner(
+        db, space_id=w.space.id, organization_id=w.boot.organization_id,
+        actor_user_id=boss.id, new_owner_user_id=successor.id,
+    )
+    await db.commit()
+    await _rule(db, w.boot, w.space, w.a, "deny", "user", boss.id)  # now only an editor
+    assert await _can(db, w.boot, boss, w.a) is False

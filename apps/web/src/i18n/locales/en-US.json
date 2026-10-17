@@ -1521,7 +1521,7 @@
     "mine": "Mine"
   },
   "docAccess": {
-    "intro": "Anyone who can read this space can read this document. Add an Allow rule to let someone outside the space read just this one, or a Deny rule to hide it from someone inside. Deny always wins. Changes apply immediately.",
+    "intro": "Anyone who can read this space can read this document. Add an Allow rule to let someone outside the space read just this one, or a Deny rule to hide it from someone inside. Deny always wins, except against the space's owner, who cannot be denied; hand the space to someone else first. Changes apply immediately.",
     "forbidden": "Only a space admin or owner can see or change who can read this document.",
     "retry": "Try again",
     "sharedWith": "Allowed (outside the space)",
@@ -1537,7 +1537,7 @@
     },
     "effectHint": {
       "allow": "Can read this document even without access to the space",
-      "deny": "Cannot find or read this document, even with access to the space"
+      "deny": "Cannot find or read this document, even with access to the space (not the space owner)"
     },
     "allCovered": "Everyone of this kind is already in a list above."
   },

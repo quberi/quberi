@@ -146,6 +146,22 @@ async def load_doc_access(
         )
     ).all()
     denied = {doc_id for effect, doc_id, _s, _ds, _ss in rows if effect == "deny"}
+    if denied:
+        # The owner of a space is never denied one of its documents: they are accountable for
+        # the space's content and approve who else may read it, so no rule can hide it from
+        # them, whoever it names (a person, a group, everyone). To hide a document from its
+        # owner, hand the space to someone else first.
+        from quberi_api.services.documents import core as documents_core
+
+        doc_space = {doc_id: space_id for _e, doc_id, space_id, _ds, _ss in rows}
+        immune_spaces: set[uuid.UUID] = set()
+        for space_id in {doc_space[d] for d in denied}:
+            role = await documents_core._caller_space_role(
+                session, user_id=user_id, organization_id=organization_id, space_id=space_id
+            )
+            if role == "owner":
+                immune_spaces.add(space_id)
+        denied = {d for d in denied if doc_space[d] not in immune_spaces}
     granted = {
         doc_id: space_id
         for effect, doc_id, space_id, doc_status, space_status in rows
