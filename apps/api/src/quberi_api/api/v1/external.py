@@ -51,6 +51,7 @@ from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import documents as documents_service
 from quberi_api.services import spaces as spaces_service
+from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access, visibility_clause
 from quberi_api.services.documents import core as documents_core
 from quberi_api.services.documents import external_upload
 from quberi_api.services.documents.errors import (
@@ -183,6 +184,7 @@ async def search(
                 organization_id=ext.organization.id,
                 user_id=ext.user.id,
                 name=payload.space,
+                include_shared=True,
             )
         except NotFoundError as exc:
             raise HTTPException(
@@ -208,6 +210,7 @@ async def search(
         session,
         organization_id=ext.organization.id,
         readable_space_ids=result.space_ids,
+        doc_access=result.doc_access,
     )
     names: dict[uuid.UUID, str] = {}
     wanted_names = space_ids | {sid for _name, sid, _state in pending_rows}
@@ -273,6 +276,7 @@ async def _pending_documents(
     *,
     organization_id: uuid.UUID,
     readable_space_ids: list[uuid.UUID],
+    doc_access: DocAccess = NO_DOC_ACCESS,
 ) -> tuple[int, list[tuple[str, uuid.UUID, str]]]:
     """Recently changed documents in these spaces that are not searchable yet.
 
@@ -280,12 +284,17 @@ async def _pending_documents(
     tuples (not ORM rows: the session is committed before the response is built).
     """
 
-    if not readable_space_ids:
+    if not readable_space_ids and not doc_access.granted:
         return 0, []
     cutoff = datetime.now(timezone.utc) - _PENDING_WINDOW
     where = (
         Document.organization_id == organization_id,
-        Document.space_id.in_(readable_space_ids),
+        # Whole spaces, plus single documents shared with the person; never a hidden one.
+        or_(
+            Document.space_id.in_(readable_space_ids),
+            Document.id.in_(set(doc_access.granted)),
+        ),
+        Document.id.not_in(doc_access.denied),
         Document.status != "archived",
         Document.indexing_state.in_(_PENDING_STATES),
         Document.updated_at >= cutoff,
@@ -316,6 +325,10 @@ async def _pending_documents(
 
 class SpaceInfo(BaseModel):
     name: str
+    # More than 0 when the person cannot read this space as a whole and sees only that
+    # many documents of it, each shared with them individually. Then ``document_count``
+    # is the same number.
+    shared_only_documents: int = 0
     # 'personal' (the person's own space) or 'shared'.
     kind: str
     # Whether save and upload would be allowed there (editor or above).
@@ -436,19 +449,37 @@ async def list_spaces(
     views = [
         v
         for v in await spaces_service.list_spaces_for_user(
-            session, organization_id=ext.organization.id, user_id=ext.user.id
+            session,
+            organization_id=ext.organization.id,
+            user_id=ext.user.id,
+            include_shared=True,
         )
         if v.space.status == "active"
     ]
     shown = views[:_MAX_SPACES_LISTED]
     counts: dict[uuid.UUID, int] = {}
     if shown:
+        access = await load_doc_access(
+            session, user_id=ext.user.id, organization_id=ext.organization.id
+        )
+        whole_ids = [v.space.id for v in shown if v.shared_only_documents == 0]
+        # The same rule as the document list: a space read as a whole minus the documents
+        # hidden from the person, and the individually shared documents of the others.
         rows = await session.execute(
             select(Document.space_id, func.count())
             .where(
                 Document.organization_id == ext.organization.id,
-                Document.space_id.in_([v.space.id for v in shown]),
                 Document.status != "archived",
+                or_(
+                    and_(
+                        Document.space_id.in_(whole_ids),
+                        Document.id.not_in(access.denied),
+                    ),
+                    and_(
+                        Document.space_id.in_([v.space.id for v in shown]),
+                        Document.id.in_(set(access.granted)),
+                    ),
+                ),
             )
             .group_by(Document.space_id)
         )
@@ -468,6 +499,7 @@ async def list_spaces(
                 kind="personal" if view.space.preset == "personal" and view.is_owner else "shared",
                 can_edit=can_edit,
                 document_count=counts.get(view.space.id, 0),
+                shared_only_documents=view.shared_only_documents,
             )
         )
     await _audit_listing(session, ext, what="spaces", result_count=len(spaces))
@@ -498,7 +530,11 @@ async def list_documents(
 
     try:
         view = await spaces_service.resolve_target_space(
-            session, organization_id=ext.organization.id, user_id=ext.user.id, name=space
+            session,
+            organization_id=ext.organization.id,
+            user_id=ext.user.id,
+            name=space,
+            include_shared=True,
         )
     except NotFoundError as exc:
         raise HTTPException(
@@ -511,10 +547,14 @@ async def list_documents(
             detail={"code": "space_not_found", "message": "no accessible space with that name"},
         )
 
+    access = await load_doc_access(
+        session, user_id=ext.user.id, organization_id=ext.organization.id
+    )
     base = (
         Document.organization_id == ext.organization.id,
         Document.space_id == view.space.id,
         Document.status != "archived",
+        visibility_clause(access, whole_space=view.shared_only_documents == 0),
     )
     if type:
         base = (*base, documents_core.file_type_clause(Document.mime_type, type))
@@ -648,6 +688,7 @@ async def search_images_by_description(
                 organization_id=ext.organization.id,
                 user_id=ext.user.id,
                 name=payload.space,
+                include_shared=True,
             )
         except NotFoundError as exc:
             raise HTTPException(
@@ -655,7 +696,7 @@ async def search_images_by_description(
                 detail={"code": "space_not_found", "message": str(exc)},
             ) from exc
         requested = [view.space.id]
-    scope = await image_search.resolve_image_scope(
+    scope = await image_search.resolve_image_access(
         session,
         organization_id=ext.organization.id,
         caller_user_id=ext.user.id,
@@ -667,9 +708,10 @@ async def search_images_by_description(
             session,
             qdrant=infra.qdrant,
             organization_id=ext.organization.id,
-            space_ids=scope,
+            space_ids=scope.space_ids,
             query_vector=vector,
             top_k=payload.top_k,
+            doc_access=scope.doc_access,
         )
     except image_search.ImageSearchDisabled as exc:
         raise HTTPException(

@@ -23,7 +23,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.core.config import get_settings
@@ -43,6 +43,7 @@ from quberi_api.services.authz import (
     list_accessible_space_ids,
     resolve_effective_role_codes,
 )
+from quberi_api.services.doc_acl import load_doc_access
 from quberi_api.services.errors import (
     AlreadyExistsError,
     InvalidInputError,
@@ -57,7 +58,7 @@ from quberi_api.services.rag.generate import (
     outgoing_messages,
 )
 from quberi_api.services.rag.retrieve import (
-    effective_scope_for_conversation,
+    effective_access_for_conversation,
     retrieve_for_conversation,
 )
 from quberi_api.services.retrieval_audit import (
@@ -641,7 +642,7 @@ async def send_image_search(
         user_id=user_id,
     )
     conversation = view.conversation
-    scope, scope_mode = await effective_scope_for_conversation(
+    scope, scope_mode, doc_access = await effective_access_for_conversation(
         session, conversation=conversation, caller_user_id=user_id
     )
     vector = await image_search.embed_query(image=image, text=words or None)
@@ -654,6 +655,7 @@ async def send_image_search(
             space_ids=scope,
             query_vector=vector,
             top_k=top_k,
+            doc_access=doc_access,
         )
     finally:
         await qdrant.close()
@@ -866,16 +868,17 @@ async def plan_picture_turn(
     if _agent_binding(conversation) is not None:
         await session.rollback()
         return None
-    scope, scope_mode = await effective_scope_for_conversation(
+    scope, scope_mode, doc_access = await effective_access_for_conversation(
         session, conversation=conversation, caller_user_id=user_id
     )
-    if not scope:
+    if not scope and not doc_access.granted:
         await session.rollback()
         return None
 
     readable = (
         Document.organization_id == organization_id,
-        Document.space_id.in_(scope),
+        or_(Document.space_id.in_(scope), Document.id.in_(set(doc_access.granted))),
+        Document.id.not_in(doc_access.denied),
         Document.status != "archived",
         file_type_clause(Document.mime_type, "image"),
     )
@@ -923,6 +926,7 @@ async def plan_picture_turn(
                     space_ids=scope,
                     query_vector=vector,
                     top_k=_PICTURE_CHAT_TOP_K,
+                    doc_access=doc_access,
                 )
             finally:
                 await qdrant.close()
@@ -1772,7 +1776,8 @@ async def _caller_has_space_view(
     organization_id: uuid.UUID,
     space_id: uuid.UUID,
 ) -> bool:
-    """``True`` iff the user has viewer/editor/admin/owner on the space.
+    """``True`` iff the user has viewer/editor/admin/owner on the space, or at least
+    one document of it is shared with them individually.
 
     Personal spaces owned by the user always count, matching the rest of
     the platform.
@@ -1797,7 +1802,13 @@ async def _caller_has_space_view(
         resource_type="space",
         resource_id=space_id,
     )
-    return bool(codes)
+    if codes:
+        return True
+    # Not readable as a whole, but some of its documents may be shared with the person.
+    access = await load_doc_access(
+        session, user_id=user_id, organization_id=organization_id
+    )
+    return space_id in access.granted.values()
 
 
 async def set_scope_mode(

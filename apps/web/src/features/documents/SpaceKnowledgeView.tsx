@@ -135,6 +135,11 @@ function SpaceKnowledgeViewInner({
 
         {space && (
           <div className="space-view-facets">
+            {(space.shared_only_documents ?? 0) > 0 && (
+              <span className="chip chip-inline">
+                {t('spaces.sharedOnly', { count: space.shared_only_documents })}
+              </span>
+            )}
             <span className={`chip chip-inline chip-preset-${space.preset}`}>
               {t(`spaces.preset.${space.preset}`)}
             </span>

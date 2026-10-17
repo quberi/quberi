@@ -30,7 +30,7 @@ from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
-from quberi_api.services import document_sources
+from quberi_api.services import doc_acl, document_sources
 from quberi_api.services.authz import resolve_effective_role_codes
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.documents.errors import (
@@ -281,6 +281,41 @@ def _at_least(role: Optional[str], required: str) -> bool:
     )
 
 
+async def _read_gate(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    space_id: uuid.UUID,
+) -> tuple[bool, doc_acl.DocAccess]:
+    """What this person may read in one space: ``(whole_space, document_rules)``.
+
+    ``whole_space`` is true when their role lets them read the space; then only the
+    documents hidden from them are subtracted. Otherwise they may read only the
+    documents shared with them on their own, and when there are none the space
+    does not exist for them (404-ish, like any space they cannot see).
+    """
+
+    role = await _caller_space_role(
+        session, user_id=user_id, organization_id=organization_id, space_id=space_id
+    )
+    access = await doc_acl.load_doc_access(
+        session, user_id=user_id, organization_id=organization_id
+    )
+    whole = _at_least(role, "viewer")
+    if not whole and space_id not in access.granted.values():
+        # 404-ish: hide existence rather than leak.
+        raise NotFoundError(f"space not accessible: {space_id}")
+    return whole, access
+
+
+def _require_visible(
+    doc: Document, *, whole_space: bool, access: doc_acl.DocAccess
+) -> None:
+    """Raise ``NotFoundError`` unless this document may be read under ``_read_gate``."""
+
+    if doc.id in access.denied or not (whole_space or doc.id in access.granted):
+        raise NotFoundError(f"document not found: {doc.id}")
 async def caller_has_space_role(
     session: AsyncSession,
     *,
@@ -380,15 +415,12 @@ async def list_documents_in_space(
     to ``created_at``.
     """
 
-    role = await _caller_space_role(
+    whole_space, access = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
         space_id=space_id,
     )
-    if not _at_least(role, "viewer"):
-        # 404-ish: hide existence rather than leak.
-        raise NotFoundError(f"space not accessible: {space_id}")
 
     # Clamp inputs so a bad caller can't ask for a 100k-row page.
     limit = max(1, min(int(limit), 200))
@@ -398,6 +430,7 @@ async def list_documents_in_space(
     base = select(Document).where(
         Document.organization_id == organization_id,
         Document.space_id == space_id,
+        doc_acl.visibility_clause(access, whole_space=whole_space),
     )
     if not include_archived:
         base = base.where(Document.status != "archived")
@@ -448,14 +481,12 @@ async def stats_for_space(
     pulling the full document list. Excludes archived rows.
     """
 
-    role = await _caller_space_role(
+    whole_space, access = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
         space_id=space_id,
     )
-    if not _at_least(role, "viewer"):
-        raise NotFoundError(f"space not accessible: {space_id}")
 
     from quberi_api.domain.documents.models import DocumentSource
 
@@ -465,6 +496,7 @@ async def stats_for_space(
             Document.organization_id == organization_id,
             Document.space_id == space_id,
             Document.status != "archived",
+            doc_acl.visibility_clause(access, whole_space=whole_space),
         )
         .subquery()
     )
@@ -536,14 +568,12 @@ async def get_document(
     space_id: uuid.UUID,
     caller_user_id: uuid.UUID,
 ) -> DocumentView:
-    role = await _caller_space_role(
+    whole_space, access = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
         space_id=space_id,
     )
-    if not _at_least(role, "viewer"):
-        raise NotFoundError(f"space not accessible: {space_id}")
 
     doc = (
         await session.execute(
@@ -556,6 +586,7 @@ async def get_document(
     ).scalar_one_or_none()
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
+    _require_visible(doc, whole_space=whole_space, access=access)
     return await _to_view(session, doc)
 
 
@@ -807,6 +838,14 @@ async def delete_document(
     ).scalar_one_or_none()
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
+    # A document hidden from this person cannot be acted on either.
+    denied = (
+        await doc_acl.load_doc_access(
+            session, user_id=caller_user_id, organization_id=organization_id
+        )
+    ).denied
+    if doc.id in denied:
+        raise NotFoundError(f"document not found: {document_id}")
 
     is_own = doc.uploaded_by_user_id == caller_user_id
     if not (is_own or _at_least(role, "admin")):
@@ -914,14 +953,12 @@ async def get_document_text(
     changed since indexing (same ``storage_key`` / checksum).
     """
 
-    role = await _caller_space_role(
+    whole_space, access = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
         space_id=space_id,
     )
-    if not _at_least(role, "viewer"):
-        raise NotFoundError(f"space not accessible: {space_id}")
 
     doc = (
         await session.execute(
@@ -934,6 +971,7 @@ async def get_document_text(
     ).scalar_one_or_none()
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
+    _require_visible(doc, whole_space=whole_space, access=access)
     if doc.storage_key is None:
         raise NotFoundError(
             "document has no local blob (reference-only source; not yet supported)"
@@ -964,14 +1002,12 @@ async def open_download_stream(
     document metadata.
     """
 
-    role = await _caller_space_role(
+    whole_space, access = await _read_gate(
         session,
         user_id=caller_user_id,
         organization_id=organization_id,
         space_id=space_id,
     )
-    if not _at_least(role, "viewer"):
-        raise NotFoundError(f"space not accessible: {space_id}")
 
     doc = (
         await session.execute(
@@ -984,6 +1020,7 @@ async def open_download_stream(
     ).scalar_one_or_none()
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
+    _require_visible(doc, whole_space=whole_space, access=access)
     if doc.storage_key is None:
         # ``reference_only`` sources would need an external connector to
         # stream — not supported in Slice E.

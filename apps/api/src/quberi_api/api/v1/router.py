@@ -29,6 +29,7 @@ from quberi_api.api.v1.organizations.positions import positions_router
 from quberi_api.api.v1.organizations.settings import organization_settings_router
 from quberi_api.api.v1.platform import router as platform_router
 from quberi_api.api.v1.spaces.access import space_access_router
+from quberi_api.api.v1.spaces.document_access import document_access_router
 from quberi_api.api.v1.spaces.documents import space_documents_router
 from quberi_api.api.v1.account import account_router
 from quberi_api.api.v1.spaces.router import router as spaces_router
@@ -55,6 +56,7 @@ router.include_router(document_sources_router)
 router.include_router(ai_providers_router)
 router.include_router(feishu_router)
 router.include_router(space_documents_router)
+router.include_router(document_access_router)
 router.include_router(conversations_space_router)
 router.include_router(conversation_router)
 router.include_router(agents_router)

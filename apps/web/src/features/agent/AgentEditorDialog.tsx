@@ -9,6 +9,7 @@ import { useMembers } from '../members/MembersContext'
 import { useOrgUnits } from '../orgUnits/OrgUnitsContext'
 import { usePositions } from '../positions/PositionsContext'
 import { useSpaces } from '../spaces/SpacesContext'
+import { isWholeSpace } from '../spaces/types'
 
 import {
   createAgent,
@@ -85,7 +86,7 @@ export function AgentEditorDialog({ open, agent, onClose, onSaved }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const { state: spacesState } = useSpaces()
-  const spaces = spacesState.kind === 'ready' ? spacesState.items : []
+  const spaces = spacesState.kind === 'ready' ? spacesState.items.filter(isWholeSpace) : []
 
   useEffect(() => {
     if (!open || !credentials) return

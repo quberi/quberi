@@ -432,3 +432,8 @@ async def remove_binding(
                 },
             )
         )
+
+
+# Public name for other services that attach a person/group/unit/position to a rule
+# (document-level access rules use the same subjects as space grants).
+resolve_subject_display = _resolve_subject_display

@@ -11,6 +11,9 @@ export interface SpaceSummary {
   owner_type: 'user' | 'group' | 'organization_unit' | 'organization'
   owner_id: string
   is_owner: boolean
+  /** More than 0 when only that many documents of this space are visible to the caller,
+   * each shared with them individually. They cannot read the space as a whole. */
+  shared_only_documents?: number
   /** Set only on the bilingual sample spaces; ordinary spaces have none. */
   locale?: string | null
   updated_at: string
@@ -40,4 +43,9 @@ export interface CreateSpaceInput {
   owner?: 'user' | 'organization'
   /** Initial access, applied in the same transaction as the space. */
   grants?: AddAccessBindingInput[]
+}
+
+/** A space the person can read as a whole (not one reached only through shared documents). */
+export function isWholeSpace(space: SpaceSummary): boolean {
+  return (space.shared_only_documents ?? 0) === 0
 }

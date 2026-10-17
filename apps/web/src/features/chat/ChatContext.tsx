@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useSpaces } from '../spaces/SpacesContext'
-import type { SpaceSummary } from '../spaces/types'
+import { isWholeSpace, type SpaceSummary } from '../spaces/types'
 
 import {
   addScopeSource as apiAddScopeSource,
@@ -151,8 +151,12 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const { i18n } = useTranslation()
   const { state: spacesState } = useSpaces()
 
-  const accessibleSpaces =
-    spacesState.kind === 'ready' ? spacesState.items : []
+  // Spaces reached only through individually shared documents have no conversations
+  // of their own and cannot anchor one; search still covers them (auto scope).
+  const accessibleSpaces = useMemo(
+    () => (spacesState.kind === 'ready' ? spacesState.items.filter(isWholeSpace) : []),
+    [spacesState],
+  )
 
   // ``anchorSpaceId`` is the space a NEW conversation gets filed under.
   // Ordinary users never pick this: it defaults to their personal space

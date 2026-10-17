@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   Info,
+  ShieldCheck,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -13,6 +14,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ApiError } from '../api/client'
+import { DocumentAccessTab } from './DocumentAccessTab'
 
 import { formatBytes } from './DocumentRow'
 import { useDocuments } from './DocumentsContext'
@@ -44,7 +46,7 @@ export function DocumentDetailDrawer({
 }) {
   const { t } = useTranslation()
   const { page, download } = useDocuments()
-  const [tab, setTab] = useState<'properties' | 'rag'>('properties')
+  const [tab, setTab] = useState<'properties' | 'rag' | 'access'>('properties')
 
   const doc: DocumentSummary | null = useMemo(() => {
     if (page.kind !== 'ready') return null
@@ -117,10 +119,22 @@ export function DocumentDetailDrawer({
               >
                 <Sparkles size={13} /> {t('knowledge.detail.tabRag')}
               </button>
+              <button
+                aria-selected={tab === 'access'}
+                className={tab === 'access' ? 'active' : ''}
+                onClick={() => setTab('access')}
+                role="tab"
+                type="button"
+              >
+                <ShieldCheck size={13} /> {t('knowledge.detail.tabAccess')}
+              </button>
             </div>
 
             {tab === 'properties' && <PropertiesTab doc={doc} />}
             {tab === 'rag' && <RagStatusTab doc={doc} />}
+            {tab === 'access' && (
+              <DocumentAccessTab documentId={doc.id} spaceId={doc.space_id} />
+            )}
 
             <footer className="doc-drawer-foot">
               <button

@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import update
 
+from quberi_api.services.doc_acl import NO_DOC_ACCESS
 from quberi_api.api.v1 import external as external_api
 from quberi_api.domain.documents.models import Document
 from quberi_api.services import document_sources as sources_service
@@ -82,7 +83,7 @@ async def _doc(db, boot, space, name, *, state="indexing", status="uploaded", ag
 
 def _stub_retrieval(monkeypatch, space_ids):
     async def fake_retrieve(session, *, qdrant, organization_id, caller_user_id, query, top_k, **_more):
-        return SimpleNamespace(chunks=[], space_ids=list(space_ids))
+        return SimpleNamespace(chunks=[], space_ids=list(space_ids), doc_access=NO_DOC_ACCESS)
 
     monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
 

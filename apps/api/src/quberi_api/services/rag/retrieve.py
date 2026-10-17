@@ -36,6 +36,7 @@ from quberi_api.services.ai import resolve_embedding_provider
 from quberi_api.services.ai.base import EmbeddingProvider
 from quberi_api.services.ai.registry import MODEL_REGISTRY
 from quberi_api.services.authz import list_accessible_space_ids
+from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access
 from quberi_api.services.rag.vector_store import RetrievedChunk, VectorStore
 
 _log = logging.getLogger(__name__)
@@ -59,7 +60,8 @@ class ScopedRetrieval:
     scope_mode: str
     model_id: str
     collection: str
-
+    # Documents shared with / hidden from the caller on their own (see ``doc_acl``).
+    doc_access: DocAccess = NO_DOC_ACCESS
 
 # ---------------------------------------------------------------------------
 # Public
@@ -72,18 +74,41 @@ async def effective_scope_for_conversation(
     conversation: Conversation,
     caller_user_id: uuid.UUID,
 ) -> tuple[list[uuid.UUID], str]:
-    """The spaces a conversation may search right now, and its scope mode.
+    """The spaces a conversation may search as a whole, and its scope mode.
+
+    See :func:`effective_access_for_conversation`, which also returns the
+    document-level rules; this keeps the older two-value shape.
+    """
+
+    effective, scope_mode, _access = await effective_access_for_conversation(
+        session, conversation=conversation, caller_user_id=caller_user_id
+    )
+    return effective, scope_mode
+
+
+async def effective_access_for_conversation(
+    session: AsyncSession,
+    *,
+    conversation: Conversation,
+    caller_user_id: uuid.UUID,
+) -> tuple[list[uuid.UUID], str, DocAccess]:
+    """Where a conversation may search right now: spaces, scope mode, document rules.
 
     Always starts from the caller's live permissions. A ``custom`` conversation
     then keeps only the spaces the person picked that they can *still* read (an
-    intersection); ``auto`` is everything they can read. Shared by text and
-    picture retrieval so both look in exactly the same places.
+    intersection); ``auto`` is everything they can read. Documents shared with the
+    person on their own count inside the spaces the scope covers; documents hidden
+    from them are excluded everywhere. Shared by text and picture retrieval so both
+    look in exactly the same places.
     """
 
     org_id = conversation.organization_id
 
-    # 1. Live accessible spaces for the caller.
+    # 1. Live accessible spaces for the caller, and their document-level rules.
     live_accessible = await list_accessible_space_ids(
+        session, user_id=caller_user_id, organization_id=org_id
+    )
+    doc_access = await load_doc_access(
         session, user_id=caller_user_id, organization_id=org_id
     )
 
@@ -111,9 +136,10 @@ async def effective_scope_for_conversation(
         effective: list[uuid.UUID] = sorted(
             (s for s in declared if s in live_accessible), key=str
         )
+        doc_access = doc_access.narrowed_to(declared)
     else:  # auto
         effective = sorted(live_accessible, key=str)
-    return effective, scope_mode
+    return effective, scope_mode, doc_access
 
 
 async def retrieve_for_conversation(
@@ -134,7 +160,7 @@ async def retrieve_for_conversation(
     """
 
     org_id = conversation.organization_id
-    effective, scope_mode = await effective_scope_for_conversation(
+    effective, scope_mode, doc_access = await effective_access_for_conversation(
         session, conversation=conversation, caller_user_id=caller_user_id
     )
 
@@ -145,6 +171,7 @@ async def retrieve_for_conversation(
         space_ids=effective,
         query=query,
         top_k=top_k,
+        doc_access=doc_access,
     )
     return ScopedRetrieval(
         chunks=chunks,
@@ -152,6 +179,7 @@ async def retrieve_for_conversation(
         scope_mode=scope_mode,
         model_id=model_id,
         collection=collection,
+        doc_access=doc_access,
     )
 
 
@@ -181,8 +209,12 @@ async def retrieve_for_user(
     live_accessible = await list_accessible_space_ids(
         session, user_id=caller_user_id, organization_id=organization_id
     )
+    doc_access = await load_doc_access(
+        session, user_id=caller_user_id, organization_id=organization_id
+    )
     if space_ids is not None:
         live_accessible = live_accessible & set(space_ids)
+        doc_access = doc_access.narrowed_to(space_ids)
     effective = sorted(live_accessible, key=str)
     chunks, model_id, collection = await _search_scoped_spaces(
         session,
@@ -191,6 +223,7 @@ async def retrieve_for_user(
         space_ids=effective,
         query=query,
         top_k=top_k,
+        doc_access=doc_access,
     )
     return ScopedRetrieval(
         chunks=chunks,
@@ -198,6 +231,7 @@ async def retrieve_for_user(
         scope_mode="auto",
         model_id=model_id,
         collection=collection,
+        doc_access=doc_access,
     )
 
 
@@ -233,9 +267,15 @@ async def retrieve_with_scope(
 
     org_id = organization_id
     configured = [s for s in (scope_space_ids or [])]
-
+    doc_access = await load_doc_access(
+        session, user_id=caller_user_id, organization_id=org_id
+    )
     if scope_mode == "fixed":
         effective = sorted(set(configured), key=str)
+        # The agent may read what its owner configured, but a document hidden from
+        # this person stays hidden: a denial is about them, not about the space.
+        # Documents shared with them add nothing, the spaces are already included.
+        doc_access = DocAccess(denied=doc_access.denied)
     else:
         accessible = await list_accessible_space_ids(
             session, user_id=caller_user_id, organization_id=org_id
@@ -243,6 +283,7 @@ async def retrieve_with_scope(
         if scope_mode == "intersect":
             allow = set(configured)
             effective = sorted((s for s in accessible if s in allow), key=str)
+            doc_access = doc_access.narrowed_to(allow)
         else:  # "user" (and any unknown value → safe default)
             effective = sorted(accessible, key=str)
 
@@ -254,6 +295,7 @@ async def retrieve_with_scope(
         query=query,
         top_k=top_k,
         document_ids=document_ids,
+        doc_access=doc_access,
     )
     return ScopedRetrieval(
         chunks=chunks,
@@ -261,6 +303,7 @@ async def retrieve_with_scope(
         scope_mode=scope_mode,
         model_id=model_id,
         collection=collection,
+        doc_access=doc_access,
     )
 
 
@@ -273,6 +316,7 @@ async def _search_scoped_spaces(
     query: str,
     top_k: int,
     document_ids: Sequence[uuid.UUID] | None = None,
+    doc_access: DocAccess = NO_DOC_ACCESS,
 ) -> tuple[list[RetrievedChunk], str, str]:
     """Embed ``query`` and search ``space_ids``; return (chunks, model_id, collection).
 
@@ -291,7 +335,7 @@ async def _search_scoped_spaces(
     vector_dim = resolved.model.vector_dim or embedder.vector_dim
     store = VectorStore(qdrant, model_id=model_id, vector_dim=vector_dim)
 
-    if not space_ids:
+    if not space_ids and not doc_access.granted:
         _log.info("retrieve: empty scope in %s", org_id)
         return [], model_id, store.collection
 
@@ -316,14 +360,24 @@ async def _search_scoped_spaces(
         organization_id=org_id,
         limit=max(1, min(int(over_fetch), 40)),
         document_ids=document_ids,
+        granted_document_ids=doc_access.granted_ids,
+        denied_document_ids=doc_access.denied_ids,
     )
 
     # Defensive re-check — reject any hit that escaped the filter.
     accessible_set = set(space_ids)
-    kept = [c for c in raw if c.space_id in accessible_set]
+    kept = [
+        c
+        for c in raw
+        if doc_access.allows(
+            document_id=c.document_id,
+            space_id=c.space_id,
+            readable_spaces=accessible_set,
+        )
+    ]
     if len(kept) != len(raw):
         _log.warning(
-            "retrieve: dropped %d hit(s) that leaked past the space filter",
+            "retrieve: dropped %d hit(s) that leaked past the access filter",
             len(raw) - len(kept),
         )
 

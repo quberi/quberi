@@ -62,12 +62,24 @@ def _locale(view: spaces_service.SpaceView) -> str | None:
 
 def _summary(view: spaces_service.SpaceView) -> SpaceSummary:
     summary = SpaceSummary.model_validate(view.space)
-    return summary.model_copy(update={"is_owner": view.is_owner, "locale": _locale(view)})
+    return summary.model_copy(
+        update={
+            "is_owner": view.is_owner,
+            "locale": _locale(view),
+            "shared_only_documents": view.shared_only_documents,
+        }
+    )
 
 
 def _detail(view: spaces_service.SpaceView) -> SpaceDetail:
     detail = SpaceDetail.model_validate(view.space)
-    return detail.model_copy(update={"is_owner": view.is_owner, "locale": _locale(view)})
+    return detail.model_copy(
+        update={
+            "is_owner": view.is_owner,
+            "locale": _locale(view),
+            "shared_only_documents": view.shared_only_documents,
+        }
+    )
 
 
 @router.get(
@@ -83,6 +95,7 @@ async def list_spaces(
         session,
         organization_id=caller.organization.id,
         user_id=caller.user.id,
+        include_shared=True,
     )
     items = [_summary(view) for view in views]
     return SpaceList(items=items, total=len(items))
@@ -165,6 +178,7 @@ async def get_space(
         space_id=space_id,
         organization_id=caller.organization.id,
         user_id=caller.user.id,
+        include_shared=True,
     )
     return _detail(view)
 

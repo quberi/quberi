@@ -9,6 +9,7 @@ import {
   syncSource as apiSyncSource,
 } from '../documents/api'
 import { useSpaces } from '../spaces/SpacesContext'
+import { isWholeSpace } from '../spaces/types'
 
 import { feishuAuthorizeUrl, feishuOAuthStatus } from './api'
 import { FeishuFolderPicker } from './FeishuFolderPicker'
@@ -40,7 +41,7 @@ export function AddFeishuDialog({
   const { t } = useTranslation()
   const { credentials } = useAuth()
   const { state: spacesState } = useSpaces()
-  const spaces = spacesState.kind === 'ready' ? spacesState.items : []
+  const spaces = spacesState.kind === 'ready' ? spacesState.items.filter(isWholeSpace) : []
 
   const [folderToken, setFolderToken] = useState('')
   const [folderLabel, setFolderLabel] = useState('')

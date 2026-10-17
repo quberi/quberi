@@ -99,17 +99,38 @@ class ImageVectorStore(VectorStore):
         space_ids: Iterable[uuid.UUID],
         organization_id: uuid.UUID,
         limit: int = 12,
+        granted_document_ids: Iterable[uuid.UUID] | None = None,
+        denied_document_ids: Iterable[uuid.UUID] | None = None,
     ) -> list[ImageHit]:
         """Nearest pictures inside the given organisation and spaces only.
 
         An empty ``space_ids`` returns nothing: it never means "no filter".
+        ``granted_document_ids`` are searched in addition (pictures shared on their own
+        from spaces the person cannot read as a whole); ``denied_document_ids`` are
+        always excluded. Both are applied inside the index.
         """
 
         space_id_list = [str(s) for s in space_ids]
-        if not space_id_list:
+        granted_list = [str(d) for d in (granted_document_ids or [])]
+        if not space_id_list and not granted_list:
             return []
         if not await self._client.collection_exists(self._collection):
             return []
+        reachable: list[Any] = []
+        if space_id_list:
+            reachable.append(
+                qmodels.FieldCondition(key="space_id", match=qmodels.MatchAny(any=space_id_list))
+            )
+        if granted_list:
+            reachable.append(
+                qmodels.FieldCondition(key="document_id", match=qmodels.MatchAny(any=granted_list))
+            )
+        denied_list = [str(d) for d in (denied_document_ids or [])]
+        must_not: list[Any] = (
+            [qmodels.FieldCondition(key="document_id", match=qmodels.MatchAny(any=denied_list))]
+            if denied_list
+            else []
+        )
         response = await self._client.query_points(
             collection_name=self._collection,
             query=query_vector,
@@ -119,10 +140,9 @@ class ImageVectorStore(VectorStore):
                         key="organization_id",
                         match=qmodels.MatchValue(value=str(organization_id)),
                     ),
-                    qmodels.FieldCondition(
-                        key="space_id", match=qmodels.MatchAny(any=space_id_list)
-                    ),
-                ]
+                    qmodels.Filter(should=reachable),
+                ],
+                must_not=must_not or None,
             ),
             limit=limit,
             with_payload=True,

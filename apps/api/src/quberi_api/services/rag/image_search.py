@@ -27,7 +27,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from qdrant_client import AsyncQdrantClient
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.core.config import get_settings
@@ -35,6 +35,7 @@ from quberi_api.domain.documents.models import Document
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services.ai.local_image_embedding import get_image_embedder, image_vector_dim
 from quberi_api.services.authz import list_accessible_space_ids
+from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access
 from quberi_api.services.rag.image_store import ImageVectorStore
 
 _log = logging.getLogger(__name__)
@@ -67,6 +68,14 @@ class ImageMatch:
 
 
 @dataclass(frozen=True)
+class ImageScope:
+    """Where a person may look for pictures: whole spaces plus pictures shared on their own."""
+
+    space_ids: list[uuid.UUID]
+    doc_access: DocAccess
+
+
+@dataclass(frozen=True)
 class ImageSearchResult:
     matches: list[ImageMatch]
     # The spaces that were actually searched (after the intersection).
@@ -93,6 +102,33 @@ async def resolve_image_scope(
         return sorted(readable, key=str)
     wanted = set(requested_space_ids)
     return sorted((s for s in readable if s in wanted), key=str)
+
+
+async def resolve_image_access(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    caller_user_id: uuid.UUID,
+    requested_space_ids: Iterable[uuid.UUID] | None = None,
+) -> ImageScope:
+    """Like :func:`resolve_image_scope`, and also the document-level rules.
+
+    Pictures shared with the person on their own are searched too (inside the requested
+    spaces when they named some); pictures hidden from them never are.
+    """
+
+    spaces = await resolve_image_scope(
+        session,
+        organization_id=organization_id,
+        caller_user_id=caller_user_id,
+        requested_space_ids=requested_space_ids,
+    )
+    access = await load_doc_access(
+        session, user_id=caller_user_id, organization_id=organization_id
+    )
+    if requested_space_ids is not None:
+        access = access.narrowed_to(requested_space_ids)
+    return ImageScope(space_ids=spaces, doc_access=access)
 
 
 def _combine(vectors: Sequence[list[float]]) -> list[float]:
@@ -133,12 +169,14 @@ async def search_images(
     space_ids: Sequence[uuid.UUID],
     query_vector: list[float],
     top_k: int = DEFAULT_TOP_K,
+    doc_access: DocAccess = NO_DOC_ACCESS,
 ) -> ImageSearchResult:
-    """Nearest pictures in ``space_ids``, each confirmed against the database."""
+    """Nearest pictures in ``space_ids`` (and those shared on their own), each confirmed
+    against the database."""
 
     top = max(1, min(int(top_k), MAX_TOP_K))
     searched = list(space_ids)
-    if not searched:
+    if not searched and not doc_access.granted:
         return ImageSearchResult(matches=[], space_ids=[])
     model_id = get_settings().default_image_embedding_model
     store = ImageVectorStore(qdrant, model_id=model_id, vector_dim=image_vector_dim(model_id))
@@ -147,6 +185,8 @@ async def search_images(
         space_ids=searched,
         organization_id=organization_id,
         limit=top * _OVERFETCH,
+        granted_document_ids=doc_access.granted_ids,
+        denied_document_ids=doc_access.denied_ids,
     )
     if not hits:
         return ImageSearchResult(matches=[], space_ids=searched)
@@ -158,7 +198,11 @@ async def search_images(
             .where(
                 Document.id.in_({h.document_id for h in hits}),
                 Document.organization_id == organization_id,
-                Document.space_id.in_(searched),
+                or_(
+                    Document.space_id.in_(searched),
+                    Document.id.in_(set(doc_access.granted)),
+                ),
+                Document.id.not_in(doc_access.denied),
                 Document.status != "archived",
                 Document.indexing_state == "indexed",
                 Space.organization_id == organization_id,
@@ -176,6 +220,10 @@ async def search_images(
         doc, space_name = found
         if doc.space_id != hit.space_id:
             continue  # the vector names a different space than the document is in now
+        if not doc_access.allows(
+            document_id=doc.id, space_id=doc.space_id, readable_spaces=set(searched)
+        ):
+            continue
         matches.append(
             ImageMatch(
                 document_id=doc.id,

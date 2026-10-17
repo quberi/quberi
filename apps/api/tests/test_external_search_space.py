@@ -6,6 +6,7 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
+from quberi_api.services.doc_acl import NO_DOC_ACCESS
 from quberi_api.api.v1 import external as external_api
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.rag import retrieve
@@ -41,7 +42,7 @@ def _spy(monkeypatch):
         session, *, qdrant, organization_id, caller_user_id, query, top_k, space_ids=None
     ):
         seen.append(space_ids)
-        return SimpleNamespace(chunks=[], space_ids=list(space_ids or []))
+        return SimpleNamespace(chunks=[], space_ids=list(space_ids or []), doc_access=NO_DOC_ACCESS)
 
     monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
     return seen
@@ -103,7 +104,7 @@ async def test_naming_a_space_cannot_reach_beyond_what_the_person_may_read(
     not_mine = uuid.uuid4()  # a space the caller has no right to (or that does not exist)
     captured: dict = {}
 
-    async def fake_search(session, *, qdrant, organization_id, space_ids, query, top_k):
+    async def fake_search(session, *, qdrant, organization_id, space_ids, query, top_k, doc_access):
         captured["space_ids"] = list(space_ids)
         return [], "m", "c"
 

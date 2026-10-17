@@ -176,8 +176,12 @@ function SpaceKnowledgeCard({
             <ShieldCheck size={12} /> {t('spaces.owner')}
           </span>
         )}
+        {(space.shared_only_documents ?? 0) > 0 && (
+          <span className="chip chip-inline">
+            {t('spaces.sharedOnly', { count: space.shared_only_documents })}
+          </span>
+        )}
       </div>
-
       <StatsBlock />
 
       <button

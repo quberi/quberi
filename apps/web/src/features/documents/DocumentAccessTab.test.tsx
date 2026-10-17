@@ -1,0 +1,101 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../api/client'
+import { DocumentAccessTab } from './DocumentAccessTab'
+
+const api = vi.hoisted(() => ({
+  listAccessRules: vi.fn(),
+  addAccessRule: vi.fn(),
+  removeAccessRule: vi.fn(),
+}))
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (k: string) => k }),
+}))
+const auth = vi.hoisted(() => ({ credentials: { sessionToken: 't' } }))
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => auth }))
+vi.mock('./accessRulesApi', () => api)
+const orgCandidates = vi.hoisted(() => [{ id: 'organization', label: 'Acme', subtitle: '' }])
+const userCandidates = vi.hoisted(() => [{ id: 'u1', label: 'Ann', subtitle: 'ann@example.com' }])
+vi.mock('../spaceAccess/useSubjectCandidates', async () => {
+  const original = await vi.importActual<typeof import('../spaceAccess/useSubjectCandidates')>(
+    '../spaceAccess/useSubjectCandidates',
+  )
+  return {
+    ...original,
+    useSubjectCandidates: (type: string) => (type === 'organization' ? orgCandidates : userCandidates),
+  }
+})
+
+const rule = (id: string, effect: 'allow' | 'deny', name: string) => ({
+  id,
+  effect,
+  subject_type: 'user',
+  subject_id: 'u1',
+  subject_display_name: name,
+  subject_subtitle: null,
+  created_at: '2026-01-01T00:00:00Z',
+})
+
+describe('DocumentAccessTab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows who the document is shared with and hidden from', async () => {
+    api.listAccessRules.mockResolvedValue({
+      items: [rule('r1', 'allow', 'Bob'), rule('r2', 'deny', 'Cara')],
+      total: 2,
+    })
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    expect(await screen.findByText('Bob')).toBeTruthy()
+    expect(screen.getByText('Cara')).toBeTruthy()
+    expect(api.listAccessRules).toHaveBeenCalledWith({ sessionToken: 't' }, 's1', 'd1')
+  })
+
+  it('tells someone who is not a manager that they cannot see or change this', async () => {
+    api.listAccessRules.mockRejectedValue(new ApiError(403, 'no'))
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    expect(await screen.findByText('docAccess.forbidden')).toBeTruthy()
+    expect(screen.queryByText('docAccess.add')).toBeNull()
+  })
+
+  it('adds a rule for the picked person and reloads', async () => {
+    api.listAccessRules.mockResolvedValue({ items: [], total: 0 })
+    api.addAccessRule.mockResolvedValue(rule('r3', 'deny', 'Ann'))
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    await screen.findByText('docAccess.noneShared')
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'deny' } })
+    fireEvent.click(screen.getByText('docAccess.add'))
+    await waitFor(() =>
+      expect(api.addAccessRule).toHaveBeenCalledWith({ sessionToken: 't' }, 's1', 'd1', {
+        effect: 'deny',
+        subject_type: 'user',
+        subject_id: 'u1',
+      }),
+    )
+    await waitFor(() => expect(api.listAccessRules).toHaveBeenCalledTimes(2))
+  })
+
+  it('does not send an id for the whole organisation', async () => {
+    api.listAccessRules.mockResolvedValue({ items: [], total: 0 })
+    api.addAccessRule.mockResolvedValue(rule('r4', 'allow', 'Acme'))
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    await screen.findByText('docAccess.noneShared')
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'organization' } })
+    fireEvent.click(screen.getByText('docAccess.add'))
+    await waitFor(() => expect(api.addAccessRule).toHaveBeenCalled())
+    const body = api.addAccessRule.mock.calls[0][3]
+    expect(body).toEqual({ effect: 'allow', subject_type: 'organization', subject_id: undefined })
+  })
+
+  it('removes a rule and shows the server error when it fails', async () => {
+    api.listAccessRules.mockResolvedValue({ items: [rule('r1', 'allow', 'Bob')], total: 1 })
+    api.removeAccessRule.mockRejectedValueOnce(new ApiError(500, 'boom'))
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    await screen.findByText('Bob')
+    fireEvent.click(screen.getByLabelText('docAccess.remove'))
+    expect(await screen.findByText('boom')).toBeTruthy()
+    expect(api.removeAccessRule).toHaveBeenCalledWith({ sessionToken: 't' }, 's1', 'd1', 'r1')
+  })
+})

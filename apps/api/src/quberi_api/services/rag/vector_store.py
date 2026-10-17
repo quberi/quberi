@@ -287,8 +287,15 @@ class VectorStore:
         organization_id: uuid.UUID,
         limit: int = 12,
         document_ids: Iterable[uuid.UUID] | None = None,
+        granted_document_ids: Iterable[uuid.UUID] | None = None,
+        denied_document_ids: Iterable[uuid.UUID] | None = None,
     ) -> list[RetrievedChunk]:
         """Top-K semantic search restricted to a set of accessible spaces.
+
+        Document-level rules are applied inside the index, not afterwards:
+        ``granted_document_ids`` are searched *in addition to* ``space_ids`` (documents
+        shared with the person from spaces they cannot read as a whole), and
+        ``denied_document_ids`` are always excluded, even inside a readable space.
 
         ``document_ids``, when given, further restricts hits to those documents
         (filtered inside the vector store, so other documents in the same space
@@ -301,22 +308,43 @@ class VectorStore:
         """
 
         space_id_list = [str(s) for s in space_ids]
-        if not space_id_list:
+        granted_list = [str(d) for d in (granted_document_ids or [])]
+        if not space_id_list and not granted_list:
             return []
         doc_id_list = None if document_ids is None else [str(d) for d in document_ids]
         if doc_id_list is not None and not doc_id_list:
             return []
         if not await self._client.collection_exists(self._collection):
             return []
+        reachable: list[Any] = []
+        if space_id_list:
+            reachable.append(
+                qmodels.FieldCondition(
+                    key="space_id", match=qmodels.MatchAny(any=space_id_list)
+                )
+            )
+        if granted_list:
+            reachable.append(
+                qmodels.FieldCondition(
+                    key="document_id", match=qmodels.MatchAny(any=granted_list)
+                )
+            )
         must: list[Any] = [
             qmodels.FieldCondition(
                 key="organization_id",
                 match=qmodels.MatchValue(value=str(organization_id)),
             ),
-            qmodels.FieldCondition(
-                key="space_id", match=qmodels.MatchAny(any=space_id_list)
-            ),
+            # In a readable space, OR a document shared on its own.
+            qmodels.Filter(should=reachable),
         ]
+        must_not: list[Any] = []
+        denied_list = [str(d) for d in (denied_document_ids or [])]
+        if denied_list:
+            must_not.append(
+                qmodels.FieldCondition(
+                    key="document_id", match=qmodels.MatchAny(any=denied_list)
+                )
+            )
         if doc_id_list is not None:
             must.append(
                 qmodels.FieldCondition(
@@ -326,7 +354,7 @@ class VectorStore:
         response = await self._client.query_points(
             collection_name=self._collection,
             query=query_vector,
-            query_filter=qmodels.Filter(must=must),
+            query_filter=qmodels.Filter(must=must, must_not=must_not or None),
             limit=limit,
             with_payload=True,
             with_vectors=False,

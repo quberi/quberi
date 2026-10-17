@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.authz.models import Role, RoleBinding
 from quberi_api.domain.spaces.models import Space
-from quberi_api.services import space_bindings
+from quberi_api.services import doc_acl, space_bindings
 from quberi_api.services.authz import caller_has_org_role, list_accessible_space_ids
 from quberi_api.services.errors import (
     AlreadyExistsError,
@@ -59,8 +59,9 @@ class SpaceView:
 
     space: Space
     is_owner: bool
-
-
+    # More than 0 when the caller cannot read this space as a whole and can see only
+    # that many documents of it, each shared with them individually.
+    shared_only_documents: int = 0
 @dataclass(frozen=True)
 class SpaceGrant:
     """One initial access grant requested at space-creation time."""
@@ -96,9 +97,14 @@ async def list_spaces_for_user(
     *,
     organization_id: uuid.UUID,
     user_id: uuid.UUID,
+    include_shared: bool = False,
 ) -> list[SpaceView]:
     """Every space the user can see through any effective role binding.
 
+    With ``include_shared`` the list also holds the spaces the user can read only
+    because some documents in them were shared with them one by one (marked by
+    ``SpaceView.shared_only_documents``), after the others. Leave it off wherever
+    the space is a place to write: a shared document never makes a space writable.
     Delegates the "which space ids are reachable" question to the permission
     evaluator so all four paths (user / position / org unit + ancestors /
     group) are honoured. Personal-space ownership shows up as a direct hit
@@ -108,32 +114,84 @@ async def list_spaces_for_user(
     accessible = await list_accessible_space_ids(
         session, user_id=user_id, organization_id=organization_id
     )
-    if not accessible:
-        return []
-    stmt = (
-        select(Space)
-        .where(Space.organization_id == organization_id)
-        .where(Space.id.in_(accessible))
-        .order_by(Space.preset.desc(), Space.created_at.asc())
+    views: list[SpaceView] = []
+    if accessible:
+        stmt = (
+            select(Space)
+            .where(Space.organization_id == organization_id)
+            .where(Space.id.in_(accessible))
+            .order_by(Space.preset.desc(), Space.created_at.asc())
+        )
+        rows = list((await session.execute(stmt)).scalars().all())
+        views = [
+            SpaceView(space=row, is_owner=_is_owner(row, user_id=user_id))
+            for row in rows
+        ]
+    if include_shared:
+        views += await _shared_only_views(
+            session,
+            organization_id=organization_id,
+            user_id=user_id,
+            accessible=accessible,
+        )
+    return views
+
+
+async def _shared_only_views(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    accessible: set[uuid.UUID],
+) -> list[SpaceView]:
+    """Active spaces the user reaches only through documents shared with them."""
+
+    access = await doc_acl.load_doc_access(
+        session, user_id=user_id, organization_id=organization_id
     )
-    rows = list((await session.execute(stmt)).scalars().all())
+    counts = access.shared_only_counts(accessible)
+    if not counts:
+        return []
+    rows = list(
+        (
+            await session.execute(
+                select(Space)
+                .where(
+                    Space.organization_id == organization_id,
+                    Space.id.in_(counts),
+                    Space.status == "active",
+                )
+                .order_by(Space.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [
-        SpaceView(space=row, is_owner=_is_owner(row, user_id=user_id))
+        SpaceView(space=row, is_owner=False, shared_only_documents=counts[row.id])
         for row in rows
     ]
-
-
 async def get_space_for_user(
     session: AsyncSession,
     *,
     space_id: uuid.UUID,
     organization_id: uuid.UUID,
     user_id: uuid.UUID,
+    include_shared: bool = False,
 ) -> SpaceView:
     accessible = await list_accessible_space_ids(
         session, user_id=user_id, organization_id=organization_id
     )
     if space_id not in accessible:
+        if include_shared:
+            for shared in await _shared_only_views(
+                session,
+                organization_id=organization_id,
+                user_id=user_id,
+                accessible=accessible,
+            ):
+                if shared.space.id == space_id:
+                    return shared
         raise NotFoundError(f"space not found: {space_id}")
     stmt = select(Space).where(
         Space.id == space_id, Space.organization_id == organization_id
@@ -167,6 +225,7 @@ async def resolve_target_space(
     organization_id: uuid.UUID,
     user_id: uuid.UUID,
     name: str | None = None,
+    include_shared: bool = False,
 ) -> SpaceView:
     """Resolve a space to save into from a human-friendly reference.
 
@@ -193,7 +252,10 @@ async def resolve_target_space(
     """
 
     spaces = await list_spaces_for_user(
-        session, organization_id=organization_id, user_id=user_id
+        session,
+        organization_id=organization_id,
+        user_id=user_id,
+        include_shared=include_shared,
     )
     if not spaces:
         raise NotFoundError("no accessible space to save into")

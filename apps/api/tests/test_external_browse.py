@@ -90,9 +90,12 @@ async def test_spaces_are_listed_with_kind_edit_right_and_counts(
         "kind": "shared",
         "can_edit": True,
         "document_count": 2,  # the archived one is not counted
+        "shared_only_documents": 0,
     }
     # Names and counts only: no ids, no owners, no document names.
-    assert set(by_name["产品团队"]) == {"name", "kind", "can_edit", "document_count"}
+    assert set(by_name["产品团队"]) == {
+        "name", "kind", "can_edit", "document_count", "shared_only_documents"
+    }
     assert "a.pdf" not in str(body)
 
 

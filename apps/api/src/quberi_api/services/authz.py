@@ -378,6 +378,61 @@ async def resolve_effective_role_codes(
     return {b.role_code for b in bindings}
 
 
+@dataclass(frozen=True)
+class UserPrincipals:
+    """Every principal a user *is*, by kind, for matching against a rule's subject.
+
+    ``organization_unit_ids`` includes the ancestors of the units the person belongs
+    to, exactly as space bindings do, so a rule naming a department also covers its
+    sub-departments.
+    """
+
+    user_id: uuid.UUID
+    organization_id: uuid.UUID
+    position_ids: frozenset[uuid.UUID]
+    organization_unit_ids: frozenset[uuid.UUID]
+    group_ids: frozenset[uuid.UUID]
+
+    def by_type(self) -> dict[str, frozenset[uuid.UUID]]:
+        return {
+            "user": frozenset({self.user_id}),
+            "organization": frozenset({self.organization_id}),
+            "position": self.position_ids,
+            "organization_unit": self.organization_unit_ids,
+            "group": self.group_ids,
+        }
+
+
+async def principals_for_user(
+    session: AsyncSession, *, user_id: uuid.UUID, organization_id: uuid.UUID
+) -> UserPrincipals:
+    """Resolve the positions, org units (with ancestors) and groups of a user, live."""
+
+    position_ids = await _user_position_ids(
+        session, user_id=user_id, organization_id=organization_id
+    )
+    direct_ou_ids = await _user_org_unit_ids(
+        session, user_id=user_id, organization_id=organization_id
+    )
+    ancestor_ou_ids = await _org_unit_ancestor_ids(
+        session, seed_unit_ids=direct_ou_ids, organization_id=organization_id
+    )
+    group_hits = await _group_ids_for_user(
+        session,
+        user_id=user_id,
+        organization_id=organization_id,
+        position_ids=position_ids,
+        org_unit_ids=direct_ou_ids,
+    )
+    return UserPrincipals(
+        user_id=user_id,
+        organization_id=organization_id,
+        position_ids=frozenset(position_ids),
+        organization_unit_ids=frozenset(set(direct_ou_ids) | set(ancestor_ou_ids)),
+        group_ids=frozenset(group_hits.keys()),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Space visibility helper (called from services.spaces)
 # ---------------------------------------------------------------------------

@@ -2,10 +2,11 @@
 
 Design summary
 --------------
-Documents live inside a *Space*: the Space's ``RoleBinding`` graph is the
-sole permission gate (see Slice B for the evaluator). No per-document
-overrides today — if a document needs tighter access, put it in a
-tighter space.
+Documents live inside a *Space*: the Space's ``RoleBinding`` graph decides who
+can read them (see Slice B for the evaluator). A document can carry exceptions,
+``DocumentAccessRule`` rows: ``allow`` shares just that document with someone who
+cannot read the space, ``deny`` hides just that document from someone who can.
+Deny wins. ``services.doc_acl`` is the one place that combines the two.
 
 A document can arrive via several *sources*, described by
 ``DocumentSource``:
@@ -49,6 +50,8 @@ from quberi_api.db.base import Base
 from quberi_api.db.types import TimestampMixin, UUIDPk
 from quberi_api.domain._constraints import in_values
 from quberi_api.domain.enums import (
+    DOCUMENT_ACCESS_EFFECTS,
+    DOCUMENT_ACCESS_SUBJECT_TYPES,
     DOCUMENT_CACHING_POLICY,
     DOCUMENT_INDEXING_STATES,
     DOCUMENT_SOURCE_KINDS,
@@ -230,4 +233,54 @@ class Document(TimestampMixin, Base):
     )
     indexing_error: Mapped[Optional[str]] = mapped_column(
         String(1024), nullable=True
+    )
+
+
+class DocumentAccessRule(TimestampMixin, Base):
+    """One document-level exception to its space's permissions.
+
+    ``effect='allow'`` lets the subject read this document even without access to
+    its space (and nothing else in that space). ``effect='deny'`` hides this
+    document from the subject even when their space role would let them read it.
+    Deny wins over every allow and over every space role. The subject kinds are
+    the ones a space can be shared with; ``organization`` means everyone in the
+    organisation and its ``subject_id`` is the organisation's own id.
+
+    Rules are read at query time, so a change applies to the next request with
+    nothing to re-index.
+    """
+
+    __tablename__ = "document_access_rules"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "effect",
+            "subject_type",
+            "subject_id",
+            name="uq_document_access_rules_rule",
+        ),
+        in_values("effect", DOCUMENT_ACCESS_EFFECTS, name="effect"),
+        in_values("subject_type", DOCUMENT_ACCESS_SUBJECT_TYPES, name="subject_type"),
+        Index("ix_document_access_rules_document_id", "document_id"),
+        Index(
+            "ix_document_access_rules_subject",
+            "organization_id",
+            "subject_type",
+            "subject_id",
+            "effect",
+        ),
+    )
+
+    id: Mapped[UUIDPk]
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    effect: Mapped[str] = mapped_column(String(8), nullable=False)
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

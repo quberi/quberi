@@ -342,7 +342,8 @@
         "indexed": "Fully embedded. Chats scoped to this space can retrieve it.",
         "failed": "Last attempt failed. Retry from the RAG operations page (coming soon).",
         "placeholder": "The RAG indexer ships in a later slice. Existing documents will be picked up automatically on rollout."
-      }
+      },
+      "tabAccess": "Access"
     }
   },
   "documents": {
@@ -799,7 +800,8 @@
     "status": {
       "active": "Active",
       "archived": "Archived"
-    }
+    },
+    "sharedOnly": "Only {{count}} shared document(s)"
   },
   "createSpace": {
     "title": "Create a collaborative space",
@@ -1506,5 +1508,20 @@
     "body": "Files you upload here are visible to everyone. To keep a space of your own, sign in before uploading. Files are deleted automatically after 24 hours, and you can delete yours any time.",
     "signIn": "Sign in",
     "mine": "Mine"
+  },
+  "docAccess": {
+    "intro": "Everyone who can read this space can read this document, plus anyone it is shared with below, except anyone it is hidden from. Hiding always wins. Changes apply immediately.",
+    "forbidden": "Only a space admin or owner can see or change who can read this document.",
+    "retry": "Try again",
+    "sharedWith": "Also shared with",
+    "hiddenFrom": "Hidden from",
+    "noneShared": "Not shared with anyone outside the space.",
+    "noneHidden": "Not hidden from anyone.",
+    "effect": "Action",
+    "effectAllow": "Share this document with",
+    "effectDeny": "Hide this document from",
+    "denyHint": "They will not find it in search, lists, counts, downloads or chat answers, even if they can read the rest of the space.",
+    "add": "Add",
+    "remove": "Remove"
   }
 }

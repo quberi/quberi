@@ -67,6 +67,9 @@ class SpaceSummary(BaseModel):
     owner_type: str
     owner_id: uuid.UUID
     is_owner: bool = False
+    # More than 0 when only some documents of this space are visible to the caller,
+    # each shared with them individually (they cannot read the space as a whole).
+    shared_only_documents: int = 0
     # Set only on the bilingual sample spaces ("en-US" / "zh-CN"); lets the
     # client show the one that matches the interface language. Ordinary
     # spaces have none.

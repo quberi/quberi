@@ -28,6 +28,7 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy import select, text
 
+from quberi_api.services.doc_acl import NO_DOC_ACCESS
 from quberi_api.api import dependencies
 from quberi_api.api.v1 import external as external_api
 from quberi_api.api.v1.external import external_router
@@ -613,7 +614,7 @@ async def test_full_login_over_http_then_search_as_the_granting_person(
             document_id=doc, space_id=space, document_name="Handbook.md",
             chunk_index=0, text="Remote work is allowed.", score=0.9,
         )
-        return SimpleNamespace(chunks=[chunk], space_ids=[space])
+        return SimpleNamespace(chunks=[chunk], space_ids=[space], doc_access=NO_DOC_ACCESS)
 
     monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
     other_org = uuid.uuid4()
@@ -692,7 +693,7 @@ async def test_search_is_rate_limited_per_grant(http, db_session, redis_client, 
     await db_session.commit()
 
     async def fake_retrieve(session, **kwargs):
-        return SimpleNamespace(chunks=[], space_ids=[])
+        return SimpleNamespace(chunks=[], space_ids=[], doc_access=NO_DOC_ACCESS)
 
     monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
     monkeypatch.setattr(external_api, "_SEARCH_RATE_LIMIT", 2)

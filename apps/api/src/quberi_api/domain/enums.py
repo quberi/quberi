@@ -76,6 +76,21 @@ ROLE_SUBJECT_TYPES = (
 ROLE_RESOURCE_TYPES = ("organization", "space", "agent")
 
 # ---------------------------------------------------------------------------
+# Document-level access rules
+# ---------------------------------------------------------------------------
+# A document is readable by everyone who can read its space, plus whoever an
+# ``allow`` rule names, minus whoever a ``deny`` rule names. Deny always wins.
+DOCUMENT_ACCESS_EFFECTS = ("allow", "deny")
+# The same kinds of principal a space can be shared with, except machines.
+DOCUMENT_ACCESS_SUBJECT_TYPES = (
+    "user",
+    "group",
+    "organization_unit",
+    "position",
+    "organization",
+)
+
+# ---------------------------------------------------------------------------
 # Model access governance
 # ---------------------------------------------------------------------------
 # ``allow`` grants a principal the right to use the model; ``deny`` revokes
