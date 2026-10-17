@@ -80,6 +80,10 @@ ROLE_RESOURCE_TYPES = ("organization", "space", "agent")
 # ---------------------------------------------------------------------------
 # A document is readable by everyone who can read its space, plus whoever an
 # ``allow`` rule names, minus whoever a ``deny`` rule names. Deny always wins.
+# An administrator asks a space's owner for access; the owner decides.
+SPACE_ACCESS_REQUEST_STATUSES = ("pending", "approved", "rejected", "cancelled")
+SPACE_ACCESS_REQUEST_ROLES = ("viewer", "editor")
+
 DOCUMENT_ACCESS_EFFECTS = ("allow", "deny")
 # The same kinds of principal a space can be shared with, except machines.
 DOCUMENT_ACCESS_SUBJECT_TYPES = (

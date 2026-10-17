@@ -29,10 +29,9 @@ from quberi_api.api.v1.spaces.schemas import (
     SpaceList,
     SpaceSummary,
 )
-from quberi_api.services import space_owners
+from quberi_api.services import access_requests, space_owners
 from quberi_api.services import spaces as spaces_service
-from quberi_api.services.authz import caller_has_org_role
-
+from quberi_api.services.authz import caller_has_org_role, list_accessible_space_ids
 router = APIRouter(prefix="/spaces", tags=["spaces"])
 
 
@@ -166,8 +165,20 @@ async def list_organization_spaces(
         organization_id=caller.organization.id,
         space_ids=[v.space.id for v in views if v.space.status == "active"],
     )
+    readable = await list_accessible_space_ids(
+        session, user_id=caller.user.id, organization_id=caller.organization.id
+    )
+    pending = await access_requests.pending_space_ids_for(
+        session, organization_id=caller.organization.id, user_id=caller.user.id
+    )
     items = [
-        _summary(view).model_copy(update={"owner_unavailable": view.space.id in unavailable})
+        _summary(view).model_copy(
+            update={
+                "owner_unavailable": view.space.id in unavailable,
+                "caller_can_read": view.space.id in readable,
+                "caller_pending_request_id": pending.get(view.space.id),
+            }
+        )
         for view in views
     ]
     return SpaceList(items=items, total=len(items))

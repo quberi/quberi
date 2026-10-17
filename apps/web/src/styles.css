@@ -5842,3 +5842,49 @@ details.review-part > summary { cursor: pointer; }
   color: #fff;
 }
 .file-type-tag.is-active small { color: rgba(255, 255, 255, .8); }
+
+.access-request-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.access-request-list li {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(139, 108, 243, .22);
+  border-radius: 12px;
+}
+.access-request-main p {
+  margin: 6px 0 0;
+}
+.access-request-main small {
+  color: #6b6b74;
+}
+.access-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.access-request-actions input {
+  flex: 1 1 200px;
+}
+.doc-access-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.doc-access-search input {
+  flex: 1;
+}
+.doc-access-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+}

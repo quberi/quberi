@@ -1539,5 +1539,42 @@
       "allow": "即使不能访问空间，也能读取这份文档",
       "deny": "即使能访问空间，也搜不到、读不了这份文档"
     }
+  },
+  "accessRequests": {
+    "inboxTitle": "有 {{count}} 条访问申请等你处理",
+    "inboxHint": "你是这些空间的所有者。批准后立即授予对应角色。",
+    "line": "{{name}} 申请 {{space}} 的{{role}}权限",
+    "role": {
+      "viewer": "只读（查看者）",
+      "editor": "编辑（编辑者）"
+    },
+    "note": "备注",
+    "notePlaceholder": "给申请人的备注（可不填）",
+    "approve": "批准",
+    "reject": "拒绝",
+    "ask": "申请访问",
+    "pending": "申请待批准",
+    "withdraw": "撤回",
+    "dialog": {
+      "title": "申请访问 {{space}}",
+      "hint": "管理员不能给自己授权。这个空间的所有者会看到你的申请并决定。",
+      "role": "需要的权限",
+      "reason": "为什么需要？",
+      "reasonPlaceholder": "例如：季度合同复核",
+      "cancel": "取消",
+      "submit": "发送申请"
+    }
+  },
+  "docAccessAdmin": {
+    "open": "文档权限",
+    "title": "文档权限",
+    "hint": "按名称找到文档，设置谁能或不能读取它。你只能看到名称和大小，看不到内容。",
+    "search": "按名称搜索",
+    "empty": "没有文档。",
+    "allowCount": "允许 {{count}} 条",
+    "denyCount": "拒绝 {{count}} 条",
+    "setAccess": "设置权限",
+    "prev": "上一页",
+    "next": "下一页"
   }
 }

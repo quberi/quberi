@@ -1539,5 +1539,42 @@
       "allow": "Can read this document even without access to the space",
       "deny": "Cannot find or read this document, even with access to the space"
     }
+  },
+  "accessRequests": {
+    "inboxTitle": "{{count}} access request(s) waiting for you",
+    "inboxHint": "You own these spaces. Approving grants the role straight away.",
+    "line": "{{name}} asks for {{role}} access to {{space}}",
+    "role": {
+      "viewer": "read-only (viewer)",
+      "editor": "edit (editor)"
+    },
+    "note": "Note",
+    "notePlaceholder": "Optional note to the requester",
+    "approve": "Approve",
+    "reject": "Reject",
+    "ask": "Ask for access",
+    "pending": "Request pending",
+    "withdraw": "Withdraw",
+    "dialog": {
+      "title": "Ask for access to {{space}}",
+      "hint": "Administrators cannot give themselves access. The owner of this space will see your request and decide.",
+      "role": "Access wanted",
+      "reason": "Why do you need it?",
+      "reasonPlaceholder": "For example: quarterly review of the contracts",
+      "cancel": "Cancel",
+      "submit": "Send request"
+    }
+  },
+  "docAccessAdmin": {
+    "open": "Document access",
+    "title": "Document access",
+    "hint": "Find a document by name and choose who can or cannot read it. You see names and sizes only, never the content.",
+    "search": "Search by name",
+    "empty": "No documents.",
+    "allowCount": "{{count}} allowed",
+    "denyCount": "{{count}} denied",
+    "setAccess": "Set access",
+    "prev": "Previous",
+    "next": "Next"
   }
 }

@@ -62,3 +62,37 @@ export function removeAccessRule(
     credentials,
   })
 }
+
+/** A document as a space manager sees it when choosing one to set access on: no content. */
+export interface ManagedDocument {
+  id: string
+  name: string
+  mime_type: string
+  size_bytes: number
+  updated_at: string
+  allow_rules: number
+  deny_rules: number
+}
+
+export interface ManagedDocumentList {
+  items: ManagedDocument[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export function listManagedDocuments(
+  credentials: DevCredentials,
+  spaceId: string,
+  params: { q?: string; offset?: number; limit?: number } = {},
+): Promise<ManagedDocumentList> {
+  const query = new URLSearchParams()
+  if (params.q) query.set('q', params.q)
+  if (params.offset) query.set('offset', String(params.offset))
+  if (params.limit) query.set('limit', String(params.limit))
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return apiFetch<ManagedDocumentList>(
+    `/api/v1/spaces/${spaceId}/access-rules/documents${suffix}`,
+    { credentials },
+  )
+}

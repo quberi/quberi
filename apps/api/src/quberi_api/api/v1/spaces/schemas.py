@@ -71,6 +71,10 @@ class SpaceSummary(BaseModel):
     # (they left, were suspended, or hold the role by a leftover grant). The organisation
     # owner can then name a new one.
     owner_unavailable: bool = False
+    # Only on the organisation's space list, for the caller: can they read this space, and
+    # do they have a pending request for it?
+    caller_can_read: Optional[bool] = None
+    caller_pending_request_id: Optional[uuid.UUID] = None
     # More than 0 when only some documents of this space are visible to the caller,
     # each shared with them individually (they cannot read the space as a whole).
     shared_only_documents: int = 0

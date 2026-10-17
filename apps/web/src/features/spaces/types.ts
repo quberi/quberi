@@ -13,6 +13,9 @@ export interface SpaceSummary {
   is_owner: boolean
   /** Only on the organisation's space list: no owner of the space can act any more. */
   owner_unavailable?: boolean
+  /** Only on the organisation's space list: can the caller read it / their pending request. */
+  caller_can_read?: boolean | null
+  caller_pending_request_id?: string | null
   /** More than 0 when only that many documents of this space are visible to the caller,
    * each shared with them individually. They cannot read the space as a whole. */
   shared_only_documents?: number

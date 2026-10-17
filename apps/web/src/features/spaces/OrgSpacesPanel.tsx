@@ -8,7 +8,11 @@ import { ROLE_CODES, SUBJECT_TYPES, SpaceAccessPanel } from '../spaceAccess/Spac
 import type { AccessSubjectType, SpaceRoleCode } from '../spaceAccess/types'
 import { subjectIdForApi, useSubjectCandidates } from '../spaceAccess/useSubjectCandidates'
 
+import { AccessRequestInbox } from '../accessRequests/AccessRequestInbox'
+import { cancelAccessRequest } from '../accessRequests/api'
+import { SpaceDocumentAccessPanel } from '../documents/SpaceDocumentAccessPanel'
 import { useMembers } from '../members/MembersContext'
+import { RequestAccessDialog } from './RequestAccessDialog'
 import { archiveSpace, createSpace, listOrganizationSpaces, transferSpaceOwner } from './api'
 import { useSpaces } from './SpacesContext'
 import type { SpaceSummary } from './types'
@@ -40,6 +44,8 @@ export function OrgSpacesPanel() {
   const [createOpen, setCreateOpen] = useState(false)
   const [managingId, setManagingId] = useState<string | null>(null)
   const [replacingId, setReplacingId] = useState<string | null>(null)
+  const [requestingId, setRequestingId] = useState<string | null>(null)
+  const [docsId, setDocsId] = useState<string | null>(null)
   const isOrgOwner = credentials?.orgRole === 'owner'
   const load = useCallback(async () => {
     if (!credentials) return
@@ -68,8 +74,18 @@ export function OrgSpacesPanel() {
     }
   }
 
+  const withdraw = async (requestId: string) => {
+    if (!credentials) return
+    try {
+      await cancelAccessRequest(credentials, requestId)
+      await load()
+    } catch (err) {
+      window.alert(toMessage(err))
+    }
+  }
   return (
     <>
+      <AccessRequestInbox onDecided={() => void Promise.all([load(), reloadWorkspaceSpaces()])} />
       <section className="panel">
         <div className="panel-heading">
           <div>
@@ -132,6 +148,36 @@ export function OrgSpacesPanel() {
                       <span>{t('orgSpaces.replaceOwner')}</span>
                     </button>
                   )}
+                  {!archived && space.caller_can_read === false && !space.caller_pending_request_id && !space.owner_unavailable && (
+                    <button
+                      className="secondary-button"
+                      onClick={() => setRequestingId(space.id)}
+                      type="button"
+                    >
+                      <span>{t('accessRequests.ask')}</span>
+                    </button>
+                  )}
+                  {!archived && space.caller_pending_request_id && (
+                    <>
+                      <span className="badge badge-pending">{t('accessRequests.pending')}</span>
+                      <button
+                        className="secondary-button"
+                        onClick={() => void withdraw(space.caller_pending_request_id as string)}
+                        type="button"
+                      >
+                        <span>{t('accessRequests.withdraw')}</span>
+                      </button>
+                    </>
+                  )}
+                  {!archived && (
+                    <button
+                      className={docsId === space.id ? 'primary-button' : 'secondary-button'}
+                      onClick={() => setDocsId(docsId === space.id ? null : space.id)}
+                      type="button"
+                    >
+                      <span>{t('docAccessAdmin.open')}</span>
+                    </button>
+                  )}
                   {!archived && (
                     <button
                       className={managing ? 'primary-button' : 'secondary-button'}
@@ -160,6 +206,18 @@ export function OrgSpacesPanel() {
       </section>
 
       {managingId && <SpaceAccessPanel spaceId={managingId} />}
+      {docsId && <SpaceDocumentAccessPanel key={docsId} spaceId={docsId} />}
+      {requestingId && (
+        <RequestAccessDialog
+          onClose={() => setRequestingId(null)}
+          onDone={async () => {
+            setRequestingId(null)
+            await load()
+          }}
+          spaceId={requestingId}
+          spaceName={state.kind === 'ready' ? state.items.find((s) => s.id === requestingId)?.name ?? '' : ''}
+        />
+      )}
       {replacingId && (
         <ReplaceOwnerDialog
           onClose={() => setReplacingId(null)}

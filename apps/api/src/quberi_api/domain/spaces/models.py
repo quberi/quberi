@@ -26,7 +26,9 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +37,8 @@ from quberi_api.db.types import TimestampMixin, UUIDPk
 from quberi_api.domain._constraints import in_values
 from quberi_api.domain.enums import (
     GENERIC_STATUS,
+    SPACE_ACCESS_REQUEST_ROLES,
+    SPACE_ACCESS_REQUEST_STATUSES,
     SPACE_OWNER_TYPES,
     SPACE_PRESETS,
     SPACE_TRUST_LEVELS,
@@ -89,3 +93,49 @@ class Space(TimestampMixin, Base):
         back_populates="children",
     )
     children: Mapped[list[Space]] = relationship(back_populates="parent")
+
+
+class SpaceAccessRequest(TimestampMixin, Base):
+    """An administrator's request for access to a space, decided by the space's owner.
+
+    An organisation administrator can manage an enterprise space without being able to read
+    it, and nobody can give themselves access, so the way in is to ask. The request names
+    the role wanted and why; an available owner of the space approves (which grants the
+    role) or rejects it. One pending request per person and space.
+    """
+
+    __tablename__ = "space_access_requests"
+    __table_args__ = (
+        in_values("status", SPACE_ACCESS_REQUEST_STATUSES, name="status"),
+        in_values("role_code", SPACE_ACCESS_REQUEST_ROLES, name="role_code"),
+        Index(
+            "uq_space_access_requests_pending",
+            "space_id",
+            "requester_user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index("ix_space_access_requests_space", "space_id", "status"),
+        Index("ix_space_access_requests_requester", "requester_user_id", "status"),
+    )
+
+    id: Mapped[UUIDPk]
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    space_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("spaces.id", ondelete="CASCADE"), nullable=False
+    )
+    requester_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    role_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    decided_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decision_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

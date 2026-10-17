@@ -20,7 +20,7 @@ from quberi_api.api.errors import register_exception_handlers
 from quberi_api.api.security import CallerContext, require_caller
 from quberi_api.api.v1.conversations import router as conv_router
 from quberi_api.api.v1.external import external_router
-from quberi_api.api.v1.spaces import document_access, documents as documents_router
+from quberi_api.api.v1.spaces import access_requests, document_access, documents as documents_router
 from quberi_api.api.v1.spaces import router as spaces_module
 from quberi_api.core.config import get_settings
 from quberi_api.domain.audit.models import AuditEvent
@@ -110,7 +110,7 @@ async def web(db_session, qdrant, redis_client, monkeypatch):
     app.include_router(documents_router.router, prefix="/api/v1")
     app.include_router(document_access.router, prefix="/api/v1")
     app.include_router(spaces_module.router, prefix="/api/v1")
-
+    app.include_router(access_requests.router, prefix="/api/v1")
     async def _session():
         yield db_session
 
