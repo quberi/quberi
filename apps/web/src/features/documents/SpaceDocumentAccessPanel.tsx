@@ -1,5 +1,6 @@
 import { FileText, Loader2, Search, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -124,7 +125,10 @@ export function SpaceDocumentAccessPanel({ spaceId }: { spaceId: string }) {
           )}
         </>
       )}
-      {open && (
+      {open &&
+        // A panel creates its own positioning context, which would trap a fixed drawer inside
+        // it; render the drawer on the page itself.
+        createPortal(
         <div className="doc-drawer-backdrop" onClick={() => { setOpen(null); void load() }} role="presentation">
           <aside
             aria-modal="true"
@@ -151,8 +155,9 @@ export function SpaceDocumentAccessPanel({ spaceId }: { spaceId: string }) {
             </header>
             <DocumentAccessTab documentId={open.id} spaceId={spaceId} />
           </aside>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </section>
   )
 }
