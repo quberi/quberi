@@ -631,7 +631,7 @@ async def send_image_search(
 
     from quberi_api.services.rag import image_search
 
-    correlation_id = uuid.uuid4().hex
+    words = (text or "").strip()
 
     # ---- Read phase: access, scope, query vector, search. Nothing is written yet. ----
     view = await get_conversation_for_user(
