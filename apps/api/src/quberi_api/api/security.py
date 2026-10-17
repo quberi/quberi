@@ -27,7 +27,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session
@@ -233,7 +233,18 @@ async def require_caller(
                 .where(Organization.id == claims.organization_id)
             )
             row = (await session.execute(stmt)).first()
-            await session.commit()
+            if row is not None and row[0].status == "invited" and not claims.is_guest:
+                # A session token is only minted after a successful sign-in, so someone
+                # holding one has accepted their invitation. Mark them active, once.
+                await session.execute(
+                    update(User)
+                    .where(User.id == row[0].id, User.status == "invited")
+                    .values(status="active")
+                )
+                await session.commit()
+                await session.refresh(row[0])
+            else:
+                await session.commit()
             if row is not None:
                 user, organization = row
                 return CallerContext(
