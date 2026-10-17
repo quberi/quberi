@@ -39,11 +39,14 @@ dependencies = [
   # weights get pulled to /root/.cache/huggingface on first boot and
   # cached in the container image thereafter. CPU inference is fine for
   # our current throughput; GPU can be swapped in later without touching
-  # the provider abstraction. 6.x also loads the multimodal BGE-VL model
-  # used for image search. Moving from 3.3.1 was checked to leave BGE-M3
-  # vectors unchanged (same texts, cosine 1.00000), so existing text
+  # the provider abstraction. Moving from 3.3.1 to 6.x was checked to leave
+  # BGE-M3 vectors unchanged (same texts, cosine 1.00000), so existing text
   # indexes stay valid. Needs Python 3.10+.
   "sentence-transformers==6.1.0",
+  # Image search runs Google SigLIP2 through transformers' Siglip* classes (and the
+  # fast Gemma tokenizer). Pinned to the version the model was evaluated and deployed
+  # with, rather than whatever sentence-transformers happens to pull in.
+  "transformers==5.20.1",
   "sqlalchemy[asyncio]==2.0.36",
   "urllib3==2.6.3",
   "uvicorn[standard]==0.34.2",

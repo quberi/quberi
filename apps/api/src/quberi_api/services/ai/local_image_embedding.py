@@ -1,24 +1,27 @@
-"""In-process image embedding (BGE-VL), for finding pictures by picture or by words.
+"""In-process image embedding, for finding pictures by picture or by words.
 
-BGE-VL puts images and sentences in one 512-dimensional space, so the same
+Two models are known. Both put pictures and sentences in one space, so the same
 vectors answer "pictures that look like this one" and "pictures matching this
-description". It runs inside the worker/API process through
-``sentence-transformers``, like the text models in :mod:`local_embedding`.
+description":
 
-Two safety properties matter here:
+* ``siglip2-base`` (the default): Google SigLIP2, Apache-2.0, understands Chinese,
+  English and ~100 other languages. Plain ``transformers`` and safetensors; no
+  code from the model repository is ever executed.
+* ``bge-vl-base``: BAAI BGE-VL, MIT, **English only** (its text side is OpenAI
+  CLIP). Kept so an instance can be pointed back at it and so its old vectors can
+  be cleaned up; it needs ``trust_remote_code``, which is pinned and hash-checked.
 
-* **The model's own code is pinned and checked.** BGE-VL ships two Python files
-  that ``trust_remote_code`` executes. They were read before this was written
-  (they import only torch, transformers, Pillow and sentence-transformers, and
-  make no process or network calls). The model is loaded from a fixed git
-  revision, and before it is imported the files' SHA-256 are compared with the
-  audited ones; a mismatch (a changed file, a tampered mirror) aborts the load.
+Safety properties that matter here:
+
+* **Pinned revisions.** Each model loads from a fixed git revision, never "main".
 * **A picture is untrusted input.** Decoding is done with Pillow under a pixel
   limit (decompression bombs), always to plain RGB, and shrunk before it reaches
   the model. Nothing here writes the picture anywhere.
 
-The model loads on first use, not at start-up, so an instance nobody sends
-pictures to pays nothing for it.
+Models load on first use, not at start-up, so an instance nobody sends pictures to
+pays nothing for them. SigLIP2 loads its two halves separately: the indexing worker
+only ever needs the picture half, and the API only loads the text half when someone
+searches with words.
 """
 
 from __future__ import annotations
@@ -48,6 +51,29 @@ BGE_VL_REMOTE_CODE_SHA256 = {
 BGE_VL_DIM = 512
 
 _MODEL_TO_HF = {"bge-vl-base": BGE_VL_REPO}
+
+SIGLIP2_REPO = "google/siglip2-base-patch16-224"
+# Pinned: the revision that was evaluated. Changing it means re-running the checks.
+SIGLIP2_REVISION = "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2"
+SIGLIP2_DIM = 768
+# The model reads at most 64 tokens of a description.
+SIGLIP2_MAX_TOKENS = 64
+
+DEFAULT_IMAGE_MODEL = "siglip2-base"
+# Every picture model this build knows, with its vector size. A picture's vector may
+# still sit under an older one until it is re-indexed, so anything that *removes*
+# vectors walks this whole list.
+IMAGE_MODEL_DIMS: dict[str, int] = {"siglip2-base": SIGLIP2_DIM, "bge-vl-base": BGE_VL_DIM}
+
+
+def image_vector_dim(model_id: str) -> int:
+    """Vector size of a picture model; ``KeyError`` for one this build does not know."""
+
+    try:
+        return IMAGE_MODEL_DIMS[model_id]
+    except KeyError:
+        raise KeyError(f"unknown image model {model_id!r}") from None
+
 
 # Pillow refuses images with more pixels than this (a small file can expand to
 # gigabytes of pixels). 40 megapixels is a large photo, far above anything a
@@ -206,13 +232,181 @@ class LocalImageEmbedder:
         return await self._encode([t.strip() for t in texts])
 
 
-_EMBEDDERS: dict[str, LocalImageEmbedder] = {}
+class SiglipImageEmbedder:
+    """SigLIP2 base: pictures and sentences (any language) into one 768-d space.
+
+    The picture half and the text half are separate ``transformers`` models, each
+    loaded the first time it is needed. The text half's word table (786 MB as
+    32-bit floats, a plain lookup) is held as 16-bit floats and widened on lookup,
+    which changes the result by less than 1 part in 100,000 and saves ~390 MB.
+
+    ``vision``/``text``/``processor`` may be injected (tests pass stand-ins).
+    """
+
+    def __init__(
+        self,
+        model_id: str = "siglip2-base",
+        *,
+        vision: Any | None = None,
+        text: Any | None = None,
+        processor: Any | None = None,
+    ) -> None:
+        self.model_id = model_id
+        self._vision = vision
+        self._text = text
+        self._processor = processor
+        self._load_lock = asyncio.Lock()
+        self._inference_lock = asyncio.Lock()
+
+    @property
+    def vector_dim(self) -> int:
+        return SIGLIP2_DIM
+
+    # -- loading ----------------------------------------------------------------
+    @staticmethod
+    def _cache_dir() -> str | None:
+        return os.getenv("HF_HOME")
+
+    def _load_processor(self) -> Any:
+        from transformers import AutoProcessor
+
+        return AutoProcessor.from_pretrained(
+            SIGLIP2_REPO,
+            revision=SIGLIP2_REVISION,
+            cache_dir=self._cache_dir(),
+            trust_remote_code=False,
+        )
+
+    def _load_vision(self) -> Any:
+        from transformers import SiglipVisionModel
+
+        return SiglipVisionModel.from_pretrained(
+            SIGLIP2_REPO,
+            revision=SIGLIP2_REVISION,
+            cache_dir=self._cache_dir(),
+            trust_remote_code=False,
+            use_safetensors=True,
+        ).eval()
+
+    def _load_text(self) -> Any:
+        import torch
+        from transformers import SiglipTextModel
+
+        # Load everything at 16 bits first, so the 32-bit word table never exists in
+        # memory, then widen all but that table.
+        model = SiglipTextModel.from_pretrained(
+            SIGLIP2_REPO,
+            revision=SIGLIP2_REVISION,
+            cache_dir=self._cache_dir(),
+            trust_remote_code=False,
+            use_safetensors=True,
+            dtype=torch.bfloat16,
+        ).eval()
+        table = model.embeddings.token_embedding
+        for param in model.parameters():
+            if param is not table.weight:
+                param.data = param.data.to(torch.float32)
+        table.register_forward_hook(lambda _module, _inputs, out: out.float())
+        return model
+
+    async def _ensure(self, attr: str, loader: Any) -> Any:
+        current = getattr(self, attr)
+        if current is not None:
+            return current
+        async with self._load_lock:
+            current = getattr(self, attr)
+            if current is not None:
+                return current
+            _log.info("loading image embedding model %s (%s: %s@%s)", self.model_id, attr[1:], SIGLIP2_REPO, SIGLIP2_REVISION[:8])
+            loop = asyncio.get_running_loop()
+            loaded = await loop.run_in_executor(None, loader)
+            setattr(self, attr, loaded)
+            return loaded
+
+    # -- encoding ---------------------------------------------------------------
+    @staticmethod
+    def _check(rows: list[list[float]]) -> list[list[float]]:
+        for row in rows:
+            if len(row) != SIGLIP2_DIM:
+                raise RuntimeError(
+                    f"image model produced {len(row)}-d vectors, expected {SIGLIP2_DIM}"
+                )
+        return rows
+
+    def _encode_images(self, vision: Any, processor: Any, batch: list[Any]) -> list[list[float]]:
+        import torch
+
+        with torch.inference_mode():
+            pixels = processor.image_processor(images=batch, return_tensors="pt")["pixel_values"]
+            feats = vision(pixel_values=pixels).pooler_output
+            feats = torch.nn.functional.normalize(feats.float(), dim=-1)
+        return [[float(x) for x in row] for row in feats.tolist()]
+
+    def _encode_texts(self, text: Any, processor: Any, batch: list[str]) -> list[list[float]]:
+        import torch
+
+        with torch.inference_mode():
+            # SigLIP was trained on lower-cased text padded to a fixed length.
+            tokens = processor.tokenizer(
+                [t.lower() for t in batch],
+                padding="max_length",
+                max_length=SIGLIP2_MAX_TOKENS,
+                truncation=True,
+                return_tensors="pt",
+            )
+            feats = text(input_ids=tokens["input_ids"]).pooler_output
+            feats = torch.nn.functional.normalize(feats.float(), dim=-1)
+        return [[float(x) for x in row] for row in feats.tolist()]
+
+    async def embed_images(self, images: Sequence[bytes]) -> list[list[float]]:
+        """One vector per picture. Raises :class:`ImageDecodeError` for a bad file."""
+
+        if not images:
+            return []
+        loop = asyncio.get_running_loop()
+        # Decode everything first: one bad file stops the batch before any model work.
+        prepared = [await loop.run_in_executor(None, prepare_image, data) for data in images]
+        processor = await self._ensure("_processor", self._load_processor)
+        vision = await self._ensure("_vision", self._load_vision)
+        out: list[list[float]] = []
+        async with self._inference_lock:
+            for start in range(0, len(prepared), _BATCH):
+                batch = prepared[start : start + _BATCH]
+                out += await loop.run_in_executor(
+                    None, self._encode_images, vision, processor, batch
+                )
+        return self._check(out)
+
+    async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        """One vector per sentence, in the same space as the pictures."""
+
+        if not texts:
+            return []
+        loop = asyncio.get_running_loop()
+        processor = await self._ensure("_processor", self._load_processor)
+        text = await self._ensure("_text", self._load_text)
+        cleaned = [t.strip() for t in texts]
+        out: list[list[float]] = []
+        async with self._inference_lock:
+            for start in range(0, len(cleaned), _BATCH):
+                batch = cleaned[start : start + _BATCH]
+                out += await loop.run_in_executor(None, self._encode_texts, text, processor, batch)
+        return self._check(out)
 
 
-def get_image_embedder(model_id: str = "bge-vl-base") -> LocalImageEmbedder:
+_EMBEDDERS: dict[str, Any] = {}
+
+
+def get_image_embedder(model_id: str = DEFAULT_IMAGE_MODEL) -> Any:
     """The process-wide embedder for a model (created empty; loads on first use)."""
 
     embedder = _EMBEDDERS.get(model_id)
     if embedder is None:
-        embedder = _EMBEDDERS[model_id] = LocalImageEmbedder(model_id)
+        if model_id == "siglip2-base":
+            embedder = SiglipImageEmbedder(model_id)
+        elif model_id == "bge-vl-base":
+            embedder = LocalImageEmbedder(model_id)
+        else:
+            raise KeyError(f"unknown image model {model_id!r}")
+        _EMBEDDERS[model_id] = embedder
     return embedder

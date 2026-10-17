@@ -32,14 +32,14 @@ from quberi_api.domain.spaces.models import Space
 from quberi_api.services import conversations as conversations_service
 from quberi_api.services import members as members_service
 from quberi_api.services import space_bindings as space_bindings_service
-from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM
+from quberi_api.services.ai.local_image_embedding import SIGLIP2_DIM
 from quberi_api.services.documents import thumbnail as thumbnail_module
 from quberi_api.services.rag import image_search
 from quberi_api.services.rag.image_store import ImageVectorStore
 from tests.test_image_indexing import _doc, _space
 from tests.test_image_search import GREEN, RED, FakeEmbedder
 
-MODEL = "bge-vl-base"
+MODEL = "siglip2-base"
 
 
 def _png(colour="red", size=(40, 30)) -> bytes:
@@ -128,7 +128,7 @@ async def _conversation(db, boot):
 
 async def _picture(db, boot, qdrant, space, vec, name="part.png"):
     doc = await _doc(db, boot, space, name, state="indexed")
-    await ImageVectorStore(qdrant, model_id=MODEL, vector_dim=BGE_VL_DIM).upsert_image(
+    await ImageVectorStore(qdrant, model_id=MODEL, vector_dim=SIGLIP2_DIM).upsert_image(
         organization_id=boot.organization_id, space_id=space.id, document_id=doc.id,
         document_name=name, mime_type="image/png", document_checksum=None, vector=vec,
     )

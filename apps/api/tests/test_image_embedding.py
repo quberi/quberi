@@ -171,11 +171,33 @@ async def test_a_model_of_the_wrong_size_is_caught():
         await embedder.embed_texts(["x"])
 
 
-def test_the_embedder_is_shared_and_starts_empty():
+def test_the_default_embedder_is_siglip2_shared_and_starts_empty():
     lie._EMBEDDERS.clear()
     first = lie.get_image_embedder()
+    assert isinstance(first, lie.SiglipImageEmbedder)
     assert lie.get_image_embedder() is first
-    assert first._model is None  # nothing loaded until a picture or sentence arrives
+    assert lie.get_image_embedder("siglip2-base") is first
+    # Nothing is loaded until a picture or sentence arrives.
+    assert (first._vision, first._text, first._processor) == (None, None, None)
+
+
+def test_the_first_model_is_still_available_and_unknown_ones_are_refused():
+    lie._EMBEDDERS.clear()
+    first = lie.get_image_embedder("bge-vl-base")
+    assert isinstance(first, LocalImageEmbedder) and first._model is None
+    with pytest.raises(KeyError, match="unknown image model"):
+        lie.get_image_embedder("no-such-model")
+    with pytest.raises(KeyError):
+        lie.image_vector_dim("no-such-model")
+
+
+def test_each_known_model_has_its_vector_size_and_the_default_is_known():
+    assert lie.image_vector_dim("siglip2-base") == lie.SIGLIP2_DIM == 768
+    assert lie.image_vector_dim("bge-vl-base") == BGE_VL_DIM == 512
+    assert lie.DEFAULT_IMAGE_MODEL in lie.IMAGE_MODEL_DIMS
+    from quberi_api.core.config import Settings
+
+    assert Settings.model_fields["default_image_embedding_model"].default == lie.DEFAULT_IMAGE_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -287,4 +309,217 @@ async def test_real_model_puts_a_picture_next_to_its_description(monkeypatch):
     words = await embedder.embed_texts([f"a solid {c} image" for c in ("red", "blue", "green")])
     sim = np.array(words) @ np.array(pics).T
     assert [int(sim[i].argmax()) for i in range(3)] == [0, 1, 2]
+    assert all(abs(np.linalg.norm(v) - 1.0) < 0.01 for v in pics)
+
+
+# ---------------------------------------------------------------------------
+# SigLIP2: stand-in towers, and how the real ones are loaded
+# ---------------------------------------------------------------------------
+import torch  # noqa: E402
+
+SIGLIP_DIM = lie.SIGLIP2_DIM
+
+
+class _Out:
+    def __init__(self, pooler_output):
+        self.pooler_output = pooler_output
+
+
+class FakeVision:
+    def __init__(self, dim=SIGLIP_DIM):
+        self.dim, self.batches = dim, []
+
+    def __call__(self, pixel_values):
+        self.batches.append(pixel_values.shape[0])
+        # Not unit length on purpose: the embedder must normalise.
+        return _Out(torch.stack([torch.full((self.dim,), float(i + 1) * 3.0) for i in range(pixel_values.shape[0])]))
+
+
+class FakeText:
+    def __init__(self, dim=SIGLIP_DIM):
+        self.dim, self.seen = dim, []
+
+    def __call__(self, input_ids):
+        self.seen.append(input_ids)
+        return _Out(torch.ones(input_ids.shape[0], self.dim) * 5.0)
+
+
+class FakeProcessor:
+    def __init__(self):
+        self.texts = None
+        self.kwargs = None
+        self.image_processor = self._images
+        self.tokenizer = self._tokenize
+
+    def _images(self, images, return_tensors):
+        return {"pixel_values": torch.zeros(len(images), 3, 4, 4)}
+
+    def _tokenize(self, texts, **kwargs):
+        self.texts, self.kwargs = list(texts), kwargs
+        return {"input_ids": torch.zeros(len(texts), kwargs["max_length"], dtype=torch.long)}
+
+
+def _siglip(**over):
+    parts = {"vision": FakeVision(), "text": FakeText(), "processor": FakeProcessor()}
+    parts.update(over)
+    return lie.SiglipImageEmbedder(**parts), parts
+
+
+async def test_siglip_vectors_are_unit_length_and_the_right_size():
+    embedder, _ = _siglip()
+    pics = await embedder.embed_images([_png(), _png(color="blue")])
+    words = await embedder.embed_texts(["a red part", "红色的零件"])
+    assert embedder.vector_dim == SIGLIP_DIM
+    for v in pics + words:
+        assert len(v) == SIGLIP_DIM
+        assert abs(np.linalg.norm(v) - 1.0) < 1e-5
+
+
+async def test_siglip_sentences_are_lower_cased_trimmed_and_padded_to_the_models_length():
+    embedder, parts = _siglip()
+    await embedder.embed_texts(["  A Red BRACKET  ", "红色 Bolt"])
+    proc = parts["processor"]
+    assert proc.texts == ["a red bracket", "红色 bolt"]
+    assert proc.kwargs["padding"] == "max_length"
+    assert proc.kwargs["max_length"] == lie.SIGLIP2_MAX_TOKENS == 64
+    assert proc.kwargs["truncation"] is True
+
+
+async def test_siglip_work_is_done_in_small_batches():
+    embedder, parts = _siglip()
+    await embedder.embed_images([_png(size=(8 + i, 8)) for i in range(20)])
+    assert parts["vision"].batches == [8, 8, 4]
+
+
+async def test_siglip_a_bad_picture_stops_the_batch_before_any_model_is_loaded():
+    embedder = lie.SiglipImageEmbedder()  # nothing injected: loading would hit the network
+    with pytest.raises(ImageDecodeError):
+        await embedder.embed_images([_png(), b"junk"])
+    assert (embedder._vision, embedder._text, embedder._processor) == (None, None, None)
+
+
+async def test_siglip_a_model_of_the_wrong_size_is_caught():
+    embedder, _ = _siglip(vision=FakeVision(dim=300), text=FakeText(dim=300))
+    with pytest.raises(RuntimeError, match="300-d vectors, expected 768"):
+        await embedder.embed_images([_png()])
+    with pytest.raises(RuntimeError, match="300-d vectors, expected 768"):
+        await embedder.embed_texts(["x"])
+
+
+async def test_siglip_empty_input_is_empty_output_and_loads_nothing():
+    embedder = lie.SiglipImageEmbedder()
+    assert await embedder.embed_images([]) == []
+    assert await embedder.embed_texts([]) == []
+    assert (embedder._vision, embedder._text, embedder._processor) == (None, None, None)
+
+
+async def test_siglip_only_the_half_that_is_needed_is_loaded(monkeypatch):
+    loaded = []
+    embedder = lie.SiglipImageEmbedder()
+    monkeypatch.setattr(embedder, "_load_processor", lambda: loaded.append("processor") or FakeProcessor())
+    monkeypatch.setattr(embedder, "_load_vision", lambda: loaded.append("vision") or FakeVision())
+    monkeypatch.setattr(embedder, "_load_text", lambda: loaded.append("text") or FakeText())
+    await embedder.embed_images([_png()])
+    await embedder.embed_images([_png()])
+    assert loaded == ["processor", "vision"]  # the indexing worker never loads the text half
+    await embedder.embed_texts(["hello"])
+    await embedder.embed_texts(["hello"])
+    assert loaded == ["processor", "vision", "text"]  # each half once
+
+
+async def test_siglip_loads_pinned_revisions_without_running_repository_code(monkeypatch, tmp_path):
+    calls = []
+
+    class Recorder:
+        def __init__(self, name):
+            self.name = name
+
+        def from_pretrained(self, repo, **kwargs):
+            calls.append((self.name, repo, kwargs))
+            return _Loaded(self.name)
+
+    class _Loaded:
+        def __init__(self, name):
+            self.name = name
+
+        def eval(self):
+            return self
+
+        embeddings = types.SimpleNamespace(token_embedding=torch.nn.Embedding(4, 3))
+
+        def parameters(self):
+            return iter(())
+
+    fake = types.SimpleNamespace(
+        AutoProcessor=Recorder("processor"),
+        SiglipVisionModel=Recorder("vision"),
+        SiglipTextModel=Recorder("text"),
+    )
+    monkeypatch.setitem(sys.modules, "transformers", fake)
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    embedder = lie.SiglipImageEmbedder()
+    embedder._load_processor()
+    embedder._load_vision()
+    embedder._load_text()
+    assert [c[0] for c in calls] == ["processor", "vision", "text"]
+    for _name, repo, kwargs in calls:
+        assert repo == "google/siglip2-base-patch16-224"
+        assert kwargs["revision"] == "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2"
+        assert kwargs["trust_remote_code"] is False
+        assert kwargs["cache_dir"] == str(tmp_path)
+    assert calls[1][2]["use_safetensors"] is True and calls[2][2]["use_safetensors"] is True
+    assert calls[2][2]["dtype"] == torch.bfloat16  # the word table never exists as 32-bit floats
+
+
+def test_the_text_half_keeps_its_word_table_small_but_computes_in_full_precision():
+    """The compaction, on a tiny real transformer text model."""
+    from transformers import SiglipTextConfig, SiglipTextModel
+
+    cfg = SiglipTextConfig(vocab_size=50, hidden_size=16, intermediate_size=32, num_hidden_layers=2,
+                           num_attention_heads=2, max_position_embeddings=8, projection_size=16)
+    torch.manual_seed(0)
+    reference = SiglipTextModel(cfg).eval()
+    ids = torch.randint(1, 50, (3, 8))
+    with torch.no_grad():
+        expected = reference(input_ids=ids).pooler_output
+
+    class Loader(lie.SiglipImageEmbedder):
+        pass
+
+    half = SiglipTextModel(cfg).eval()
+    half.load_state_dict(reference.state_dict())
+    half.to(torch.bfloat16)
+    import transformers
+
+    original = transformers.SiglipTextModel.from_pretrained
+    transformers.SiglipTextModel.from_pretrained = classmethod(lambda cls, *a, **k: half)
+    try:
+        compact = Loader()._load_text()
+    finally:
+        transformers.SiglipTextModel.from_pretrained = original
+    table = compact.embeddings.token_embedding.weight
+    assert table.dtype == torch.bfloat16
+    others = [p for p in compact.parameters() if p is not table]
+    assert others and all(p.dtype == torch.float32 for p in others)
+    with torch.no_grad():
+        got = compact(input_ids=ids).pooler_output
+    assert got.dtype == torch.float32
+    cos = torch.nn.functional.cosine_similarity(got, expected)
+    assert cos.min() > 0.99  # bf16 rounding of this tiny model's weights, nothing more
+
+
+@pytest.mark.skipif(not REAL, reason="set QUBERI_TEST_REAL_IMAGE_MODEL=<HF cache dir> to run")
+async def test_real_siglip_puts_a_picture_next_to_its_description_in_english_and_chinese(monkeypatch):
+    monkeypatch.setenv("HF_HOME", REAL)
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    embedder = lie.SiglipImageEmbedder()
+    pics = await embedder.embed_images([_png(size=(224, 224), color=c) for c in ("red", "blue", "green")])
+    english = np.array(await embedder.embed_texts([f"a solid {c} image" for c in ("red", "blue", "green")]))
+    assert [int((english @ np.array(pics).T)[i].argmax()) for i in range(3)] == [0, 1, 2]
+    # Chinese is understood but less sharply than English, and a flat colour block is
+    # an odd picture for any model; the real benchmark (Flickr30K-CN, see the commit
+    # that chose this model) is the measure, so here only "clearly better than chance".
+    chinese = np.array(await embedder.embed_texts([f"纯{c}色的图片" for c in ("红", "蓝", "绿")]))
+    hits = sum(int((chinese @ np.array(pics).T)[i].argmax()) == i for i in range(3))
+    assert hits >= 2
     assert all(abs(np.linalg.norm(v) - 1.0) < 0.01 for v in pics)

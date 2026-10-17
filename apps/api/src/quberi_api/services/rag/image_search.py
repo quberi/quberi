@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.core.config import get_settings
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.spaces.models import Space
-from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM, get_image_embedder
+from quberi_api.services.ai.local_image_embedding import get_image_embedder, image_vector_dim
 from quberi_api.services.authz import list_accessible_space_ids
 from quberi_api.services.rag.image_store import ImageVectorStore
 
@@ -140,9 +140,8 @@ async def search_images(
     searched = list(space_ids)
     if not searched:
         return ImageSearchResult(matches=[], space_ids=[])
-    store = ImageVectorStore(
-        qdrant, model_id=get_settings().default_image_embedding_model, vector_dim=BGE_VL_DIM
-    )
+    model_id = get_settings().default_image_embedding_model
+    store = ImageVectorStore(qdrant, model_id=model_id, vector_dim=image_vector_dim(model_id))
     hits = await store.search_images(
         query_vector=query_vector,
         space_ids=searched,

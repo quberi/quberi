@@ -94,10 +94,10 @@ async def _read(db, redis, boot, user_id=None, scope="knowledge:read"):
 async def _stored(db, boot, qdrant, space, vec, blobs, name="part.png", colour="red"):
     """An indexed picture whose bytes can really be read back for a preview."""
     doc = await _doc(db, boot, space, name, state="indexed", blobs=blobs, data=_png(colour))
-    from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM
+    from quberi_api.services.ai.local_image_embedding import SIGLIP2_DIM
     from quberi_api.services.rag.image_store import ImageVectorStore
 
-    await ImageVectorStore(qdrant, model_id="bge-vl-base", vector_dim=BGE_VL_DIM).upsert_image(
+    await ImageVectorStore(qdrant, model_id="siglip2-base", vector_dim=SIGLIP2_DIM).upsert_image(
         organization_id=boot.organization_id,
         space_id=space.id,
         document_id=doc.id,

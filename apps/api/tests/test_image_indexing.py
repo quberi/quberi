@@ -22,12 +22,12 @@ from quberi_api.services import document_sources as sources_service
 from quberi_api.services import guest_sandbox
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.ai import local_image_embedding as lie
-from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM, LocalImageEmbedder
+from quberi_api.services.ai.local_image_embedding import SIGLIP2_DIM, prepare_image
 from quberi_api.services.rag import image_backfill, indexer
 from quberi_api.services.rag.image_store import ImageVectorStore
 from quberi_api.services.rag.vector_store import VectorStore
 
-MODEL = "bge-vl-base"
+MODEL = "siglip2-base"
 
 
 def _png(color="red", size=(24, 24)) -> bytes:
@@ -36,24 +36,25 @@ def _png(color="red", size=(24, 24)) -> bytes:
     return buf.getvalue()
 
 
-class _Model:
-    """Colour in, a one-hot vector out: red=0, green=1, blue=2."""
+class _FakeEmbedder:
+    """Colour in, a one-hot vector out: red=0, green=1, blue=2 (the real decoder runs)."""
 
-    def encode(self, items, normalize_embeddings=True, convert_to_numpy=True):
-        import numpy as np
+    model_id = MODEL
+    vector_dim = SIGLIP2_DIM
 
+    async def embed_images(self, images):
         rows = []
-        for item in items:
-            r, g, b = item.getpixel((0, 0)) if hasattr(item, "getpixel") else (0, 0, 0)
-            v = np.zeros(BGE_VL_DIM, dtype=np.float32)
+        for data in images:
+            r, g, b = prepare_image(data).getpixel((0, 0))
+            v = [0.0] * SIGLIP2_DIM
             v[int(max(range(3), key=lambda i: (r, g, b)[i]))] = 1.0
             rows.append(v)
-        return np.array(rows)
+        return rows
 
 
 @pytest.fixture
 def embedder(monkeypatch):
-    instance = LocalImageEmbedder(model=_Model())
+    instance = _FakeEmbedder()
     monkeypatch.setattr(indexer, "get_image_embedder", lambda *_a, **_k: instance)
     return instance
 
@@ -138,7 +139,7 @@ async def _doc(
 
 
 def _store(qdrant) -> ImageVectorStore:
-    return ImageVectorStore(qdrant, model_id=MODEL, vector_dim=BGE_VL_DIM)
+    return ImageVectorStore(qdrant, model_id=MODEL, vector_dim=SIGLIP2_DIM)
 
 
 # ---------------------------------------------------------------------------
@@ -154,13 +155,13 @@ async def test_a_picture_is_indexed_into_the_picture_collection(
 
     result = await indexer._run_pipeline(db_session, qdrant=qdrant, document_id=doc.id)
 
-    assert result.collection == "quberi_images__bge_vl_base"
+    assert result.collection == "quberi_images__siglip2_base"
     assert result.chunk_count == 1
     await db_session.refresh(doc)
     assert (doc.indexing_state, doc.chunk_count, doc.indexing_error) == ("indexed", 1, None)
     assert doc.last_indexed_at is not None
     hits = await _store(qdrant).search_images(
-        query_vector=[0.0, 0.0, 1.0] + [0.0] * (BGE_VL_DIM - 3),
+        query_vector=[0.0, 0.0, 1.0] + [0.0] * (SIGLIP2_DIM - 3),
         space_ids=[space.id],
         organization_id=org_and_owner.organization_id,
     )
@@ -176,7 +177,7 @@ async def test_a_picture_never_touches_the_text_collection(
     doc = await _doc(db_session, org_and_owner, space, blobs=blobs)
     await indexer._run_pipeline(db_session, qdrant=qdrant, document_id=doc.id)
     names = [c.name for c in (await qdrant.get_collections()).collections]
-    assert names == ["quberi_images__bge_vl_base"]
+    assert names == ["quberi_images__siglip2_base"]
 
 
 async def test_indexing_twice_leaves_one_vector(db_session, org_and_owner, qdrant, blobs, embedder):
@@ -247,7 +248,7 @@ def test_it_is_on_by_default():
     from quberi_api.core.config import Settings
 
     assert Settings.model_fields["image_search_enabled"].default is True
-    assert Settings.model_fields["default_image_embedding_model"].default == "bge-vl-base"
+    assert Settings.model_fields["default_image_embedding_model"].default == "siglip2-base"
 
 
 @pytest.mark.parametrize(
@@ -275,7 +276,7 @@ async def test_old_pictures_are_found_for_backfill(db_session, org_and_owner):
     old = await _doc(db_session, org_and_owner, space, "old.jpg", mime="image/jpeg",
                      state="failed", error=OLD_ERROR)
 
-    ids = await image_backfill.pictures_needing_index(db_session)
+    ids = await image_backfill.pictures_needing_index(db_session, model_id=MODEL)
 
     assert set(ids) == {queued.id, old.id}
 
@@ -287,12 +288,11 @@ async def test_backfill_leaves_everything_that_should_not_be_retried(db_session,
         update(Space).where(Space.id == gone_space.id).values(status="archived")
     )
     await db_session.commit()
-    await _doc(db_session, org_and_owner, space, "done.png", state="indexed")
+    done = await _doc(db_session, org_and_owner, space, "done.png", state="indexed")
+    await _record_model(db_session, done, MODEL)
     await _doc(db_session, org_and_owner, space, "indexing.png", state="indexing")
     await _doc(db_session, org_and_owner, space, "corrupt.png", state="failed",
                error="image: the file is not a readable picture")
-    await _doc(db_session, org_and_owner, space, "other-failure.png", state="failed",
-               error="RuntimeError: qdrant unreachable")
     await _doc(
         db_session, org_and_owner, space, "archived.png", state="not_indexed", status="archived"
     )
@@ -300,7 +300,7 @@ async def test_backfill_leaves_everything_that_should_not_be_retried(db_session,
                state="failed", error="extract: pypdf returned no text")
     await _doc(db_session, org_and_owner, gone_space, "in-archived-space.png", state="not_indexed")
 
-    assert await image_backfill.pictures_needing_index(db_session) == []
+    assert await image_backfill.pictures_needing_index(db_session, model_id=MODEL) == []
 
 
 async def test_backfill_takes_the_oldest_first_and_respects_the_limit(db_session, org_and_owner):
@@ -309,9 +309,9 @@ async def test_backfill_takes_the_oldest_first_and_respects_the_limit(db_session
     oldest = await _doc(db_session, org_and_owner, space, "old.png", age=timedelta(days=3))
     middle = await _doc(db_session, org_and_owner, space, "mid.png", age=timedelta(days=1))
 
-    two = await image_backfill.pictures_needing_index(db_session, limit=2)
+    two = await image_backfill.pictures_needing_index(db_session, model_id=MODEL, limit=2)
     assert two == [oldest.id, middle.id]
-    assert await image_backfill.pictures_needing_index(db_session, limit=10) == [
+    assert await image_backfill.pictures_needing_index(db_session, model_id=MODEL, limit=10) == [
         oldest.id, middle.id, newest.id
     ]
 
@@ -323,12 +323,112 @@ async def test_a_backfilled_picture_ends_up_searchable(
     old = await _doc(db_session, org_and_owner, space, "old.png", state="failed", error=OLD_ERROR,
                      blobs=blobs, data=_png("green"))
 
-    (picked,) = await image_backfill.pictures_needing_index(db_session)
+    (picked,) = await image_backfill.pictures_needing_index(db_session, model_id=MODEL)
     await indexer._run_pipeline(db_session, qdrant=qdrant, document_id=picked)
 
-    assert await image_backfill.pictures_needing_index(db_session) == []  # not picked up again
+    assert await image_backfill.pictures_needing_index(db_session, model_id=MODEL) == []  # not picked up again
     await db_session.refresh(old)
     assert old.indexing_state == "indexed"
+
+
+async def _record_model(db, doc, model_id):
+    """Say which picture model made this picture's vector (as indexing does)."""
+    await db.execute(
+        update(Document)
+        .where(Document.id == doc.id)
+        .values(attributes={indexer.IMAGE_INDEX_MODEL_KEY: model_id})
+    )
+    await db.commit()
+
+
+async def test_a_picture_that_failed_for_a_reason_other_than_the_picture_is_retried(
+    db_session, org_and_owner
+):
+    space = await _space(db_session, org_and_owner)
+    transient = await _doc(db_session, org_and_owner, space, "later.png", state="failed",
+                           error="RuntimeError: qdrant unreachable")
+    await _doc(db_session, org_and_owner, space, "corrupt.png", state="failed",
+               error="image: the file is not a readable picture")
+    no_reason = await _doc(db_session, org_and_owner, space, "no-reason.png", state="failed", error=None)
+    ids = await image_backfill.pictures_needing_index(db_session, model_id=MODEL)
+    assert set(ids) == {transient.id, no_reason.id}
+
+
+async def test_pictures_indexed_under_another_model_are_found_for_re_indexing(
+    db_session, org_and_owner
+):
+    space = await _space(db_session, org_and_owner)
+    current = await _doc(db_session, org_and_owner, space, "current.png", state="indexed")
+    await _record_model(db_session, current, MODEL)
+    old_model = await _doc(db_session, org_and_owner, space, "old-model.png", state="indexed")
+    await _record_model(db_session, old_model, "bge-vl-base")
+    # Indexed before models were recorded: made by the first model, bge-vl-base.
+    legacy = await _doc(db_session, org_and_owner, space, "legacy.png", state="indexed")
+    ids = await image_backfill.pictures_needing_index(db_session, model_id=MODEL)
+    assert set(ids) == {old_model.id, legacy.id}
+    # Pointed back at the old model, the pictures made by it no longer need work,
+    # and the one made by the new model does.
+    back = await image_backfill.pictures_needing_index(db_session, model_id="bge-vl-base")
+    assert set(back) == {current.id}
+
+
+async def test_re_indexing_moves_the_vector_to_the_new_model_and_drops_the_old_one(
+    db_session, org_and_owner, qdrant, blobs, embedder
+):
+    space = await _space(db_session, org_and_owner)
+    doc = await _doc(db_session, org_and_owner, space, "moved.png", state="indexed",
+                     blobs=blobs, data=_png("blue"))
+    old_store = ImageVectorStore(qdrant, model_id="bge-vl-base", vector_dim=512)
+    await old_store.upsert_image(
+        organization_id=org_and_owner.organization_id, space_id=space.id, document_id=doc.id,
+        document_name=doc.name, mime_type="image/png", document_checksum=None,
+        vector=[1.0] + [0.0] * 511,
+    )
+    assert await old_store.count_document(document_id=doc.id) == 1
+    assert doc.id in await image_backfill.pictures_needing_index(db_session, model_id=MODEL)
+
+    await indexer._run_pipeline(db_session, qdrant=qdrant, document_id=doc.id)
+
+    assert await _store(qdrant).count_document(document_id=doc.id) == 1
+    assert await old_store.count_document(document_id=doc.id) == 0
+    await db_session.refresh(doc)
+    assert doc.attributes[indexer.IMAGE_INDEX_MODEL_KEY] == MODEL
+    assert doc.indexing_state == "indexed"
+    assert await image_backfill.pictures_needing_index(db_session, model_id=MODEL) == []
+
+
+async def test_indexing_leaves_the_documents_other_attributes_alone(
+    db_session, org_and_owner, qdrant, blobs, embedder
+):
+    space = await _space(db_session, org_and_owner)
+    doc = await _doc(db_session, org_and_owner, space, "keep.png", blobs=blobs)
+    await db_session.execute(
+        update(Document).where(Document.id == doc.id).values(attributes={"owner_note": "keep me"})
+    )
+    await db_session.commit()
+    await indexer._run_pipeline(db_session, qdrant=qdrant, document_id=doc.id)
+    await db_session.refresh(doc)
+    assert doc.attributes == {"owner_note": "keep me", indexer.IMAGE_INDEX_MODEL_KEY: MODEL}
+
+
+async def test_deleting_a_picture_removes_its_vector_under_every_model(db_session, qdrant):
+    doc = uuid.uuid4()
+    stores = [
+        ImageVectorStore(qdrant, model_id=m, vector_dim=d) for m, d in lie.IMAGE_MODEL_DIMS.items()
+    ]
+    assert len(stores) == 2
+    for store, dim in zip(stores, lie.IMAGE_MODEL_DIMS.values()):
+        await store.upsert_image(
+            organization_id=uuid.uuid4(), space_id=uuid.uuid4(), document_id=doc,
+            document_name="x.png", mime_type="image/png", document_checksum=None,
+            vector=[1.0] + [0.0] * (dim - 1),
+        )
+    await indexer.remove_image_from_index(qdrant=qdrant, document_id=doc)
+    assert [await s.count_document(document_id=doc) for s in stores] == [0, 0]
+
+
+async def test_deleting_a_picture_that_has_no_vector_anywhere_is_quiet(qdrant):
+    await indexer.remove_image_from_index(qdrant=qdrant, document_id=uuid.uuid4())  # no collections
 
 
 async def test_the_worker_queues_each_picture_once_and_does_nothing_when_off(
@@ -420,7 +520,7 @@ async def test_the_verified_sandbox_purge_covers_pictures_too(qdrant):
     pic = _store(qdrant)
     await pic.upsert_image(
         organization_id=org, space_id=space, document_id=doc, document_name="x.png",
-        mime_type="image/png", document_checksum=None, vector=[1.0] + [0.0] * (BGE_VL_DIM - 1),
+        mime_type="image/png", document_checksum=None, vector=[1.0] + [0.0] * (SIGLIP2_DIM - 1),
     )
     text = VectorStore(qdrant, model_id="bge-m3", vector_dim=4)
 
@@ -459,7 +559,22 @@ async def test_the_purge_does_not_claim_clean_when_a_picture_vector_will_not_go(
         )
     finally:
         image_store_module.ImageVectorStore = original
-    assert result.vectors_left == 1
+    # One stubborn vector under each picture model this build knows.
+    assert result.vectors_left == len(lie.IMAGE_MODEL_DIMS)
+
+
+async def test_the_purge_also_clears_a_vector_left_under_the_previous_picture_model(qdrant):
+    org, space, doc = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    old = ImageVectorStore(qdrant, model_id="bge-vl-base", vector_dim=512)
+    await old.upsert_image(
+        organization_id=org, space_id=space, document_id=doc, document_name="x.png",
+        mime_type="image/png", document_checksum=None, vector=[1.0] + [0.0] * 511,
+    )
+    result = await guest_sandbox.purge_vectors(
+        qdrant=qdrant, document_id=doc, model_id="bge-m3", vector_dim=4, image_model_id=MODEL
+    )
+    assert result.vectors_left == 0
+    assert await old.count_document(document_id=doc) == 0
 
 
 async def test_the_sandbox_cleanup_asks_for_pictures_to_be_purged_as_well(
@@ -500,5 +615,5 @@ async def test_the_sandbox_cleanup_asks_for_pictures_to_be_purged_as_well(
     )
 
     assert outcome.row_deleted and outcome.vectors_verified_gone
-    assert seen["image_model_id"] == "bge-vl-base"
+    assert seen["image_model_id"] == "siglip2-base"
     assert seen["model_id"] == "bge-m3"

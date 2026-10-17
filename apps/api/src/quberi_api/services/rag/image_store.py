@@ -2,7 +2,7 @@
 
 Pictures live in their own collection, apart from the text chunks::
 
-    quberi_images__{sanitised_model_id}     e.g. quberi_images__bge_vl_base
+    quberi_images__{sanitised_model_id}     e.g. quberi_images__siglip2_base
 
 They cannot share one: the vectors have a different size and come from a
 different model. Everything else follows the text store exactly, on purpose, so

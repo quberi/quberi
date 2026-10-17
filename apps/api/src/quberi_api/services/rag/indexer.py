@@ -42,9 +42,10 @@ from quberi_api.core.config import get_settings
 from quberi_api.domain.documents.models import Document
 from quberi_api.services.ai import resolve_embedding_provider
 from quberi_api.services.ai.local_image_embedding import (
-    BGE_VL_DIM,
+    IMAGE_MODEL_DIMS,
     ImageDecodeError,
     get_image_embedder,
+    image_vector_dim,
 )
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.rag.chunk import chunk_text
@@ -58,6 +59,11 @@ _log = logging.getLogger(__name__)
 # Embed in batches to avoid huge single requests. Provider-specific
 # tuning can be layered on later.
 EMBED_BATCH_SIZE = 32
+
+# ``documents.attributes[IMAGE_INDEX_MODEL_KEY]`` names the picture model whose vector
+# a picture currently has, so a change of model can find what to re-index.
+IMAGE_INDEX_MODEL_KEY = "image_index_model"
+LEGACY_IMAGE_MODEL = "bge-vl-base"
 
 
 # ---------------------------------------------------------------------------
@@ -145,14 +151,20 @@ async def remove_image_from_index(
     document_id: uuid.UUID,
     model_id: str | None = None,
 ) -> None:
-    """Best-effort removal of a picture's vector. Missing collection → no-op."""
+    """Best-effort removal of a picture's vector. Missing collection → no-op.
 
-    model = model_id or get_settings().default_image_embedding_model
-    store = ImageVectorStore(qdrant, model_id=model, vector_dim=BGE_VL_DIM)
-    try:
-        await store.delete_document(document_id=document_id)
-    except Exception:  # pragma: no cover — logged, doc row already gone
-        _log.exception("qdrant image delete_document failed for %s", document_id)
+    Without ``model_id`` the vector is removed under **every** picture model this
+    build knows: a picture indexed before a model change keeps its old vector until
+    it is re-indexed, and deleting the file must not leave that behind.
+    """
+
+    models = [model_id] if model_id else list(IMAGE_MODEL_DIMS)
+    for model in models:
+        store = ImageVectorStore(qdrant, model_id=model, vector_dim=image_vector_dim(model))
+        try:
+            await store.delete_document(document_id=document_id)
+        except Exception:  # pragma: no cover — logged, doc row already gone
+            _log.exception("qdrant image delete_document failed for %s (%s)", document_id, model)
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +252,7 @@ async def _index_image(
     except ImageDecodeError as exc:
         await _mark_failed(session, doc, f"image: {exc}")
         raise
-    store = ImageVectorStore(qdrant, model_id=model_id, vector_dim=BGE_VL_DIM)
+    store = ImageVectorStore(qdrant, model_id=model_id, vector_dim=image_vector_dim(model_id))
     await store.upsert_image(
         organization_id=doc.organization_id,
         space_id=doc.space_id,
@@ -250,11 +262,18 @@ async def _index_image(
         document_checksum=doc.checksum_sha256,
         vector=vectors[0],
     )
+    # Which model made this vector. A picture indexed before models were recorded was
+    # made by the first one (bge-vl-base).
+    previous_model = (doc.attributes or {}).get(IMAGE_INDEX_MODEL_KEY, LEGACY_IMAGE_MODEL)
+    doc.attributes = {**(doc.attributes or {}), IMAGE_INDEX_MODEL_KEY: model_id}
     doc.indexing_state = "indexed"
     doc.chunk_count = 1
     doc.last_indexed_at = datetime.now(timezone.utc)
     doc.indexing_error = None
     await session.commit()
+    if previous_model != model_id and previous_model in IMAGE_MODEL_DIMS:
+        # Moved to a new model: drop the vector the old one left behind.
+        await remove_image_from_index(qdrant=qdrant, document_id=doc.id, model_id=previous_model)
     _log.info("indexed picture %s in %s (model=%s)", doc.id, store.collection, model_id)
     return IndexingResult(
         document_id=doc.id, chunk_count=1, collection=store.collection, model_id=model_id

@@ -168,7 +168,9 @@ async def backfill_pictures(ctx: dict) -> int:
     from quberi_api.services.rag.image_backfill import pictures_needing_index
 
     async with ctx["session_factory"]() as session:
-        ids = await pictures_needing_index(session)
+        ids = await pictures_needing_index(
+            session, model_id=get_settings().default_image_embedding_model
+        )
         await session.commit()
     queued = 0
     for document_id in ids:

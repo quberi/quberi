@@ -20,12 +20,12 @@ from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services import members as members_service
 from quberi_api.services import space_bindings as space_bindings_service
-from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM, prepare_image
+from quberi_api.services.ai.local_image_embedding import SIGLIP2_DIM, prepare_image
 from quberi_api.services.rag import image_search
 from quberi_api.services.rag.image_store import ImageVectorStore
 from tests.test_image_indexing import _doc, _space
 
-MODEL = "bge-vl-base"
+MODEL = "siglip2-base"
 COLOURS = {"red": 0, "green": 1, "blue": 2}
 
 
@@ -36,7 +36,7 @@ def _png(colour: str) -> bytes:
 
 
 def _onehot(i: int) -> list[float]:
-    v = [0.0] * BGE_VL_DIM
+    v = [0.0] * SIGLIP2_DIM
     v[i] = 1.0
     return v
 
@@ -125,7 +125,7 @@ async def _indexed_picture(db, boot, qdrant, space, vec, name="part.png"):
     """A picture document that is indexed, with its vector filed under its space."""
 
     doc = await _doc(db, boot, space, name, state="indexed")
-    await ImageVectorStore(qdrant, model_id=MODEL, vector_dim=BGE_VL_DIM).upsert_image(
+    await ImageVectorStore(qdrant, model_id=MODEL, vector_dim=SIGLIP2_DIM).upsert_image(
         organization_id=boot.organization_id,
         space_id=space.id,
         document_id=doc.id,
@@ -285,7 +285,7 @@ async def test_another_organisations_picture_is_never_returned(
     space = await _space(db_session, org_and_owner, "Mine")
     await _indexed_picture(db_session, org_and_owner, qdrant, space, RED, "mine.png")
     # A vector filed under another organisation, in a space with the same id.
-    await ImageVectorStore(qdrant, model_id=MODEL, vector_dim=BGE_VL_DIM).upsert_image(
+    await ImageVectorStore(qdrant, model_id=MODEL, vector_dim=SIGLIP2_DIM).upsert_image(
         organization_id=uuid.uuid4(), space_id=space.id, document_id=uuid.uuid4(),
         document_name="foreign.png", mime_type="image/png", document_checksum=None, vector=RED,
     )
@@ -404,14 +404,14 @@ async def test_a_vector_that_names_the_wrong_space_is_dropped(db_session, org_an
 
 async def test_stale_hits_do_not_crowd_out_good_ones(db_session, org_and_owner, qdrant):
     space = await _space(db_session, org_and_owner, "Parts")
-    store = ImageVectorStore(qdrant, model_id=MODEL, vector_dim=BGE_VL_DIM)
+    store = ImageVectorStore(qdrant, model_id=MODEL, vector_dim=SIGLIP2_DIM)
     for i in range(4):  # closest to the query, but their documents do not exist
         await store.upsert_image(
             organization_id=org_and_owner.organization_id, space_id=space.id,
             document_id=uuid.uuid4(), document_name=f"ghost{i}.png", mime_type="image/png",
             document_checksum=None, vector=RED,
         )
-    near = [0.9] + [0.0] * (BGE_VL_DIM - 1)
+    near = [0.9] + [0.0] * (SIGLIP2_DIM - 1)
     near[1] = 0.4
     for name in ("real1.png", "real2.png"):
         doc = await _doc(db_session, org_and_owner, space, name, state="indexed")

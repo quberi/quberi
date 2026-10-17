@@ -233,13 +233,16 @@ async def purge_vectors(
     """
 
     store = VectorStore(qdrant, model_id=model_id, vector_dim=vector_dim)
-    # A picture's vector lives in a separate collection; clear and verify it too.
+    # A picture's vector lives in a separate collection per picture model; clear and
+    # verify every one this build knows (a picture indexed before a model change still
+    # has its vector under the old model until it is re-indexed).
     stores = [store]
     if image_model_id:
-        from quberi_api.services.ai.local_image_embedding import BGE_VL_DIM
+        from quberi_api.services.ai.local_image_embedding import IMAGE_MODEL_DIMS
         from quberi_api.services.rag.image_store import ImageVectorStore
 
-        stores.append(ImageVectorStore(qdrant, model_id=image_model_id, vector_dim=BGE_VL_DIM))
+        for known_id, known_dim in IMAGE_MODEL_DIMS.items():
+            stores.append(ImageVectorStore(qdrant, model_id=known_id, vector_dim=known_dim))
     left = -1
     for attempt in range(1, attempts + 1):
         try:

@@ -197,10 +197,22 @@ _EMBEDDING_MODELS: tuple[ModelSpec, ...] = (
 
 _IMAGE_EMBEDDING_MODELS: tuple[ModelSpec, ...] = (
     ModelSpec(
+        model_id="siglip2-base",
+        provider_kind="local_image_embedding",
+        purpose="image_embedding",
+        display_name="Google SigLIP2 base (local, multilingual)",
+        vector_dim=768,
+        context_window=64,
+        notes="Apache-2.0 licence, ~375M parameters. Understands Chinese, English and "
+        "~100 other languages. Plain transformers + safetensors from a pinned revision; "
+        "no code from the model repository runs. The picture half (~0.35 GB) and the "
+        "text half (~0.7 GB) load separately, only when needed.",
+    ),
+    ModelSpec(
         model_id="bge-vl-base",
         provider_kind="local_image_embedding",
         purpose="image_embedding",
-        display_name="BAAI BGE-VL base (local, CLIP-style)",
+        display_name="BAAI BGE-VL base (local, CLIP-style, English only)",
         vector_dim=512,
         context_window=77,
         notes="MIT licence, ~150M parameters, ~0.5 GB in memory. Loaded from a "
