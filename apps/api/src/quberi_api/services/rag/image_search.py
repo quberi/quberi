@@ -161,6 +161,46 @@ async def embed_query(*, image: bytes | None, text: str | None) -> list[float]:
     return parts[0] if len(parts) == 1 else _combine(parts)
 
 
+async def has_searchable_pictures(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    space_ids: Sequence[uuid.UUID],
+    doc_access: DocAccess = NO_DOC_ACCESS,
+) -> bool:
+    """True when at least one picture could be found: indexed, approved and readable now.
+
+    A cheap check so that a side lookup does not load the picture model for nothing.
+    """
+
+    from quberi_api.services.documents.core import file_type_clause
+
+    if not list(space_ids) and not doc_access.granted:
+        return False
+    row = (
+        await session.execute(
+            select(Document.id)
+            .join(Space, Space.id == Document.space_id)
+            .where(
+                Document.organization_id == organization_id,
+                or_(
+                    Document.space_id.in_(list(space_ids)),
+                    Document.id.in_(set(doc_access.granted)),
+                ),
+                Document.id.not_in(doc_access.denied),
+                Document.status != "archived",
+                Document.review_state == "approved",
+                Document.indexing_state == "indexed",
+                file_type_clause(Document.mime_type, "image"),
+                Space.organization_id == organization_id,
+                Space.status == "active",
+            )
+            .limit(1)
+        )
+    ).first()
+    return row is not None
+
+
 async def search_images(
     session: AsyncSession,
     *,

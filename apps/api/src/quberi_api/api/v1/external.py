@@ -22,7 +22,7 @@ import io
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import (
     APIRouter,
@@ -117,6 +117,9 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=10)
     # Name of one space to look in; omit to look in every space the person can read.
     space: Optional[str] = Field(default=None, max_length=200)
+    # What to look in: ``both`` (default) the documents' text and, beside it, pictures that
+    # might be what was asked for; ``text`` only the text; ``image`` only the pictures.
+    kind: Literal["text", "image", "both"] = "both"
 
 
 class Passage(BaseModel):
@@ -139,6 +142,18 @@ class PendingDocument(BaseModel):
     state: str
 
 
+class ImageResult(BaseModel):
+    name: str
+    space_name: str
+    mime_type: str
+    size_bytes: int
+    # 0..1 closeness; only useful for ordering and for judging a weak match.
+    score: float
+    # Absolute link to a small JPEG preview, valid for ``preview_expires_in`` seconds.
+    # Null when this server has no signing key (the picture is still listed).
+    preview_url: Optional[str] = None
+
+
 class SearchResponse(BaseModel):
     organization: str
     passages: list[Passage]
@@ -149,11 +164,137 @@ class SearchResponse(BaseModel):
     # reported separately.
     pending_documents: list[PendingDocument] = Field(default_factory=list)
     pending_total: int = 0
+    # Pictures that might be what was asked for (``kind`` both or image). With ``both`` they
+    # are only the few that score well enough and are *possible* matches, to be offered
+    # beside the passages; with ``image`` they are simply the closest ones. Defined below.
+    images: list[ImageResult] = Field(default_factory=list)
+    preview_expires_in: int = 0
+
+
+async def _requested_spaces(
+    session: AsyncSession, ext: core.ExternalCaller, name: Optional[str]
+) -> Optional[list[uuid.UUID]]:
+    """The one space a request names (404 if the person cannot see it), or ``None`` for all."""
+
+    if name is None or not name.strip():
+        return None
+    try:
+        view = await spaces_service.resolve_target_space(
+            session,
+            organization_id=ext.organization.id,
+            user_id=ext.user.id,
+            name=name,
+            include_shared=True,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "space_not_found", "message": str(exc)},
+        ) from exc
+    return [view.space.id]
+
+
+async def _image_rate_limit(infra: Infrastructure, ext: core.ExternalCaller) -> None:
+    """Each picture lookup runs the picture model, so it has a limit of its own."""
+
+    await core.rate_limit(
+        infra.redis,
+        key=f"quberi:external:imagesearch:{ext.grant_id}",
+        limit=_IMAGE_SEARCH_RATE_LIMIT,
+        window_seconds=60,
+    )
+
+
+def _preview_link(request: Request, ext: core.ExternalCaller, document_id: uuid.UUID) -> Optional[str]:
+    settings = get_settings()
+    if not external_image_links.links_available(settings):
+        return None
+    token = external_image_links.sign(
+        settings, user_id=ext.user.id, grant_id=ext.grant_id, document_id=document_id
+    )
+    return f"{_public_origin(request)}/api/v1/external/preview/{token}.jpg"
+
+
+async def _related_pictures(
+    request: Request,
+    session: AsyncSession,
+    infra: Infrastructure,
+    ext: core.ExternalCaller,
+    *,
+    query: str,
+    requested: Optional[list[uuid.UUID]],
+) -> list[tuple[image_search.ImageMatch, ImageResult]]:
+    """A few pictures that might be what a text search was after, or ``[]``.
+
+    A side lookup: it never fails the search it rides along with. It is skipped for a long
+    query, when there is no picture to find, when picture search is off, and when the picture
+    limit is reached; only pictures scoring at least the chat's floor are kept.
+    """
+
+    from quberi_api.services.conversations import (
+        RELATED_PICTURE_MAX_CHARS,
+        RELATED_PICTURE_MIN_SCORE,
+        RELATED_PICTURE_TOP_K,
+    )
+
+    text = query.strip()
+    if not text or len(text) > RELATED_PICTURE_MAX_CHARS or not get_settings().image_search_enabled:
+        return []
+    try:
+        await _image_rate_limit(infra, ext)
+        # A SAVEPOINT: a failure undoes only this lookup. A plain rollback would expire the
+        # caller's objects (the grant, the person) and break the search it rides along with.
+        async with session.begin_nested():
+            scope = await image_search.resolve_image_access(
+                session,
+                organization_id=ext.organization.id,
+                caller_user_id=ext.user.id,
+                requested_space_ids=requested,
+            )
+            if not await image_search.has_searchable_pictures(
+                session,
+                organization_id=ext.organization.id,
+                space_ids=scope.space_ids,
+                doc_access=scope.doc_access,
+            ):
+                return []
+            vector = await image_search.embed_query(image=None, text=text)
+            found = await image_search.search_images(
+                session,
+                qdrant=infra.qdrant,
+                organization_id=ext.organization.id,
+                space_ids=scope.space_ids,
+                query_vector=vector,
+                top_k=RELATED_PICTURE_TOP_K,
+                doc_access=scope.doc_access,
+            )
+    except Exception:  # noqa: BLE001 - a side lookup must never break the search
+        import logging
+
+        logging.getLogger(__name__).warning("related pictures failed", exc_info=True)
+        return []
+    return [
+        (m, _image_result(request, ext, m))
+        for m in found.matches
+        if m.score >= RELATED_PICTURE_MIN_SCORE
+    ]
+
+
+def _image_result(request: Request, ext: core.ExternalCaller, m: image_search.ImageMatch) -> ImageResult:
+    return ImageResult(
+        name=m.document_name,
+        space_name=m.space_name,
+        mime_type=m.mime_type,
+        size_bytes=m.size_bytes,
+        score=round(m.score, 4),
+        preview_url=_preview_link(request, ext, m.document_id),
+    )
 
 
 @router.post("/search", response_model=SearchResponse, summary="Search readable knowledge")
 async def search(
     payload: SearchRequest,
+    request: Request,
     ext: core.ExternalCaller = Depends(require_external_caller),
     session: AsyncSession = Depends(get_db_session),
     infra: Infrastructure = Depends(get_infrastructure),
@@ -162,6 +303,30 @@ async def search(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "insufficient_scope", "message": "knowledge:read is required"},
+        )
+    if payload.kind == "image":
+        # Pictures only: the same lookup, limits and audit as the dedicated endpoint.
+        if len(payload.query) > image_search.MAX_QUERY_TEXT_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "bad_query",
+                    "message": f"describe the picture in at most {image_search.MAX_QUERY_TEXT_CHARS} characters",
+                },
+            )
+        pictures = await search_images_by_description(
+            ImageSearchRequest(query=payload.query, top_k=payload.top_k, space=payload.space),
+            request,
+            ext,
+            session,
+            infra,
+        )
+        return SearchResponse(
+            organization=pictures.organization,
+            passages=[],
+            searched_spaces=pictures.searched_spaces,
+            images=pictures.images,
+            preview_expires_in=pictures.preview_expires_in,
         )
     try:
         await core.rate_limit(
@@ -177,22 +342,7 @@ async def search(
             headers={"Retry-After": "60"} if exc.status == 429 else None,
         ) from exc
 
-    requested: Optional[list[uuid.UUID]] = None
-    if payload.space is not None and payload.space.strip():
-        try:
-            view = await spaces_service.resolve_target_space(
-                session,
-                organization_id=ext.organization.id,
-                user_id=ext.user.id,
-                name=payload.space,
-                include_shared=True,
-            )
-        except NotFoundError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "space_not_found", "message": str(exc)},
-            ) from exc
-        requested = [view.space.id]
+    requested = await _requested_spaces(session, ext, payload.space)
     result = await retrieve_for_user(
         session,
         qdrant=infra.qdrant,
@@ -224,9 +374,24 @@ async def search(
             )
         )
         names = {sid: name for sid, name in rows.all()}
+    # Pictures that might be what was asked for (the text above cannot see pictures).
+    related = (
+        await _related_pictures(request, session, infra, ext, query=payload.query, requested=requested)
+        if payload.kind == "both"
+        else []
+    )
     # Close the read transaction the retrieval above opened before writing.
     await session.commit()
 
+    audit_payload = {
+        "grant_id": str(ext.grant_id),
+        "client_name": ext.client_name,
+        "result_count": len(chunks),
+        # Ids only, like chat answers: enough to look each one up.
+        "retrieved_document_ids": document_ids_from_chunks(chunks),
+    }
+    if related:
+        audit_payload["related_picture_ids"] = [str(m.document_id) for m, _r in related]
     async with session.begin():
         session.add(
             AuditEvent(
@@ -236,13 +401,7 @@ async def search(
                 action="knowledge.external_search",
                 resource_type="oauth_grant",
                 resource_id=ext.grant_id,
-                payload={
-                    "grant_id": str(ext.grant_id),
-                    "client_name": ext.client_name,
-                    "result_count": len(chunks),
-                    # Ids only, like chat answers: enough to look each one up.
-                    "retrieved_document_ids": document_ids_from_chunks(chunks),
-                },
+                payload=audit_payload,
             )
         )
 
@@ -270,6 +429,8 @@ async def search(
             for name, space_id, state in pending_rows
         ],
         pending_total=pending_total,
+        images=[r for _m, r in related],
+        preview_expires_in=external_image_links.LINK_TTL_SECONDS if related else 0,
     )
 
 
@@ -669,18 +830,6 @@ class ImageSearchRequest(BaseModel):
     space: Optional[str] = Field(default=None, max_length=200)
 
 
-class ImageResult(BaseModel):
-    name: str
-    space_name: str
-    mime_type: str
-    size_bytes: int
-    # 0..1 closeness; only useful for ordering and for judging a weak match.
-    score: float
-    # Absolute link to a small JPEG preview, valid for ``preview_expires_in`` seconds.
-    # Null when this server has no signing key (the picture is still listed).
-    preview_url: Optional[str] = None
-
-
 class ImageSearchResponse(BaseModel):
     organization: str
     images: list[ImageResult]
@@ -707,12 +856,7 @@ async def search_images_by_description(
 ) -> ImageSearchResponse:
     _require_read(ext)
     try:
-        await core.rate_limit(
-            infra.redis,
-            key=f"quberi:external:imagesearch:{ext.grant_id}",
-            limit=_IMAGE_SEARCH_RATE_LIMIT,
-            window_seconds=60,
-        )
+        await _image_rate_limit(infra, ext)
     except core.OAuthError as exc:
         raise HTTPException(
             status_code=exc.status,
@@ -720,22 +864,7 @@ async def search_images_by_description(
             headers={"Retry-After": "60"} if exc.status == 429 else None,
         ) from exc
 
-    requested: Optional[list[uuid.UUID]] = None
-    if payload.space is not None and payload.space.strip():
-        try:
-            view = await spaces_service.resolve_target_space(
-                session,
-                organization_id=ext.organization.id,
-                user_id=ext.user.id,
-                name=payload.space,
-                include_shared=True,
-            )
-        except NotFoundError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "space_not_found", "message": str(exc)},
-            ) from exc
-        requested = [view.space.id]
+    requested = await _requested_spaces(session, ext, payload.space)
     scope = await image_search.resolve_image_access(
         session,
         organization_id=ext.organization.id,
@@ -764,31 +893,7 @@ async def search_images_by_description(
             detail={"code": "bad_query", "message": str(exc)},
         ) from exc
 
-    settings = get_settings()
-    origin = _public_origin(request)
-    can_link = external_image_links.links_available(settings)
-    images = [
-        ImageResult(
-            name=m.document_name,
-            space_name=m.space_name,
-            mime_type=m.mime_type,
-            size_bytes=m.size_bytes,
-            score=round(m.score, 4),
-            preview_url=(
-                f"{origin}/api/v1/external/preview/"
-                + external_image_links.sign(
-                    settings,
-                    user_id=ext.user.id,
-                    grant_id=ext.grant_id,
-                    document_id=m.document_id,
-                )
-                + ".jpg"
-                if can_link
-                else None
-            ),
-        )
-        for m in found.matches
-    ]
+    images = [_image_result(request, ext, m) for m in found.matches]
     organization_name = ext.organization.name
     document_ids = [str(m.document_id) for m in found.matches]
     await session.commit()  # end the read transaction before the audit write
