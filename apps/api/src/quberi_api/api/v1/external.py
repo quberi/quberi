@@ -372,6 +372,9 @@ class DocumentInfo(BaseModel):
     # 'not_searchable' (processing failed or never finished, or a kind of file
     # that cannot be searched by content, such as an image).
     status: str
+    # Why a reviewer rejected it. Set only on the caller's own rejected files, so the person who
+    # uploaded (or the tool acting for them) can find out why it is not searchable.
+    review_note: Optional[str] = None
 
 
 class DocumentsResponse(BaseModel):
@@ -602,6 +605,7 @@ async def list_documents(
         Document.updated_at,
         Document.indexing_state,
         Document.review_state,
+        Document.review_note,
     ).where(*base)
     if after is not None:
         when, last_id = after
@@ -625,8 +629,9 @@ async def list_documents(
             size_bytes=int(size),
             updated_at=updated,
             status=_public_status(state, updated, now, review_state),
+            review_note=(note or None) if review_state == "rejected" else None,
         )
-        for _id, name, mime, size, updated, state, review_state in page
+        for _id, name, mime, size, updated, state, review_state, note in page
     ]
     next_cursor = _encode_cursor(page[-1][4], page[-1][0]) if more and page else None
     await _audit_listing(

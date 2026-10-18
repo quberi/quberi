@@ -110,6 +110,41 @@ async def test_the_uploader_sees_their_waiting_file_as_awaiting_approval_and_nob
         await db_session.commit()
 
 
+async def test_the_uploader_can_read_why_a_file_was_rejected_and_nobody_else_can(
+    http, db_session, redis_client, _no_infra
+):
+    from sqlalchemy import select
+
+    from quberi_api.domain.documents.models import Document
+
+    boot, tokens = await _setup(db_session, redis_client)
+    await _upload(http, tokens["editor"], "mine.pdf")
+    await db_session.commit()
+    doc_id = (await db_session.execute(select(Document.id).where(Document.name == "mine.pdf"))).scalar_one()
+    await db_session.commit()
+    await review.decide(
+        db_session, organization_id=boot.organization_id, actor_user_id=boot.user_id,
+        space_id=(await db_session.get(Document, doc_id)).space_id, document_ids=[doc_id],
+        approve=False, note="contains customer data",
+    )
+    await db_session.commit()
+
+    mine = (await http.get(DOCS, headers=_auth(tokens["editor"]), params={"space": "Wiki"})).json()
+    assert [(d["status"], d["review_note"]) for d in mine["documents"]] == [
+        ("rejected", "contains customer data")
+    ]
+    await db_session.commit()
+    theirs = (await http.get(DOCS, headers=_auth(tokens["other"]), params={"space": "Wiki"})).json()
+    assert theirs["documents"] == []
+    await db_session.commit()
+    # A file that is merely waiting has no reason to show.
+    await _upload(http, tokens["editor"], "next.pdf")
+    await db_session.commit()
+    again = (await http.get(DOCS, headers=_auth(tokens["editor"]), params={"space": "Wiki"})).json()
+    waiting = next(d for d in again["documents"] if d["name"] == "next.pdf")
+    assert waiting["status"] == "awaiting_approval" and waiting["review_note"] is None
+
+
 async def test_a_search_names_the_waiting_file_as_awaiting_approval_for_its_uploader(
     http, db_session, redis_client, _no_infra, monkeypatch
 ):

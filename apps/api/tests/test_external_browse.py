@@ -185,7 +185,9 @@ async def test_documents_are_metadata_only(http, db_session, redis_client, _no_i
     assert body["total"] == 1
     assert body["next_cursor"] is None
     (doc,) = body["documents"]
-    assert set(doc) == {"name", "mime_type", "size_bytes", "updated_at", "status"}
+    # review_note is the reviewer's reason, filled only on the caller's own rejected files.
+    assert set(doc) == {"name", "mime_type", "size_bytes", "updated_at", "status", "review_note"}
+    assert doc["review_note"] is None
     assert doc["name"] == "AI RMF.pdf"
     assert doc["mime_type"] == "application/pdf"
     assert doc["status"] == "ready"
