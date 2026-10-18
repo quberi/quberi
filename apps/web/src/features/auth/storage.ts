@@ -19,6 +19,8 @@ export function loadCredentials(): DevCredentials | null {
       return {
         adminToken: parsed.adminToken ?? '',
         organizationSlug: parsed.organizationSlug ?? '',
+        // Saved with the session, so a reload still shows the name and not the slug.
+        organizationName: parsed.organizationName,
         userEmail: parsed.userEmail ?? '',
         sessionToken: parsed.sessionToken,
         displayName: parsed.displayName,

@@ -286,6 +286,16 @@ export function MembersPanel() {
   const { state, reload } = useMembers()
   const [inviteOpen, setInviteOpen] = useState(false)
 
+  // The list is loaded once, when the app starts. People are added elsewhere too (the
+  // organisation page, another admin), so a list that was already loaded is read again each
+  // time this page is opened. A first load still under way is left alone.
+  const openedWith = useRef(state.kind)
+  useEffect(() => {
+    if (openedWith.current === 'ready') void reload()
+    // Once per opening: ``reload`` changes with the sign-in, not with the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Simple role tally for the top-of-page stats card. We surface a few
   // buckets the operator actually cares about (owner / admin / member)
   // and roll the rest into ``other``.
