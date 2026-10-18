@@ -5914,3 +5914,43 @@ details.review-part > summary { cursor: pointer; }
 .upload-review-actions input {
   flex: 1 1 220px;
 }
+
+/* Text boxes that sit in a row beside buttons (a reason, a note): same look as the dialogs'. */
+.upload-review-actions input[type="text"],
+.upload-review-actions input:not([type]),
+.access-request-actions input[type="text"],
+.access-request-actions input:not([type]),
+.doc-access-search input {
+  min-height: 40px;
+  padding: 10px 13px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  border: 1px solid rgba(95, 65, 153, .18);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.upload-review-actions input::placeholder,
+.access-request-actions input::placeholder,
+.doc-access-search input::placeholder {
+  color: #9a93ad;
+}
+.upload-review-actions input:focus,
+.access-request-actions input:focus,
+.doc-access-search input:focus {
+  border-color: var(--purple-500);
+  box-shadow: 0 0 0 4px rgba(139, 108, 243, .18);
+}
+.upload-review-actions .primary-button,
+.upload-review-actions .secondary-button,
+.access-request-actions .primary-button,
+.access-request-actions .secondary-button {
+  min-height: 40px;
+}
+.upload-review-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--purple-700);
+}
