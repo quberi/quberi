@@ -31,6 +31,7 @@ import { AddFeishuDialog } from '../integrations/AddFeishuDialog'
 import { DocumentDetailDrawer } from './DocumentDetailDrawer'
 import { formatBytes } from './DocumentRow'
 import { DocumentsProvider, useDocuments } from './DocumentsContext'
+import { isReadOnlySpace } from './permissions'
 import { UploadDropZone } from './UploadDropZone'
 import { UploadReviewSection } from './UploadReview'
 import type { DocumentFileType, DocumentSourceKind, DocumentSummary } from './types'
@@ -103,6 +104,8 @@ function SpaceKnowledgeViewInner({
   // Guests may only upload into the shared sandbox space.
   const guestCanUpload = isGuest && space?.slug === GUEST_SANDBOX_SLUG
   const needsLogin = isGuest && !guestCanUpload
+  // A reader of the space is not offered adding or deleting: the server would refuse them.
+  const readOnly = isReadOnlySpace(space, isGuest)
 
   return (
     <>
@@ -165,56 +168,59 @@ function SpaceKnowledgeViewInner({
           spaceId={space.id}
         />
       )}
-      <section className="panel space-view-sources">
-        <div className="panel-heading">
-          <div>
-            <span className="section-label">
-              <Upload size={14} /> {t('knowledge.view.sources.label')}
-            </span>
-            <p>{t('knowledge.view.sources.hint')}</p>
+      {!readOnly && (
+        <section className="panel space-view-sources">
+          <div className="panel-heading">
+            <div>
+              <span className="section-label">
+                <Upload size={14} /> {t('knowledge.view.sources.label')}
+              </span>
+              <p>{t('knowledge.view.sources.hint')}</p>
+            </div>
           </div>
-        </div>
-        <div className="source-option-row">
-          <button
-            className={localOpen ? 'source-option active' : 'source-option'}
-            onClick={() => (needsLogin ? openAuth() : setLocalOpen((v) => !v))}
-            aria-pressed={localOpen}
-            type="button"
-          >
-            <span className="source-option-icon">
-              <Upload size={17} />
-            </span>
-            <span className="source-option-body">
-              <strong>{t('knowledge.view.sources.local')}</strong>
-              <small>{t('knowledge.view.sources.localHint')}</small>
-            </span>
-          </button>
-          <button
-            className="source-option"
-            onClick={() => (isGuest ? openAuth() : setFeishuOpen(true))}
-            disabled={!space && !isGuest}
-            type="button"
-          >
-            <span className="source-option-icon feishu">
-              <Cloud size={17} />
-            </span>
-            <span className="source-option-body">
-              <strong>{t('knowledge.view.sources.feishu')}</strong>
-              <small>{t('knowledge.view.sources.feishuHint')}</small>
-            </span>
-          </button>
-          <SoonSource icon={<MessageSquare size={17} />} label={t('knowledge.view.sources.wecom')} />
-          <SoonSource icon={<Building2 size={17} />} label={t('knowledge.view.sources.dingtalk')} />
-          <SoonSource icon={<HardDrive size={17} />} label={t('knowledge.view.sources.drive')} />
-        </div>
-        {guestCanUpload && <GuestSandboxNotice onSignIn={openAuth} />}
-        {localOpen && <UploadDropZone />}
-      </section>
+          <div className="source-option-row">
+            <button
+              className={localOpen ? 'source-option active' : 'source-option'}
+              onClick={() => (needsLogin ? openAuth() : setLocalOpen((v) => !v))}
+              aria-pressed={localOpen}
+              type="button"
+            >
+              <span className="source-option-icon">
+                <Upload size={17} />
+              </span>
+              <span className="source-option-body">
+                <strong>{t('knowledge.view.sources.local')}</strong>
+                <small>{t('knowledge.view.sources.localHint')}</small>
+              </span>
+            </button>
+            <button
+              className="source-option"
+              onClick={() => (isGuest ? openAuth() : setFeishuOpen(true))}
+              disabled={!space && !isGuest}
+              type="button"
+            >
+              <span className="source-option-icon feishu">
+                <Cloud size={17} />
+              </span>
+              <span className="source-option-body">
+                <strong>{t('knowledge.view.sources.feishu')}</strong>
+                <small>{t('knowledge.view.sources.feishuHint')}</small>
+              </span>
+            </button>
+            <SoonSource icon={<MessageSquare size={17} />} label={t('knowledge.view.sources.wecom')} />
+            <SoonSource icon={<Building2 size={17} />} label={t('knowledge.view.sources.dingtalk')} />
+            <SoonSource icon={<HardDrive size={17} />} label={t('knowledge.view.sources.drive')} />
+          </div>
+          {guestCanUpload && <GuestSandboxNotice onSignIn={openAuth} />}
+          {localOpen && <UploadDropZone />}
+        </section>
+      )}
 
       <section className="panel space-view-browser">
         <Toolbar />
         <FileTypeTags />
         <DocumentsTable
+          canDelete={!readOnly}
           onSelectDetail={(id) => setDetailId(id)}
           selectedId={detailId}
         />
@@ -556,9 +562,12 @@ function Toolbar() {
 // ---------------------------------------------------------------------------
 
 function DocumentsTable({
+  canDelete = true,
   onSelectDetail,
   selectedId,
 }: {
+  /** False for a reader of the space: the delete buttons are not shown. */
+  canDelete?: boolean
   onSelectDetail: (id: string) => void
   selectedId: string | null
 }) {
@@ -646,7 +655,7 @@ function DocumentsTable({
             </td>
             <td>{formatDate(doc.created_at)}</td>
             <td className="space-view-row-actions">
-              {(!isGuest || doc.is_mine) && (
+              {canDelete && (!isGuest || doc.is_mine) && (
                 <button
                   className="icon-button danger"
                   onClick={(e) => {
