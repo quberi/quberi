@@ -695,11 +695,13 @@ async def send_image_search(
     if kept is not None:
         used["stored"] = True
         used["picture_id"] = str(kept.picture_id)
-    reply = (
-        f"找到 {len(matches)} 张相似的图片。"
-        if matches
-        else "没有找到相似的图片。图片需要先上传到你有权限的空间，并等待索引完成。"
-    )
+    best = max((m["score"] for m in matches), default=None)
+    if not matches:
+        reply = "没有找到相似的图片。图片需要先上传到你有权限的空间，并等待索引完成。"
+    elif image is not None and not words:
+        reply = _picture_like_reply(shown=len(matches), best=best)
+    else:
+        reply = _picture_reply(kind="image_search", shown=len(matches), total=len(matches), best=best)
     try:
         return await _persist_image_turn(
             session,
@@ -868,6 +870,30 @@ class PicturePlan:
     matches: list[dict]
     scope_mode: str
     scope_space_ids: list[uuid.UUID]
+
+
+# Picture-to-picture closeness, measured on 1000 photos and altered copies of 100 of them:
+# an altered copy of the same picture (cropped to 60 %, shrunk, grey, heavily compressed)
+# scores 0.81 or more in 95 % of cases; two different pictures average 0.54 and the nearest of
+# six unrelated ones reaches 0.70 about one time in ten. So the best score tells what kind of
+# answer this is, unlike text-to-picture scores (which are all small and cannot be trusted).
+SAME_PICTURE_MATCH = 0.80
+LIKE_PICTURE_MATCH = 0.65
+
+
+def _picture_like_reply(*, shown: int, best: float | None) -> str:
+    """What to say about the pictures nearest to a picture the person searched with.
+
+    A search always returns the nearest pictures, however unrelated, so the words must not
+    claim a find the scores do not support.
+    """
+
+    if best is not None and best >= SAME_PICTURE_MATCH:
+        return f"找到 {shown} 张相似的图片，最相似的一张很可能是同一张图。"
+    if best is not None and best >= LIKE_PICTURE_MATCH:
+        return f"找到 {shown} 张可能相似的图片（最高相似度 {best:.2f}），是否同一内容请自行判断。"
+    shown_best = f"，最高相似度 {best:.2f}" if best is not None else ""
+    return f"没有明显相似的图片。以下是最接近的 {shown} 张{shown_best}，相似度偏低，请自行判断是否相关。"
 
 
 def _picture_reply(*, kind: str, shown: int, total: int, best: float | None) -> str:

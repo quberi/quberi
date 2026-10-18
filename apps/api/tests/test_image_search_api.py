@@ -215,7 +215,7 @@ async def test_a_picture_finds_similar_pictures_and_the_answer_is_a_chat_message
     assert resp.status_code == 201, resp.text
     body = resp.json()
     answer = body["assistant_message"]["content"]
-    assert answer["text"] == "找到 2 张相似的图片。"
+    assert answer["text"] == "找到 2 张相似的图片，最相似的一张很可能是同一张图。"
     first = answer["image_matches"][0]
     assert first["document_id"] == str(red.id)
     assert first["document_name"] == "red.png"
@@ -787,3 +787,61 @@ async def test_the_space_list_can_be_narrowed_to_one_kind(client, db_session, or
     assert images["total"] == 1 and images["filters"]["file_type"] == "image"
     assert everything["total"] == 2 and everything["filters"]["file_type"] is None
     assert bad.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# What the reply claims about a picture query
+# ---------------------------------------------------------------------------
+
+
+def _at(similarity: float, length: int = 768) -> list[float]:
+    """A vector whose cosine with RED (a one-hot) is exactly ``similarity``."""
+    import math
+
+    other = math.sqrt(max(0.0, 1 - similarity**2))
+    return [similarity, other] + [0.0] * (length - 2)
+
+
+async def _reply_to_a_red_picture(client, db_session, org_and_owner, qdrant, similarity, **post):
+    space = await _space(db_session, org_and_owner, "Parts")
+    await _picture(db_session, org_and_owner, qdrant, space, _at(similarity), "part.png")
+    conv = await _conversation(db_session, org_and_owner)
+    resp = await _post(client, conv, file=_png("red"), **post)
+    assert resp.status_code == 201, resp.text
+    return resp.json()["assistant_message"]["content"]["text"]
+
+
+async def test_a_near_copy_is_called_the_same_picture(client, db_session, org_and_owner, qdrant):
+    text = await _reply_to_a_red_picture(client, db_session, org_and_owner, qdrant, 0.9)
+    assert text == "找到 1 张相似的图片，最相似的一张很可能是同一张图。"
+
+
+async def test_a_middling_match_is_only_possibly_similar(client, db_session, org_and_owner, qdrant):
+    text = await _reply_to_a_red_picture(client, db_session, org_and_owner, qdrant, 0.7)
+    assert "可能相似" in text and "0.70" in text and "请自行判断" in text
+    assert "很可能是同一张图" not in text
+
+
+async def test_nothing_close_is_not_presented_as_a_find(client, db_session, org_and_owner, qdrant):
+    text = await _reply_to_a_red_picture(client, db_session, org_and_owner, qdrant, 0.5)
+    assert text.startswith("没有明显相似的图片")
+    assert "0.50" in text and "请自行判断" in text
+    assert "找到" not in text
+
+
+async def test_the_thresholds_sit_where_the_measurements_put_them():
+    assert conversations_service.SAME_PICTURE_MATCH == 0.80
+    assert conversations_service.LIKE_PICTURE_MATCH == 0.65
+    reply = conversations_service._picture_like_reply
+    assert "很可能是同一张图" in reply(shown=3, best=0.80)
+    assert "可能相似" in reply(shown=3, best=0.7999)
+    assert "可能相似" in reply(shown=3, best=0.65)
+    assert reply(shown=3, best=0.6499).startswith("没有明显相似")
+
+
+async def test_words_with_a_picture_keep_the_plain_wording(client, db_session, org_and_owner, qdrant):
+    # The query then mixes picture and sentence, so picture-to-picture thresholds do not apply.
+    text = await _reply_to_a_red_picture(
+        client, db_session, org_and_owner, qdrant, 0.5, text="a red part"
+    )
+    assert text == "找到 1 张相似的图片。"
