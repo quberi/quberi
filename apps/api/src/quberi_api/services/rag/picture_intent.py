@@ -34,6 +34,10 @@ MAX_SUBJECT_CHARS = 30
 class PictureIntent:
     kind: str  # "list" | "search"
     subject: str  # what to look for; "" for a list
+    # True for "有风景图吗" style requests, where 图 can also mean a diagram or chart in a
+    # document. These are answered with pictures only when the best match is a real one;
+    # otherwise the question goes down the text path as before.
+    soft: bool = False
 
 
 # --------------------------------------------------------------------------- Chinese
@@ -100,7 +104,7 @@ def _classify_zh(text: str) -> PictureIntent | None:
         return PictureIntent("list", "")
     m = _ZH_NOUN_AT_END.match(core)
     if m is None:
-        return None
+        return _classify_zh_bare_tu(core, question=question)
     pre, noun = m.group("pre"), m.group("noun")
     if not _ZH_STRONG_SHAPE.search(pre) and not (question and "有" in pre):
         return None
@@ -114,6 +118,20 @@ def _classify_zh(text: str) -> PictureIntent | None:
     if len(subject) > MAX_SUBJECT_CHARS:
         return None
     return PictureIntent("search", subject)
+
+
+def _classify_zh_bare_tu(core: str, *, question: bool) -> PictureIntent | None:
+    """"有风景图吗", "有没有螺丝的图": a bare 图 after a subject. Never a bare "有图吗"."""
+
+    if not core.endswith("图"):
+        return None
+    pre = core[:-1]
+    if not _ZH_STRONG_SHAPE.search(pre) and not (question and "有" in pre):
+        return None
+    subject = _ZH_FILLER.sub("", pre).strip("的 ,，、")
+    if not subject or _ZH_REFERS_ELSEWHERE.search(subject) or len(subject) > MAX_SUBJECT_CHARS:
+        return None
+    return PictureIntent("search", subject, soft=True)
 
 
 # --------------------------------------------------------------------------- English

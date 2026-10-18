@@ -298,3 +298,35 @@ async def test_the_turn_is_saved_counted_and_audited_with_ids_only(
     assert "private-name.png" not in repr(event.payload)
     assert "有哪些图片" not in repr(event.payload)
 
+
+
+async def test_a_bare_tu_request_gets_pictures_only_when_one_really_matches(
+    client, db_session, org_and_owner, qdrant
+):
+    """"有风景图吗" may mean a diagram in a document, so a weak match goes to the text path."""
+
+    space = await _space(db_session, org_and_owner, "Scenery")
+    await _picture(db_session, org_and_owner, qdrant, space, RED, "red.png")
+    conv_id = (await _conversation(db_session, org_and_owner)).id
+
+    # The stand-in embeds an unknown word as blue; the only picture is red: a weak match.
+    weak = await conversations_service.plan_picture_turn(
+        db_session, conversation_id=conv_id, organization_id=org_and_owner.organization_id,
+        user_id=org_and_owner.user_id, text="有风景图吗",
+    )
+    assert weak is None
+
+    await _picture(db_session, org_and_owner, qdrant, space, BLUE, "sea.png")
+    strong = await conversations_service.plan_picture_turn(
+        db_session, conversation_id=conv_id, organization_id=org_and_owner.organization_id,
+        user_id=org_and_owner.user_id, text="有风景图吗",
+    )
+    assert strong is not None and strong.kind == "image_search"
+    assert strong.matches[0]["document_name"] == "sea.png"
+
+    # The same words with an explicit picture noun always answer from the pictures.
+    explicit = await conversations_service.plan_picture_turn(
+        db_session, conversation_id=conv_id, organization_id=org_and_owner.organization_id,
+        user_id=org_and_owner.user_id, text="有风景照片吗",
+    )
+    assert explicit is not None

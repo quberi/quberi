@@ -9,8 +9,8 @@ from quberi_api.services.rag.picture_intent import PictureIntent, classify
 LIST = PictureIntent("list", "")
 
 
-def _search(subject: str) -> PictureIntent:
-    return PictureIntent("search", subject)
+def _search(subject: str, *, soft: bool = False) -> PictureIntent:
+    return PictureIntent("search", subject, soft=soft)
 
 
 @pytest.mark.parametrize(
@@ -38,6 +38,10 @@ def _search(subject: str) -> PictureIntent:
         ("find pictures of dogs", _search("dogs")),
         ("any screenshots?", _search("screenshot")),
         ("Do we have any paintings of mountains?", _search("painting of mountains")),
+        # a bare 图 after a subject: answered with pictures only when one really matches
+        ("有风景图吗", _search("风景", soft=True)),
+        ("有没有螺丝的图", _search("螺丝", soft=True)),
+        ("请问有没有柱状图？", _search("柱状", soft=True)),
     ],
 )
 def test_requests_for_pictures_are_recognised(text, expected):
@@ -70,6 +74,12 @@ def test_requests_for_pictures_are_recognised(text, expected):
         "show me the image processing pipeline",
         "how do I resize an image",
         "is there an image upload api",
+        # a bare 图 needs a subject and a request
+        "有图吗",
+        "有没有图",
+        "怎么画流程图",
+        "产品有流程图",
+        "这份文档里有架构图吗",
         # not a short question
         "",
         "   ",

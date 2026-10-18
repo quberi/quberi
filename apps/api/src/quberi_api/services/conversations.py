@@ -953,6 +953,11 @@ async def plan_picture_turn(
         if not matches:
             await session.rollback()
             return None  # pictures exist but none is indexed yet: let the text path answer
+        if intent.soft and (best is None or best < WEAK_PICTURE_MATCH):
+            # "有风景图吗" may have meant a chart or diagram in a document. Only answer with
+            # pictures when one really matches; otherwise the text path answers as before.
+            await session.rollback()
+            return None
     await session.commit()
     return PicturePlan(
         text=text.strip(),
