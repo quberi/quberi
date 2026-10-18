@@ -9,6 +9,7 @@ the image model is a stand-in.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from datetime import timedelta
 import uuid
 
@@ -305,7 +306,7 @@ async def test_a_bare_tu_request_gets_pictures_only_when_one_really_matches(
 ):
     """"有风景图吗" may mean a diagram in a document, so a weak match goes to the text path."""
 
-    space = await _space(db_session, org_and_owner, "Scenery")
+    space = SimpleNamespace(id=(await _space(db_session, org_and_owner, "Scenery")).id)
     await _picture(db_session, org_and_owner, qdrant, space, RED, "red.png")
     conv_id = (await _conversation(db_session, org_and_owner)).id
 
