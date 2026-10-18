@@ -181,17 +181,64 @@ def _extract_pptx(blob: bytes) -> ExtractResult:
     return ExtractResult(text=text, page_count=len(prs.slides), extractor="python-pptx")
 
 
+_HEADER_MAX_CELL_CHARS = 60
+
+
+def _cell_text(value: object) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _looks_like_header(row: tuple) -> bool:
+    """A header row is two or more short text cells and no numbers, dates or formulas."""
+
+    filled = [v for v in row if _cell_text(v)]
+    return (
+        len(filled) >= 2
+        and all(isinstance(v, str) and len(v.strip()) <= _HEADER_MAX_CELL_CHARS for v in filled)
+    )
+
+
+def _sheet_lines(sheet) -> list[str]:
+    """One line per row. With a header row, every data row is written as ``name: value`` pairs.
+
+    The text is later cut into pieces for search, and a piece from the middle of a big sheet
+    has no header row above it, so "35" would not say whether it is a price or a quantity.
+    Putting the column name next to each value makes every row stand on its own, whichever
+    piece it lands in. A sheet without a header row keeps the plain ``a | b | c`` form.
+    """
+
+    header: list[str] | None = None
+    lines: list[str] = []
+    first = True
+    for raw in sheet.iter_rows(values_only=True):
+        cells = [_cell_text(v) for v in raw]
+        if not any(cells):
+            continue
+        if first:
+            first = False
+            if _looks_like_header(raw):
+                header = cells
+                lines.append(" | ".join(cells))
+                continue
+        if header is None:
+            lines.append(" | ".join(cells))
+            continue
+        pairs = []
+        for i, value in enumerate(cells):
+            if not value:
+                continue
+            name = header[i] if i < len(header) and header[i] else ""
+            pairs.append(f"{name}: {value}" if name else value)
+        lines.append(" | ".join(pairs))
+    return lines
+
+
 def _extract_xlsx(blob: bytes) -> ExtractResult:
     from openpyxl import load_workbook
-
     wb = load_workbook(filename=io.BytesIO(blob), read_only=True, data_only=True)
     sheets: list[str] = []
     for sheet in wb.worksheets:
-        rows: list[str] = []
-        for row in sheet.iter_rows(values_only=True):
-            cells = [str(v) if v is not None else "" for v in row]
-            if any(c.strip() for c in cells):
-                rows.append(" | ".join(cells))
+        rows = _sheet_lines(sheet)
         if rows:
             sheets.append(f"[Sheet: {sheet.title}]\n" + "\n".join(rows))
     text = "\n\n".join(sheets).strip()

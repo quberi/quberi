@@ -363,7 +363,8 @@
       "hint": "Up to 25 MB each. Text, docs, spreadsheets, PDFs, images.",
       "progressPct": "{{pct}}%",
       "done": "Done",
-      "failed": "Upload failed"
+      "failed": "Upload failed",
+      "legacy": "Not uploaded: {{name}}. Older {{product}} files ({{ext}}) cannot be read for search. Save it as {{modern}} in {{product}} and upload that."
     },
     "source": {
       "local": "Local",

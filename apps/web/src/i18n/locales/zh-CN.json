@@ -363,7 +363,8 @@
       "hint": "单个文件不超过 25 MB。支持文本、Office、PDF、图片等。",
       "progressPct": "{{pct}}%",
       "done": "已完成",
-      "failed": "上传失败"
+      "failed": "上传失败",
+      "legacy": "未上传：{{name}}。旧版 {{product}} 文件（{{ext}}）无法被读取用于搜索，请在 {{product}} 里另存为 {{modern}} 再上传。"
     },
     "source": {
       "local": "本地",

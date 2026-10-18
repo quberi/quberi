@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useDocuments } from './DocumentsContext'
+import { legacyOffice } from './legacyOffice'
 import type { UploadHandle } from './DocumentsContext'
 
 /**
@@ -17,16 +18,31 @@ export function UploadDropZone() {
   const { upload, uploads } = useDocuments()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
-
+  const [refused, setRefused] = useState<string[]>([])
   const onFiles = useCallback(
     (files: FileList | null) => {
       if (!files || files.length === 0) return
+      const turnedAway: string[] = []
       for (let i = 0; i < files.length; i++) {
         const f = files.item(i)
-        if (f) void upload(f)
+        if (!f) continue
+        const old = legacyOffice(f.name)
+        if (old) {
+          turnedAway.push(
+            t('documents.upload.legacy', {
+              name: f.name,
+              ext: old.ext,
+              product: old.product,
+              modern: old.modern,
+            }),
+          )
+          continue
+        }
+        void upload(f)
       }
+      setRefused(turnedAway)
     },
-    [upload],
+    [upload, t],
   )
 
   // Reset the native input after each pick so the *same file* can be
@@ -66,7 +82,7 @@ export function UploadDropZone() {
           <small>{t('documents.upload.hint')}</small>
         </div>
         <input
-          accept=".txt,.md,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.json,image/*,application/pdf"
+          accept=".txt,.md,.pdf,.docx,.xlsx,.pptx,.csv,.json,image/*,application/pdf"
           multiple
           onChange={(e) => onFiles(e.target.files)}
           ref={inputRef}
@@ -75,6 +91,15 @@ export function UploadDropZone() {
         />
       </div>
 
+      {refused.length > 0 && (
+        <ul className="upload-list upload-refused" role="alert">
+          {refused.map((message) => (
+            <li className="dialog-error" key={message}>
+              {message}
+            </li>
+          ))}
+        </ul>
+      )}
       {uploads.length > 0 && (
         <ul className="upload-list">
           {uploads.map((u) => (

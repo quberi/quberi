@@ -223,6 +223,25 @@ def _sanitize_filename(name: str) -> str:
     return cleaned
 
 
+# Older Office formats have no text extractor, so they would upload fine and then fail to index.
+# Say so up front instead, and say what to do.
+_LEGACY_OFFICE = {
+    ".xls": ("Excel", ".xlsx", "application/vnd.ms-excel"),
+    ".doc": ("Word", ".docx", "application/msword"),
+    ".ppt": ("PowerPoint", ".pptx", "application/vnd.ms-powerpoint"),
+}
+
+
+def _reject_legacy_office(filename: str, mime: str) -> None:
+    lowered = filename.lower()
+    for ext, (product, modern, legacy_mime) in _LEGACY_OFFICE.items():
+        if lowered.endswith(ext) or mime == legacy_mime:
+            raise UnsupportedMimeError(
+                f"旧版 {product} 文件（{ext}）暂不支持，请先在 {product} 里另存为 {modern} 再上传。 "
+                f"Legacy {product} files ({ext}) are not supported; save it as {modern} and upload that."
+            )
+
+
 def _validate_mime(mime: str) -> str:
     normalised = mime.strip().lower() or "application/octet-stream"
     for allowed in _ALLOWED_MIME_PREFIXES:
@@ -649,6 +668,7 @@ async def upload_local(
 
     filename = _sanitize_filename(filename)
     mime = _validate_mime(content_type)
+    _reject_legacy_office(filename, mime)
     review_state = await review_service.initial_state(
         session, space_id=space_id, organization_id=organization_id, role=role
     )
