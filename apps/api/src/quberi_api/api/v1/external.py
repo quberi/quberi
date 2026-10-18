@@ -134,7 +134,8 @@ class PendingDocument(BaseModel):
 
     document_name: str
     space_name: str
-    # 'not_indexed' (queued) or 'indexing' (being read right now).
+    # 'not_indexed' (queued), 'indexing' (being read right now), or 'awaiting_approval' (the
+    # space approves uploads and this one, the caller's own, has not been approved yet).
     state: str
 
 
@@ -211,6 +212,7 @@ async def search(
         organization_id=ext.organization.id,
         readable_space_ids=result.space_ids,
         doc_access=result.doc_access,
+        user_id=ext.user.id,
     )
     names: dict[uuid.UUID, str] = {}
     wanted_names = space_ids | {sid for _name, sid, _state in pending_rows}
@@ -277,10 +279,14 @@ async def _pending_documents(
     organization_id: uuid.UUID,
     readable_space_ids: list[uuid.UUID],
     doc_access: DocAccess = NO_DOC_ACCESS,
+    user_id: uuid.UUID | None = None,
 ) -> tuple[int, list[tuple[str, uuid.UUID, str]]]:
-    """Recently changed documents in these spaces that are not searchable yet.
+    """Documents in these spaces that are not searchable yet.
 
-    Returns the total and the newest few as plain ``(name, space_id, state)``
+    Recently changed ones that are being indexed, plus (for ``user_id``) their own uploads
+    that are waiting for approval, reported as ``awaiting_approval``: without that a file
+    that will never be indexed until someone approves it would look like it is still being
+    processed. Returns the total and the newest few as plain ``(name, space_id, state)``
     tuples (not ORM rows: the session is committed before the response is built).
     """
 
@@ -296,9 +302,17 @@ async def _pending_documents(
         ),
         Document.id.not_in(doc_access.denied),
         Document.status != "archived",
-        Document.review_state == "approved",
-        Document.indexing_state.in_(_PENDING_STATES),
-        Document.updated_at >= cutoff,
+        or_(
+            and_(
+                Document.review_state == "approved",
+                Document.indexing_state.in_(_PENDING_STATES),
+                Document.updated_at >= cutoff,
+            ),
+            and_(
+                Document.review_state == "pending",
+                user_id is not None and Document.uploaded_by_user_id == user_id,
+            ),
+        ),
     )
     total = (
         await session.execute(select(func.count()).select_from(Document).where(*where))
@@ -306,12 +320,15 @@ async def _pending_documents(
     if total == 0:
         return 0, []
     rows = await session.execute(
-        select(Document.name, Document.space_id, Document.indexing_state)
+        select(Document.name, Document.space_id, Document.indexing_state, Document.review_state)
         .where(*where)
         .order_by(Document.updated_at.desc())
         .limit(_MAX_PENDING_LISTED)
     )
-    return int(total), [(name, sid, state) for name, sid, state in rows.all()]
+    return int(total), [
+        (name, sid, "awaiting_approval" if review == "pending" else state)
+        for name, sid, state, review in rows.all()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +366,9 @@ class DocumentInfo(BaseModel):
     mime_type: str
     size_bytes: int
     updated_at: datetime
-    # 'ready' (searchable), 'indexing' (being processed now) or
+    # 'ready' (searchable), 'indexing' (being processed now),
+    # 'awaiting_approval' / 'rejected' (the space approves uploads; this one is the caller's own
+    # and has not been approved, so it is not being indexed) or
     # 'not_searchable' (processing failed or never finished, or a kind of file
     # that cannot be searched by content, such as an image).
     status: str
@@ -391,7 +410,14 @@ def _require_read(ext: core.ExternalCaller) -> None:
         )
 
 
-def _public_status(state: str, updated_at: datetime, now: datetime) -> str:
+def _public_status(
+    state: str, updated_at: datetime, now: datetime, review_state: str = "approved"
+) -> str:
+    # A file waiting for (or refused) approval is not "being indexed": say what it is waiting for.
+    if review_state == "pending":
+        return "awaiting_approval"
+    if review_state == "rejected":
+        return "rejected"
     if state == "indexed":
         return "ready"
     if state in _PENDING_STATES and now - updated_at <= _PENDING_WINDOW:
@@ -471,7 +497,10 @@ async def list_spaces(
             .where(
                 Document.organization_id == ext.organization.id,
                 Document.status != "archived",
-                Document.review_state == "approved",
+                or_(
+                    Document.review_state == "approved",
+                    Document.uploaded_by_user_id == ext.user.id,
+                ),
                 or_(
                     and_(
                         Document.space_id.in_(whole_ids),
@@ -556,7 +585,9 @@ async def list_documents(
         Document.organization_id == ext.organization.id,
         Document.space_id == view.space.id,
         Document.status != "archived",
-        Document.review_state == "approved",
+        # Approved files, and the caller's own that are waiting or refused (so they can see why
+        # a file they uploaded is not searchable). Nobody else's.
+        or_(Document.review_state == "approved", Document.uploaded_by_user_id == ext.user.id),
         visibility_clause(access, whole_space=view.shared_only_documents == 0),
     )
     if type:
@@ -570,6 +601,7 @@ async def list_documents(
         Document.size_bytes,
         Document.updated_at,
         Document.indexing_state,
+        Document.review_state,
     ).where(*base)
     if after is not None:
         when, last_id = after
@@ -592,9 +624,9 @@ async def list_documents(
             mime_type=mime,
             size_bytes=int(size),
             updated_at=updated,
-            status=_public_status(state, updated, now),
+            status=_public_status(state, updated, now, review_state),
         )
-        for _id, name, mime, size, updated, state in page
+        for _id, name, mime, size, updated, state, review_state in page
     ]
     next_cursor = _encode_cursor(page[-1][4], page[-1][0]) if more and page else None
     await _audit_listing(
@@ -944,8 +976,9 @@ class SaveResponse(BaseModel):
     space_id: uuid.UUID
     space_name: str
     name: str
-
-
+    # 'approved', or 'pending' when the space asks for approval of uploads: the note is saved
+    # but not indexed (so not searchable) until an owner or admin of the space approves it.
+    review_state: str = "approved"
 @router.post(
     "/save",
     response_model=SaveResponse,
@@ -1031,6 +1064,7 @@ async def save(
         space_id=target.space.id,
         space_name=target.space.name,
         name=view.document.name,
+        review_state=view.document.review_state,
     )
 
 
@@ -1046,8 +1080,8 @@ class UploadResponse(BaseModel):
     name: str
     mime_type: str
     size_bytes: int
-
-
+    # 'approved', or 'pending' when the space asks for approval of uploads (see SaveResponse).
+    review_state: str = "approved"
 def _too_large(limit: int) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -1196,6 +1230,7 @@ async def upload(
         name=view.document.name,
         mime_type=checked.mime,
         size_bytes=len(data),
+        review_state=view.document.review_state,
     )
 
 
