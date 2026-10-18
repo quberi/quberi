@@ -17,6 +17,7 @@ import {
   Pencil,
   Flame,
   RefreshCw,
+  Search,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -56,7 +57,8 @@ import type {
   MessageContent,
   MessageSummary,
 } from './types'
-import { messageImageMatches, messageImageQuery, messageIsPictureAnswer } from './types'
+import { SEARCH_MODES, messageImageMatches, messageImageQuery, messageIsPictureAnswer } from './types'
+import type { SearchMode } from './types'
 import { useFormatDate } from '../../i18n/formatDate'
 import { getGuestStarters } from './guestApi'
 import {
@@ -616,6 +618,101 @@ const VENDOR_DISPLAY_NAMES: Record<string, string> = {
 
 function vendorDisplayName(vendor: string): string {
   return VENDOR_DISPLAY_NAMES[vendor] ?? vendor
+}
+
+/**
+ * Where a question is looked up: the documents' text, the pictures, or both. A dropdown like the
+ * model picker, opening upward from the toolbar. "Documents only" is off while a picture is
+ * attached, because a picture can only be searched as a picture.
+ */
+function SearchModePicker({
+  value,
+  onChange,
+  textBlocked,
+}: {
+  value: SearchMode
+  onChange: (mode: SearchMode) => void
+  textBlocked: boolean
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const anchorRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (anchorRef.current && !anchorRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <div
+      className="chat-tool-anchor"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation()
+          setOpen(false)
+          triggerRef.current?.focus()
+        }
+      }}
+      ref={anchorRef}
+    >
+      {open && (
+        <div
+          aria-label={t('chat.searchMode.label')}
+          className="chat-model-menu chat-search-mode-menu"
+          role="listbox"
+        >
+          <div className="chat-model-menu-scroll">
+            {SEARCH_MODES.map((mode) => {
+              const blocked = mode === 'text' && textBlocked
+              const active = mode === value
+              return (
+                <button
+                  aria-selected={active}
+                  className={active ? 'chat-model-menu-item is-active' : 'chat-model-menu-item'}
+                  disabled={blocked}
+                  key={mode}
+                  onClick={() => {
+                    onChange(mode)
+                    setOpen(false)
+                    triggerRef.current?.focus()
+                  }}
+                  role="option"
+                  type="button"
+                >
+                  <span className="chat-model-menu-main">
+                    <span className="chat-model-menu-name">{t(`chat.searchMode.${mode}`)}</span>
+                    <span className="chat-model-menu-desc">
+                      {t(blocked ? 'chat.searchMode.textBlocked' : `chat.searchMode.${mode}Hint`)}
+                    </span>
+                  </span>
+                  {active && <Check className="chat-model-menu-check" size={15} />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={`${t('chat.searchMode.label')}: ${t(`chat.searchMode.${value}`)}`}
+        className="chat-tool-button chat-model-trigger"
+        onClick={() => setOpen((o) => !o)}
+        ref={triggerRef}
+        title={t('chat.searchMode.label')}
+        type="button"
+      >
+        <Search size={13} />
+        <span className="chat-model-trigger-label">{t(`chat.searchMode.${value}`)}</span>
+        <ChevronDown size={12} />
+      </button>
+    </div>
+  )
 }
 
 /**
@@ -1191,13 +1288,14 @@ function AgentTracePanel({
 }
 
 /**
- * Answer body renderer with clickable citation markers.
+ * Answer body renderer with clickable citation markers and **bold**.
  *
  * Any ``[N]`` in the text is rendered as a clickable superscript chip —
  * clicking it jumps to and flashes the matching card in the sources
  * rail (``CitationsRail``), instead of just visually standing out.
+ * ``**text**`` is shown in bold (models use it a lot, and the raw asterisks look broken).
  * Everything else stays plain text — full Markdown rendering is
- * deferred to a later slice.
+ * deferred to a later slice. Text is only ever placed in React text nodes, never as HTML.
  */
 function AnswerText({
   text,
@@ -1209,36 +1307,46 @@ function AnswerText({
   onCiteClick?: (index: number) => void
 }) {
   if (!text) return <p className="chat-bubble-text empty"> </p>
-  const parts = text.split(/(\[\d{1,3}\])/g)
-  return (
-    <p className="chat-bubble-text">
-      {parts.map((part, idx) => {
-        const marker = /^\[(\d{1,3})\]$/.exec(part)
-        if (marker) {
-          const n = Number(marker[1])
-          // Only markers that resolve to a real citation in this
-          // message are clickable — the model occasionally emits a
-          // stray [N] past the reference list.
-          if (onCiteClick && n >= 1 && n <= citationCount) {
-            return (
-              <sup key={idx}>
-                <button
-                  className="chat-citation-marker chat-citation-marker-link"
-                  onClick={() => onCiteClick(n)}
-                  type="button"
-                >
-                  [{n}]
-                </button>
-              </sup>
-            )
-          }
+
+  const renderCitations = (chunk: string, keyBase: string) =>
+    chunk.split(/(\[\d{1,3}\])/g).map((part, idx) => {
+      const key = `${keyBase}-${idx}`
+      const marker = /^\[(\d{1,3})\]$/.exec(part)
+      if (marker) {
+        const n = Number(marker[1])
+        // Only markers that resolve to a real citation in this
+        // message are clickable — the model occasionally emits a
+        // stray [N] past the reference list.
+        if (onCiteClick && n >= 1 && n <= citationCount) {
           return (
-            <sup key={idx} className="chat-citation-marker">
-              [{marker[1]}]
+            <sup key={key}>
+              <button
+                className="chat-citation-marker chat-citation-marker-link"
+                onClick={() => onCiteClick(n)}
+                type="button"
+              >
+                [{n}]
+              </button>
             </sup>
           )
         }
-        return <span key={idx}>{part}</span>
+        return (
+          <sup key={key} className="chat-citation-marker">
+            [{marker[1]}]
+          </sup>
+        )
+      }
+      return <span key={key}>{part}</span>
+    })
+
+  // A ``**`` with no closing partner (or spanning lines) stays as typed.
+  const pieces = text.split(/(\*\*[^*\n]+?\*\*)/g)
+  return (
+    <p className="chat-bubble-text">
+      {pieces.map((piece, idx) => {
+        const bold = /^\*\*([^*\n]+?)\*\*$/.exec(piece)
+        if (bold) return <strong key={idx}>{renderCitations(bold[1], `b${idx}`)}</strong>
+        return renderCitations(piece, `t${idx}`)
       })}
     </p>
   )
@@ -1334,8 +1442,17 @@ function CitationsRail({
   )
 }
 
-function trimPreview(text: string, limit = 220): string {
-  const clean = text.replace(/\s+/g, ' ').trim()
+/**
+ * A short, readable look at a cited passage. Passages are Markdown source, so heading and quote
+ * marks at the start of a line and ``**bold**`` markers are dropped for the preview (the full
+ * text, opened from the card, is untouched). Other characters, such as a ``>`` inside a sentence,
+ * are kept.
+ */
+export function trimPreview(text: string, limit = 220): string {
+  const lines = text
+    .split('\n')
+    .map((line) => line.replace(/^\s{0,3}(?:#{1,6}|>)+\s*/u, ''))
+  const clean = lines.join(' ').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
   if (clean.length <= limit) return clean
   return `${clean.slice(0, limit)}…`
 }
@@ -1925,36 +2042,11 @@ export function Composer() {
               </button>
             )}
             {!isGuest && (
-              <div
-                aria-label={t('chat.searchMode.label')}
-                className="chat-search-mode"
-                role="radiogroup"
-              >
-                {(['text', 'image', 'both'] as const).map((mode) => {
-                  // A staged picture is always searched as a picture, so "documents only" is off.
-                  const blocked = mode === 'text' && picture !== null
-                  return (
-                    <button
-                      aria-checked={searchMode === mode}
-                      className={
-                        searchMode === mode
-                          ? 'chat-search-mode-item is-active'
-                          : 'chat-search-mode-item'
-                      }
-                      disabled={blocked}
-                      key={mode}
-                      onClick={() => setSearchMode(mode)}
-                      role="radio"
-                      title={t(
-                        blocked ? 'chat.searchMode.textBlocked' : `chat.searchMode.${mode}Hint`,
-                      )}
-                      type="button"
-                    >
-                      {t(`chat.searchMode.${mode}`)}
-                    </button>
-                  )
-                })}
-              </div>
+              <SearchModePicker
+                onChange={setSearchMode}
+                textBlocked={picture !== null}
+                value={searchMode}
+              />
             )}
             <ModelPicker />
           </div>

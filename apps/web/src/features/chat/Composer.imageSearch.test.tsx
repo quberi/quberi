@@ -209,19 +209,44 @@ describe('Composer picture search', () => {
     expect(screen.getByLabelText('chat.send')).toBeEnabled()
   })
 
-  it('offers three places to search, with the saved one chosen', () => {
+  it('shows the saved place to search and offers the three in a dropdown', () => {
     chat.searchMode = 'both'
     render(<Composer />)
-    const group = screen.getByRole('radiogroup', { name: 'chat.searchMode.label' })
-    const radios = Array.from(group.querySelectorAll('[role="radio"]'))
-    expect(radios.map((r) => r.textContent)).toEqual([
+    const trigger = screen.getByRole('button', { name: 'chat.searchMode.label: chat.searchMode.both' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'listbox')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('listbox')).toBeNull()
+
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    const options = screen.getAllByRole('option')
+    expect(options.map((o) => o.querySelector('.chat-model-menu-name')?.textContent)).toEqual([
       'chat.searchMode.text',
       'chat.searchMode.image',
       'chat.searchMode.both',
     ])
-    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'false', 'true'])
-    fireEvent.click(radios[0])
-    expect(chat.setSearchMode).toHaveBeenCalledWith('text')
+    expect(options.map((o) => o.getAttribute('aria-selected'))).toEqual(['false', 'false', 'true'])
+  })
+
+  it('chooses a place from the dropdown and closes it', () => {
+    chat.searchMode = 'both'
+    render(<Composer />)
+    fireEvent.click(screen.getByRole('button', { name: /chat\.searchMode\.label/ }))
+    fireEvent.click(screen.getByRole('option', { name: /chat\.searchMode\.image/ }))
+    expect(chat.setSearchMode).toHaveBeenCalledWith('image')
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('closes the dropdown with Escape and with a click elsewhere', () => {
+    render(<Composer />)
+    const trigger = screen.getByRole('button', { name: /chat\.searchMode\.label/ })
+    fireEvent.click(trigger)
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    fireEvent.click(trigger)
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(chat.setSearchMode).not.toHaveBeenCalled()
   })
 
   it('sends a typed question only to the pictures in pictures-only mode', async () => {
@@ -237,16 +262,24 @@ describe('Composer picture search', () => {
   it('turns documents-only off while a picture is attached', () => {
     chat.searchMode = 'text'
     render(<Composer />)
-    const text = screen.getByRole('radio', { name: 'chat.searchMode.text' })
-    expect(text).toBeEnabled()
+    const open = () => fireEvent.click(screen.getByRole('button', { name: /chat\.searchMode\.label/ }))
+    open()
+    expect(screen.getByRole('option', { name: /chat\.searchMode\.text/ })).toBeEnabled()
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' })
+
     pickWithDialog(picture())
-    expect(screen.getByRole('radio', { name: 'chat.searchMode.text' })).toBeDisabled()
+    open()
+    const text = screen.getByRole('option', { name: /chat\.searchMode\.text/ })
+    expect(text).toBeDisabled()
+    expect(text).toHaveTextContent('chat.searchMode.textBlocked')
+    fireEvent.click(text)
+    expect(chat.setSearchMode).not.toHaveBeenCalled()
   })
 
   it('does not show the search choice to guests', () => {
     auth.isGuest = true
     render(<Composer />)
-    expect(screen.queryByRole('radiogroup')).toBeNull()
+    expect(screen.queryByRole('button', { name: /chat\.searchMode\.label/ })).toBeNull()
   })
 
   it('offers guests no picture search: no pasting', () => {
