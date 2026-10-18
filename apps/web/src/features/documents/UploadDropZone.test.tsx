@@ -13,7 +13,9 @@ vi.mock('./DocumentsContext', () => ({ useDocuments: () => docs }))
 
 function pick(container: HTMLElement, ...files: File[]) {
   const input = container.querySelector('input[type="file"]') as HTMLInputElement
-  fireEvent.change(input, { target: { files } })
+  // A real FileList: indexable, with length and item().
+  const list = Object.assign([...files], { item: (i: number) => files[i] ?? null })
+  fireEvent.change(input, { target: { files: list } })
 }
 
 describe('UploadDropZone', () => {
