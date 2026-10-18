@@ -3,7 +3,8 @@
 from quberi_api.domain.conversations.models import (
     Conversation,
     ConversationKnowledgeSource,
+    ConversationPicture,
     Message,
 )
 
-__all__ = ["Conversation", "ConversationKnowledgeSource", "Message"]
+__all__ = ["Conversation", "ConversationKnowledgeSource", "ConversationPicture", "Message"]

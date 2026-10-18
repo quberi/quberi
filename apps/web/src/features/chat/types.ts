@@ -36,10 +36,22 @@ export interface ImageMatch {
   score: number
 }
 
-/** What a picture-search question was made of. The picture itself is never kept. */
+/**
+ * What a question is looked up in. ``both`` (the default) searches the documents and the
+ * pictures; ``text`` only the documents; ``image`` only the pictures (no model is called).
+ */
+export type SearchMode = 'text' | 'image' | 'both'
+export const SEARCH_MODES: readonly SearchMode[] = ['text', 'image', 'both']
+
+/**
+ * What a picture-search question was made of. ``stored`` says the server kept the
+ * picture for its sender (questions asked before pictures were kept, or when keeping
+ * it failed, have none).
+ */
 export interface ImageQueryUsed {
   picture: boolean
   description: boolean
+  stored: boolean
 }
 
 /** One step in an agent's reasoning trace (tool call / result / note). */
@@ -153,10 +165,23 @@ export function messageImageMatches(content: MessageContent): ImageMatch[] {
   return Array.isArray(raw) ? (raw as ImageMatch[]) : []
 }
 
+/**
+ * True when the whole answer is pictures (a picture search or a list), false when pictures
+ * only ride along with an ordinary text answer as "possibly related".
+ */
+export function messageIsPictureAnswer(content: MessageContent): boolean {
+  const kind = (content as { meta?: { kind?: unknown } }).meta?.kind
+  return kind === 'image_search' || kind === 'image_list'
+}
+
 /** What the person asked with, if this message is a picture-search question. */
 export function messageImageQuery(content: MessageContent): ImageQueryUsed | null {
   const raw = (content as { image_query?: unknown }).image_query
   if (!raw || typeof raw !== 'object') return null
   const q = raw as Partial<ImageQueryUsed>
-  return { picture: q.picture === true, description: q.description === true }
+  return {
+    picture: q.picture === true,
+    description: q.description === true,
+    stored: q.picture === true && q.stored === true,
+  }
 }

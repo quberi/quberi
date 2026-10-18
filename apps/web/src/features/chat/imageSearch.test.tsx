@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../api/client'
 
-import { fetchThumbnail, sendImageSearch } from './api'
+import { fetchQueryPicture, fetchThumbnail, sendImageSearch } from './api'
 import { ImageMatchesRail } from './ImageMatches'
-import { messageImageMatches, messageImageQuery } from './types'
+import { messageImageMatches, messageImageQuery, messageIsPictureAnswer } from './types'
 import type { ImageMatch } from './types'
 
 vi.mock('react-i18next', () => ({
@@ -119,6 +119,42 @@ describe('fetchThumbnail', () => {
   })
 })
 
+describe('related pictures beside a text answer', () => {
+  it('titles the rail as possibly related, not as the answer', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Blob(['x']), { status: 200 })))
+    const { unmount } = render(
+      <ImageMatchesRail matches={[MATCHES[0]]} railRef={{ current: null }} related />,
+    )
+    expect(screen.getByText('chat.imageSearch.relatedTitle')).toBeInTheDocument()
+    unmount()
+    render(<ImageMatchesRail matches={[MATCHES[0]]} railRef={{ current: null }} />)
+    expect(screen.getByText('chat.imageSearch.railTitle')).toBeInTheDocument()
+  })
+
+  it('tells a picture answer from a text answer that carries pictures', () => {
+    expect(messageIsPictureAnswer({ type: 'text', text: 'x', meta: { kind: 'image_search' } })).toBe(true)
+    expect(messageIsPictureAnswer({ type: 'text', text: 'x', meta: { kind: 'image_list' } })).toBe(true)
+    expect(messageIsPictureAnswer({ type: 'text', text: 'x', image_matches: MATCHES })).toBe(false)
+    expect(messageIsPictureAnswer({ type: 'text', text: 'x', meta: { model_id: 'm' } })).toBe(false)
+  })
+})
+
+describe('fetchQueryPicture', () => {
+  it('fetches the kept picture of a question with the session header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(['png']), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const blob = await fetchQueryPicture(credentials, 'c1', 'm1')
+    expect(blob.size).toBeGreaterThan(0)
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/conversations\/c1\/messages\/m1\/picture$/)
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok')
+  })
+
+  it('fails when the picture is not the person\'s', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 404 })))
+    await expect(fetchQueryPicture(credentials, 'c1', 'm1')).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
 describe('message helpers', () => {
   it('reads found pictures and the question marker, and tolerates other messages', () => {
     expect(messageImageMatches({ type: 'text', text: 'x', image_matches: MATCHES })).toHaveLength(2)
@@ -126,7 +162,18 @@ describe('message helpers', () => {
     expect(messageImageMatches({ type: 'text', image_matches: 'nope' })).toEqual([])
     expect(
       messageImageQuery({ type: 'text', text: '', image_query: { picture: true, description: false } }),
-    ).toEqual({ picture: true, description: false })
+    ).toEqual({ picture: true, description: false, stored: false })
+    expect(
+      messageImageQuery({
+        type: 'text',
+        text: '',
+        image_query: { picture: true, description: false, stored: true, picture_id: 'p1' },
+      }),
+    ).toEqual({ picture: true, description: false, stored: true })
+    // Words alone never have a picture, whatever the marker says.
+    expect(
+      messageImageQuery({ type: 'text', text: 'x', image_query: { picture: false, description: true, stored: true } }),
+    ).toEqual({ picture: false, description: true, stored: false })
     expect(messageImageQuery({ type: 'text', text: 'hi' })).toBeNull()
   })
 })
@@ -165,10 +212,30 @@ describe('ImageMatchesRail', () => {
   it('shows a quiet placeholder, not a broken image, when a preview cannot be loaded', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 404 })))
     render(<ImageMatchesRail matches={[MATCHES[0]]} railRef={{ current: null }} />)
-    expect(await screen.findByLabelText('chat.imageSearch.noPreview')).toBeInTheDocument()
+    expect(await screen.findByLabelText('chat.imageSearch.unavailable')).toBeInTheDocument()
+    expect(screen.getByText('chat.imageSearch.unavailable')).toBeInTheDocument()
     expect(document.querySelector('img')).toBeNull()
   })
 
+  it('does not claim a picture is gone when the preview failed for another reason', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 500 })))
+    render(<ImageMatchesRail matches={[MATCHES[0]]} railRef={{ current: null }} />)
+    expect(await screen.findByLabelText('chat.imageSearch.noPreview')).toBeInTheDocument()
+    expect(screen.queryByText('chat.imageSearch.unavailable')).toBeNull()
+  })
+  it('says the same in the large view when the picture is gone or no longer visible', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+      url.endsWith('/download')
+        ? new Response(JSON.stringify({ detail: 'document not found: d1' }), { status: 404 })
+        : new Response(new Blob(['thumb']), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ImageMatchesRail matches={[MATCHES[0]]} railRef={{ current: null }} />)
+    fireEvent.click(screen.getByTitle('chat.imageSearch.open'))
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText('chat.imageSearch.unavailable')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/document not found/)).toBeNull()
+  })
   it('opens the full picture on click and closes it again', async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) =>
       url.endsWith('/download')

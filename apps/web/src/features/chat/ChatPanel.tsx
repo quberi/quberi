@@ -42,8 +42,9 @@ import { describeModel } from '../settings/modelDescriptions'
 import { listAgents } from '../agent/api'
 import type { AgentSummary } from '../agent/types'
 
-import { MAX_IMAGE_QUERY_TEXT, MAX_QUERY_PICTURE_BYTES } from './api'
+import { MAX_IMAGE_QUERY_TEXT, MAX_QUERY_PICTURE_BYTES, fetchQueryPicture } from './api'
 import { useChat } from './ChatContext'
+import { ensureQueryPicture, useQueryPicture } from './queryPictures'
 import { ImageMatchesRail } from './ImageMatches'
 import { NewConversationDialog } from './NewConversationDialog'
 import { ReviewCard } from './ReviewCard'
@@ -55,7 +56,7 @@ import type {
   MessageContent,
   MessageSummary,
 } from './types'
-import { messageImageMatches, messageImageQuery } from './types'
+import { messageImageMatches, messageImageQuery, messageIsPictureAnswer } from './types'
 import { useFormatDate } from '../../i18n/formatDate'
 import { getGuestStarters } from './guestApi'
 import {
@@ -122,6 +123,7 @@ function ThreadWorkspace() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
   const railRef = useRef<HTMLDivElement>(null)
+  const pictureRailRef = useRef<HTMLDivElement>(null)
 
   // Reset the pinned message whenever the thread itself changes — an
   // explicit click always wins within one conversation, but switching
@@ -168,15 +170,33 @@ function ThreadWorkspace() {
     <div className={hasRail ? 'chat-workspace has-citations' : 'chat-workspace'}>
       <ConversationsColumn />
       <ThreadColumn onCiteClick={jumpToCitation} />
-      {citations.length > 0 && (
-        <CitationsRail
-          citations={citations}
-          highlightIndex={highlightIndex}
-          railRef={railRef}
-        />
-      )}
-      {citations.length === 0 && imageMatches.length > 0 && (
-        <ImageMatchesRail matches={imageMatches} railRef={railRef} />
+      {citations.length > 0 && imageMatches.length > 0 ? (
+        // An ordinary answer with pictures that might be what was asked for: both, stacked.
+        <div className="chat-rail-stack">
+          <CitationsRail
+            citations={citations}
+            highlightIndex={highlightIndex}
+            railRef={railRef}
+          />
+          <ImageMatchesRail matches={imageMatches} railRef={pictureRailRef} related />
+        </div>
+      ) : (
+        <>
+          {citations.length > 0 && (
+            <CitationsRail
+              citations={citations}
+              highlightIndex={highlightIndex}
+              railRef={railRef}
+            />
+          )}
+          {citations.length === 0 && imageMatches.length > 0 && (
+            <ImageMatchesRail
+              matches={imageMatches}
+              railRef={pictureRailRef}
+              related={activeMessage ? !messageIsPictureAnswer(activeMessage.content) : false}
+            />
+          )}
+        </>
       )}
     </div>
   )
@@ -981,7 +1001,7 @@ function messageTrace(content: MessageContent): AgentTraceStep[] {
   return Array.isArray(raw) ? (raw as AgentTraceStep[]) : []
 }
 
-function MessageBubble({
+export function MessageBubble({
   message,
   onCiteClick,
 }: {
@@ -995,7 +1015,20 @@ function MessageBubble({
     (message.content as { placeholder?: unknown }).placeholder === true
   const citations = messageCitations(message.content)
   const foundPictures = messageImageMatches(message.content).length
+  // Pictures that only ride along with a text answer are offered, not announced as the answer.
+  const picturesAreAnswer = messageIsPictureAnswer(message.content)
   const pictureQuery = isUser ? messageImageQuery(message.content) : null
+  // The picture the question was searched with: put here when it was just sent,
+  // fetched from the server (which keeps it for its sender) when it is shown later.
+  const queryPictureUrl = useQueryPicture(message.id)
+  const { credentials } = useAuth()
+  const keptOnServer = pictureQuery?.stored === true
+  useEffect(() => {
+    if (!keptOnServer || !credentials || credentials.isGuest) return
+    void ensureQueryPicture(message.id, () =>
+      fetchQueryPicture(credentials, message.conversation_id, message.id),
+    )
+  }, [keptOnServer, credentials, message.id, message.conversation_id])
   const trace = messageTrace(message.content)
   const reviewMeta = (
     message.content as {
@@ -1046,9 +1079,20 @@ function MessageBubble({
           <p className="chat-picture-query">
             <Images size={13} aria-hidden="true" />
             {pictureQuery.picture
-              ? t('chat.imageSearch.askedWithPicture')
+              ? pictureQuery.stored
+                ? t('chat.imageSearch.askedWithPictureKept')
+                : queryPictureUrl
+                  ? t('chat.imageSearch.askedWithPictureShown')
+                  : t('chat.imageSearch.askedWithPicture')
               : t('chat.imageSearch.askedWithWords')}
           </p>
+        )}
+        {pictureQuery?.picture && queryPictureUrl && (
+          <img
+            alt={t('chat.imageSearch.queryPictureAlt')}
+            className="chat-query-picture"
+            src={queryPictureUrl}
+          />
         )}
         {(text || !pictureQuery) && (
           <AnswerText
@@ -1068,7 +1112,9 @@ function MessageBubble({
             type="button"
           >
             <Images size={13} aria-hidden="true" />
-            {t('chat.imageSearch.showPictures', { count: foundPictures })}
+            {picturesAreAnswer
+              ? t('chat.imageSearch.showPictures', { count: foundPictures })
+              : t('chat.imageSearch.showRelated', { count: foundPictures })}
           </button>
         )}
       </div>
@@ -1312,6 +1358,8 @@ export function Composer() {
     setConversationAgent,
     reviewBeforeSend,
     setReviewBeforeSend,
+    searchMode,
+    setSearchMode,
     pendingReview,
   } = useChat()
   const { isGuest, credentials } = useAuth()
@@ -1332,6 +1380,10 @@ export function Composer() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchingPictures = picture !== null || wordsOnly
+  // "Pictures only" is a standing choice; a staged picture or "by words" is for one send.
+  // Either way the question goes to the picture search, which calls no model.
+  const picturesOnly = searchMode === 'image'
+  const routeToPictures = searchingPictures || picturesOnly
 
   // A small preview of the staged picture; released when it changes or goes.
   useEffect(() => {
@@ -1437,7 +1489,7 @@ export function Composer() {
   const agentBlocksReview =
     reviewBeforeSend && !isGuest && Boolean(currentConversation?.agent_choice?.agent_id)
   // A picture search calls no model, so a held prompt or an agent does not get in its way.
-  const canSend = searchingPictures
+  const canSend = routeToPictures
     ? (picture !== null || text.trim().length > 0) && !sending.active
     : text.trim().length > 0 && !sending.active && !heldHere && !agentBlocksReview
 
@@ -1448,12 +1500,19 @@ export function Composer() {
     }
     if (!canSend) return
     const value = text.trim()
-    if (searchingPictures) {
+    if (routeToPictures) {
       // Keep the picture and words if the search fails, so it can be tried again.
+      const searchedWithWords = picture !== null && value.length > 0
       const ok = await sendImageSearch(picture, value)
       if (ok) {
         setText('')
         clearPictureSearch()
+        // Pictures and documents: the words that came with the picture are also asked as
+        // an ordinary question. (A picture alone has nothing to look up in documents.)
+        if (searchMode === 'both' && searchedWithWords && !heldHere && !agentBlocksReview) {
+          await sendUserMessage(value)
+          void refreshUsage()
+        }
       }
       textareaRef.current?.focus()
       return
@@ -1728,6 +1787,9 @@ export function Composer() {
             </button>
           </div>
         )}
+        {picture !== null && text.trim().length === 0 && searchMode === 'both' && (
+          <div className="chat-quota-hint">{t('chat.searchMode.pictureOnlyHint')}</div>
+        )}
         {pictureError && <div className="chat-quota-hint exhausted">{pictureError}</div>}
         {dragging && (
           <div className="chat-drop-hint" aria-hidden="true">
@@ -1735,14 +1797,14 @@ export function Composer() {
           </div>
         )}
         <textarea
-          maxLength={searchingPictures ? MAX_IMAGE_QUERY_TEXT : undefined}
+          maxLength={routeToPictures ? MAX_IMAGE_QUERY_TEXT : undefined}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={t(
             isGuest
               ? 'chat.guest.placeholder'
-              : searchingPictures
+              : routeToPictures
                 ? 'chat.imageSearch.placeholder'
                 : 'chat.composerPlaceholderMention',
           )}
@@ -1861,6 +1923,38 @@ export function Composer() {
                 <ShieldCheck size={15} />
                 <span className="chat-model-trigger-label">{t('chat.review.enable')}</span>
               </button>
+            )}
+            {!isGuest && (
+              <div
+                aria-label={t('chat.searchMode.label')}
+                className="chat-search-mode"
+                role="radiogroup"
+              >
+                {(['text', 'image', 'both'] as const).map((mode) => {
+                  // A staged picture is always searched as a picture, so "documents only" is off.
+                  const blocked = mode === 'text' && picture !== null
+                  return (
+                    <button
+                      aria-checked={searchMode === mode}
+                      className={
+                        searchMode === mode
+                          ? 'chat-search-mode-item is-active'
+                          : 'chat-search-mode-item'
+                      }
+                      disabled={blocked}
+                      key={mode}
+                      onClick={() => setSearchMode(mode)}
+                      role="radio"
+                      title={t(
+                        blocked ? 'chat.searchMode.textBlocked' : `chat.searchMode.${mode}Hint`,
+                      )}
+                      type="button"
+                    >
+                      {t(`chat.searchMode.${mode}`)}
+                    </button>
+                  )
+                })}
+              </div>
             )}
             <ModelPicker />
           </div>

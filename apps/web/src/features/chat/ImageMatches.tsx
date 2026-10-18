@@ -12,8 +12,15 @@ import type { ImageMatch } from './types'
 
 type BlobState =
   | { kind: 'loading' }
-  | { kind: 'failed' }
+  // ``status`` is the HTTP status when the server answered. 404 means the picture was deleted
+  // or the person can no longer see it; the server deliberately does not say which.
+  | { kind: 'failed'; status?: number }
   | { kind: 'ready'; url: string }
+
+/** True when the failure means "gone, or no longer yours to see". */
+function isUnavailable(state: BlobState): boolean {
+  return state.kind === 'failed' && state.status === 404
+}
 
 /**
  * Turn a fetch of protected bytes into an object URL an ``<img>`` can show.
@@ -38,8 +45,10 @@ function useProtectedImage(load: ((signal: AbortSignal) => Promise<Blob>) | null
         url = URL.createObjectURL(blob)
         setState({ kind: 'ready', url })
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ kind: 'failed' })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          setState({ kind: 'failed', status: err instanceof ApiError ? err.status : undefined })
+        }
       })
     return () => {
       controller.abort()
@@ -64,13 +73,16 @@ export function MatchThumbnail({ match }: { match: ImageMatch }) {
   if (state.kind === 'ready') {
     return <img alt={match.document_name} className="image-match-thumb" src={state.url} />
   }
+  const unavailable = isUnavailable(state)
+  const hint = unavailable ? t('chat.imageSearch.unavailable') : t('chat.imageSearch.noPreview')
   return (
     <span
-      aria-label={state.kind === 'failed' ? t('chat.imageSearch.noPreview') : undefined}
+      aria-label={state.kind === 'failed' ? hint : undefined}
       className="image-match-thumb image-match-thumb-empty"
       role={state.kind === 'failed' ? 'img' : undefined}
     >
       {state.kind === 'loading' ? <Loader2 className="spin" size={16} /> : <ImageOff size={18} />}
+      {unavailable && <small className="image-match-gone">{hint}</small>}
     </span>
   )
 }
@@ -129,7 +141,11 @@ export function ImageViewer({ match, onClose }: { match: ImageMatch; onClose: ()
         <div className="image-viewer-body">
           {state.kind === 'loading' && <Loader2 className="spin" size={22} />}
           {state.kind === 'failed' && (
-            <div className="state-panel error-state">{error ?? t('chat.imageSearch.noPreview')}</div>
+            <div className="state-panel error-state">
+              {isUnavailable(state)
+                ? t('chat.imageSearch.unavailable')
+                : (error ?? t('chat.imageSearch.noPreview'))}
+            </div>
           )}
           {state.kind === 'ready' && (
             <img alt={match.document_name} className="image-viewer-img" src={state.url} />
@@ -148,9 +164,12 @@ export function ImageViewer({ match, onClose }: { match: ImageMatch; onClose: ()
 export function ImageMatchesRail({
   matches,
   railRef,
+  related = false,
 }: {
   matches: ImageMatch[]
   railRef: React.RefObject<HTMLDivElement | null>
+  /** The pictures ride along with a text answer: they are offered as "possibly related". */
+  related?: boolean
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState<ImageMatch | null>(null)
@@ -158,7 +177,7 @@ export function ImageMatchesRail({
     <aside className="chat-citations-rail image-matches-rail" ref={railRef}>
       <header className="chat-citations-rail-head">
         <Images size={14} />
-        <span>{t('chat.imageSearch.railTitle')}</span>
+        <span>{t(related ? 'chat.imageSearch.relatedTitle' : 'chat.imageSearch.railTitle')}</span>
         <small>{t('chat.imageSearch.railCount', { count: matches.length })}</small>
       </header>
       <ul className="image-matches-grid">

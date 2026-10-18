@@ -7,6 +7,7 @@ Routes
 * GET  /api/v1/conversations/{conversation_id}/messages
 * POST /api/v1/conversations/{conversation_id}/messages
 * POST /api/v1/conversations/{conversation_id}/image-search
+* GET  /api/v1/conversations/{conversation_id}/messages/{message_id}/picture
 
 Every endpoint hangs off ``require_caller`` and the service layer checks
 that the caller can see the conversation's Space. When a caller cannot see
@@ -56,6 +57,7 @@ from quberi_api.api.v1.conversations.schemas import (
 )
 from quberi_api.domain.conversations.models import Conversation, Message
 from quberi_api.infrastructure.registry import Infrastructure
+from quberi_api.services import conversation_pictures
 from quberi_api.services import conversations as conversations_service
 from quberi_api.services import send_review
 from quberi_api.services import usage as usage_service
@@ -195,12 +197,16 @@ async def send_message(
         )
     # A question about pictures is answered from the picture index with no model, so it
     # neither spends the free allowance nor needs a held prompt.
-    picture_plan = await conversations_service.plan_picture_turn(
-        session,
-        conversation_id=conversation_id,
-        organization_id=caller.organization.id,
-        user_id=caller.user.id,
-        text=payload.text,
+    picture_plan = (
+        await conversations_service.plan_picture_turn(
+            session,
+            conversation_id=conversation_id,
+            organization_id=caller.organization.id,
+            user_id=caller.user.id,
+            text=payload.text,
+        )
+        if payload.pictures
+        else None
     )
     if picture_plan is None:
         await usage_service.enforce_free_quota(
@@ -216,6 +222,7 @@ async def send_message(
         identity_id=caller.user.identity_id,
         text=payload.text,
         picture_plan=picture_plan,
+        with_pictures=payload.pictures,
     )
     is_owner = pair.conversation.created_by_user_id == caller.user.id
     return SendMessageResponse(
@@ -262,10 +269,11 @@ async def image_search_message(
     session: AsyncSession = Depends(get_db_session),
     infra: Infrastructure = Depends(get_infrastructure),
 ) -> SendMessageResponse:
-    """Search the pictures this conversation may see; the query picture is never kept.
+    """Search the pictures this conversation may see.
 
     The answer is stored as an ordinary assistant message whose content carries
-    ``image_matches``. No language model is called.
+    ``image_matches``. No language model is called. The query picture is kept for its
+    sender (``GET .../messages/{message_id}/picture``) once the search has worked.
     """
 
     try:
@@ -291,6 +299,7 @@ async def image_search_message(
             image=picture,
             text=text,
             top_k=top_k,
+            filename=file.filename if file is not None else None,
         )
     except ImageSearchDisabled as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
@@ -301,6 +310,50 @@ async def image_search_message(
         conversation=_summary(pair.conversation, is_owner=is_owner),
         user_message=_message_summary(pair.user_message),
         assistant_message=_message_summary(pair.assistant_message),
+    )
+
+
+@conversation_router.get(
+    "/{conversation_id}/messages/{message_id}/picture",
+    summary="The picture a question was searched with",
+    responses={200: {"content": {"image/png": {}, "image/jpeg": {}, "image/gif": {}, "image/webp": {}}}},
+)
+async def message_picture(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> StreamingResponse:
+    """Give a picture back to the person who searched with it, and to no one else.
+
+    Seeing the conversation is not enough: another member who can read the thread gets a
+    plain 404. The type sent is the one found when the picture was kept (never the
+    upload's own label), with ``nosniff`` and a policy that forbids running anything.
+    """
+
+    await conversations_service.get_conversation_for_user(
+        session,
+        conversation_id=conversation_id,
+        organization_id=caller.organization.id,
+        user_id=caller.user.id,
+    )
+    row = await conversation_pictures.find_for_owner(
+        session,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        organization_id=caller.organization.id,
+        user_id=caller.user.id,
+    )
+    return StreamingResponse(
+        conversation_pictures.open_stream(row),
+        media_type=row.mime_type,
+        headers={
+            "Content-Length": str(row.size_bytes),
+            "Content-Disposition": "inline",
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
     )
 
 
@@ -341,12 +394,16 @@ async def send_message_stream(
     # A question about pictures is answered from the picture index with no model:
     # no free allowance is spent and nothing is held for review, whatever the
     # "check before sending" switch says (there is nothing to check: no text goes out).
-    picture_plan = await conversations_service.plan_picture_turn(
-        session,
-        conversation_id=conversation_id,
-        organization_id=caller.organization.id,
-        user_id=caller.user.id,
-        text=payload.text,
+    picture_plan = (
+        await conversations_service.plan_picture_turn(
+            session,
+            conversation_id=conversation_id,
+            organization_id=caller.organization.id,
+            user_id=caller.user.id,
+            text=payload.text,
+        )
+        if payload.pictures
+        else None
     )
     # A held prompt calls no model yet, so the free allowance is reserved when
     # it is approved, not here (a cancelled review must not use any up).
@@ -368,6 +425,7 @@ async def send_message_stream(
                 text=payload.text,
                 review=payload.review,
                 picture_plan=picture_plan,
+                with_pictures=payload.pictures,
             ):
                 payload_str = json.dumps(data, ensure_ascii=False)
                 yield f"event: {kind}\ndata: {payload_str}\n\n"

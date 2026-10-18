@@ -5,8 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 
 import { ChatProvider, useChat } from './ChatContext'
+import { useQueryPicture } from './queryPictures'
 
-const api = vi.hoisted(() => ({ sendImageSearch: vi.fn() }))
+const api = vi.hoisted(() => ({ sendImageSearch: vi.fn(), streamMessage: vi.fn() }))
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k, i18n: { resolvedLanguage: 'en-US' } }),
 }))
@@ -23,6 +24,7 @@ vi.mock('./api', async (importOriginal) => {
     listMessages: async () => ({ items: [], conversation: conv }),
     listScopeSources: async () => ({ items: [] }),
     sendImageSearch: api.sendImageSearch,
+    streamMessage: api.streamMessage,
   }
 })
 
@@ -60,6 +62,58 @@ describe('ChatContext: picture search', () => {
     expect(ids(h)).toEqual(['u1', 'a1'])
     expect(h.result.current.currentConversation?.message_count).toBe(2)
     expect(h.result.current.sending).toEqual({ active: false, error: null })
+  })
+
+  it('keeps the searched picture for the question, in this tab only', async () => {
+    api.sendImageSearch.mockResolvedValue(reply)
+    const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL }
+    URL.createObjectURL = vi.fn(() => 'blob:q1')
+    URL.revokeObjectURL = vi.fn()
+    try {
+      const h = await ready()
+      const shown = renderHook(() => useQueryPicture('u1'))
+      expect(shown.result.current).toBeUndefined()
+      await act(async () => { await h.result.current.sendImageSearch(file, '') })
+      expect(shown.result.current).toBe('blob:q1')
+      h.unmount()
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:q1')
+    } finally {
+      URL.createObjectURL = original.create
+      URL.revokeObjectURL = original.revoke
+    }
+  })
+
+  it('asks for pictures with a question unless the person chose documents only', async () => {
+    api.streamMessage.mockImplementation(async function* () {
+      yield { kind: 'done' }
+    })
+    window.localStorage.removeItem('quberi.searchMode')
+    const h = await ready()
+    expect(h.result.current.searchMode).toBe('both') // the default
+
+    await act(async () => { await h.result.current.sendUserMessage('lion') })
+    expect(api.streamMessage.mock.calls[0][5]).toBe(true)
+
+    act(() => h.result.current.setSearchMode('text'))
+    await act(async () => { await h.result.current.sendUserMessage('lion') })
+    expect(api.streamMessage.mock.calls[1][5]).toBe(false)
+    expect(window.localStorage.getItem('quberi.searchMode')).toBe('text')
+  })
+
+  it('remembers the choice for the next visit and ignores a value it does not know', async () => {
+    window.localStorage.setItem('quberi.searchMode', 'image')
+    expect((await ready()).result.current.searchMode).toBe('image')
+    window.localStorage.setItem('quberi.searchMode', 'nonsense')
+    expect((await ready()).result.current.searchMode).toBe('both')
+    window.localStorage.removeItem('quberi.searchMode')
+  })
+
+  it('keeps nothing when the search was by words', async () => {
+    api.sendImageSearch.mockResolvedValue(reply)
+    const h = await ready()
+    const shown = renderHook(() => useQueryPicture('u1'))
+    await act(async () => { await h.result.current.sendImageSearch(null, 'gear') })
+    expect(shown.result.current).toBeUndefined()
   })
 
   it('reports the reason and adds nothing when the search is refused', async () => {

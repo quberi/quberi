@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -122,6 +122,56 @@ class ConversationKnowledgeSource(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class ConversationPicture(Base):
+    """The picture a person searched with, kept so the thread shows it again later.
+
+    The bytes live in object storage under ``storage_key``; this row is everything
+    else about them. A picture belongs to the person who sent it (``owner_user_id``)
+    and to one question in one conversation (``message_id``); only that person can
+    read it back. It goes when the conversation or the message does (the database
+    cascades the row; the object is removed by ``services.conversation_pictures``).
+    """
+
+    __tablename__ = "conversation_pictures"
+    __table_args__ = (
+        Index("uq_conversation_pictures_message_id", "message_id", unique=True),
+        Index("ix_conversation_pictures_conversation_id", "conversation_id"),
+        Index("ix_conversation_pictures_owner_user_id", "owner_user_id"),
+    )
+
+    id: Mapped[UUIDPk]
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    owner_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # The name the file had on the person's device (a base name, never a path).
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # What the picture really is, found by decoding it; never what the upload claimed.
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

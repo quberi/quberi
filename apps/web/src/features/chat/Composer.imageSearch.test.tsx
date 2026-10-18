@@ -32,6 +32,8 @@ const { chat, auth } = vi.hoisted(() => {
       setConversationModel: vi.fn(noop),
       reviewBeforeSend: false,
       setReviewBeforeSend: vi.fn(noop),
+      searchMode: 'both' as 'text' | 'image' | 'both',
+      setSearchMode: vi.fn(noop),
       pendingReview: null as unknown,
     },
     // One stable object: a new one each render would re-run the composer's effects forever.
@@ -68,6 +70,8 @@ beforeEach(() => {
   auth.isGuest = false
   chat.sending = { active: false, error: null }
   chat.pendingReview = null
+  chat.searchMode = 'both'
+  chat.setSearchMode.mockClear()
   chat.sendUserMessage.mockClear()
   chat.sendImageSearch.mockClear()
   chat.sendImageSearch.mockResolvedValue(true)
@@ -88,9 +92,43 @@ describe('Composer picture search', () => {
     fireEvent.click(screen.getByLabelText('chat.send'))
 
     await waitFor(() => expect(chat.sendImageSearch).toHaveBeenCalledWith(file, 'the flange'))
-    expect(chat.sendUserMessage).not.toHaveBeenCalled() // not a chat question
+    // Pictures and documents: the words are also asked as an ordinary question.
+    await waitFor(() => expect(chat.sendUserMessage).toHaveBeenCalledWith('the flange'))
     await waitFor(() => expect(screen.queryByText('q.png')).toBeNull())
     expect(textbox().value).toBe('')
+  })
+
+  it('searches only the pictures with a picture when the mode is pictures only', async () => {
+    chat.searchMode = 'image'
+    render(<Composer />)
+    const file = picture()
+    pickWithDialog(file)
+    fireEvent.change(textbox(), { target: { value: 'the flange' } })
+    fireEvent.click(screen.getByLabelText('chat.send'))
+    await waitFor(() => expect(chat.sendImageSearch).toHaveBeenCalledWith(file, 'the flange'))
+    expect(chat.sendUserMessage).not.toHaveBeenCalled()
+  })
+
+  it('does not ask the documents after a failed picture search', async () => {
+    chat.sendImageSearch.mockResolvedValue(false)
+    render(<Composer />)
+    pickWithDialog(picture())
+    fireEvent.change(textbox(), { target: { value: 'gear' } })
+    fireEvent.click(screen.getByLabelText('chat.send'))
+    await waitFor(() => expect(chat.sendImageSearch).toHaveBeenCalled())
+    expect(chat.sendUserMessage).not.toHaveBeenCalled()
+  })
+
+  it('says a picture alone searches pictures only, and does not ask the documents', async () => {
+    render(<Composer />)
+    pickWithDialog(picture())
+    expect(screen.getByText('chat.searchMode.pictureOnlyHint')).toBeInTheDocument()
+    fireEvent.change(textbox(), { target: { value: 'gear' } })
+    expect(screen.queryByText('chat.searchMode.pictureOnlyHint')).toBeNull()
+    fireEvent.change(textbox(), { target: { value: '' } })
+    fireEvent.click(screen.getByLabelText('chat.send'))
+    await waitFor(() => expect(chat.sendImageSearch).toHaveBeenCalled())
+    expect(chat.sendUserMessage).not.toHaveBeenCalled()
   })
 
   it('can send a picture alone', async () => {
@@ -169,6 +207,46 @@ describe('Composer picture search', () => {
     render(<Composer />)
     pickWithDialog(picture())
     expect(screen.getByLabelText('chat.send')).toBeEnabled()
+  })
+
+  it('offers three places to search, with the saved one chosen', () => {
+    chat.searchMode = 'both'
+    render(<Composer />)
+    const group = screen.getByRole('radiogroup', { name: 'chat.searchMode.label' })
+    const radios = Array.from(group.querySelectorAll('[role="radio"]'))
+    expect(radios.map((r) => r.textContent)).toEqual([
+      'chat.searchMode.text',
+      'chat.searchMode.image',
+      'chat.searchMode.both',
+    ])
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'false', 'true'])
+    fireEvent.click(radios[0])
+    expect(chat.setSearchMode).toHaveBeenCalledWith('text')
+  })
+
+  it('sends a typed question only to the pictures in pictures-only mode', async () => {
+    chat.searchMode = 'image'
+    render(<Composer />)
+    expect(screen.getByLabelText('chat.send')).toBeDisabled() // words needed
+    fireEvent.change(textbox(), { target: { value: 'lion' } })
+    fireEvent.click(screen.getByLabelText('chat.send'))
+    await waitFor(() => expect(chat.sendImageSearch).toHaveBeenCalledWith(null, 'lion'))
+    expect(chat.sendUserMessage).not.toHaveBeenCalled()
+  })
+
+  it('turns documents-only off while a picture is attached', () => {
+    chat.searchMode = 'text'
+    render(<Composer />)
+    const text = screen.getByRole('radio', { name: 'chat.searchMode.text' })
+    expect(text).toBeEnabled()
+    pickWithDialog(picture())
+    expect(screen.getByRole('radio', { name: 'chat.searchMode.text' })).toBeDisabled()
+  })
+
+  it('does not show the search choice to guests', () => {
+    auth.isGuest = true
+    render(<Composer />)
+    expect(screen.queryByRole('radiogroup')).toBeNull()
   })
 
   it('offers guests no picture search: no pasting', () => {

@@ -67,6 +67,9 @@ class PendingReview:
     scope_is_empty: bool
     scope_mode: str
     scope_space_ids: list[str]
+    # Whether the answer may also carry pictures that might be related (the person's choice
+    # when the question was asked; a prompt held before this field existed keeps the default).
+    with_pictures: bool = True
     model_id: Optional[str] = None
     binding_id: Optional[str] = None
     model: dict = field(default_factory=dict)

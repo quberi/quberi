@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +44,7 @@ from quberi_api.services.authz import (
     list_accessible_space_ids,
     resolve_effective_role_codes,
 )
+from quberi_api.services import conversation_pictures
 from quberi_api.services.doc_acl import load_doc_access
 from quberi_api.services.errors import (
     AlreadyExistsError,
@@ -332,6 +334,7 @@ async def send_message(
     identity_id: uuid.UUID | None = None,
     text: str,
     picture_plan: PicturePlan | None = None,
+    with_pictures: bool = True,
 ) -> MessagePair:
     """Append a user message and generate a RAG-grounded assistant reply.
 
@@ -530,6 +533,16 @@ async def send_message(
         finally:
             await qdrant.close()
 
+    related: list[dict] = []
+    if with_pictures and agent_id is None and error_note is None:
+        related = await related_pictures(
+            session,
+            conversation_id=conversation.id,
+            organization_id=organization_id,
+            user_id=user_id,
+            text=text,
+        )
+
     # Every retrieval SELECT auto-began a transaction on this session;
     # commit it before opening a fresh write transaction below (the
     # familiar "already begun" pitfall).
@@ -548,6 +561,8 @@ async def send_message(
         content: dict = {"type": "text", "text": assistant_text}
         if citations_payload:
             content["citations"] = citations_payload
+        if related:
+            content["image_matches"] = related
         if assistant_meta:
             content["meta"] = assistant_meta
         if assistant_placeholder:
@@ -594,6 +609,7 @@ async def send_message(
                     "retrieved_document_ids": retrieved_doc_ids,
                     "scope_mode": assistant_meta.get("scope_mode"),
                     "error": error_note,
+                    **({"related_picture_ids": [m["document_id"] for m in related]} if related else {}),
                 },
             )
         )
@@ -616,6 +632,7 @@ async def send_image_search(
     image: bytes | None,
     text: str | None,
     top_k: int = 12,
+    filename: str | None = None,
 ) -> MessagePair:
     """Answer a picture and/or a description with similar pictures from the knowledge base.
 
@@ -623,11 +640,13 @@ async def send_image_search(
     permissions, narrowed to the spaces they picked), and every result is confirmed
     against the database. No model is called, so no tokens are spent.
 
-    The uploaded picture is turned into a vector in memory and dropped: it is not saved,
-    not attached to the message and not logged. The stored user message records only
-    *that* a picture was used, plus any words. Nothing is written if the query cannot be
-    read (a bad file, an empty query, search switched off): those raise before any message
-    exists.
+    The uploaded picture is turned into a vector in memory. Once the search has succeeded it
+    is also kept in object storage for its sender (see ``services.conversation_pictures``),
+    so the thread shows it when they come back; the stored user message records that a
+    picture was used, its id, and any words. Nothing is written, and nothing is kept, if the
+    query cannot be read (a bad file, an empty query, search switched off): those raise
+    before any message exists. If keeping the picture fails, the search still answers and
+    the question is recorded as having no kept picture.
     """
 
     from quberi_api.services.rag import image_search
@@ -659,41 +678,49 @@ async def send_image_search(
         )
     finally:
         await qdrant.close()
-    matches = [
-        {
-            "document_id": str(m.document_id),
-            "document_name": m.document_name,
-            "space_id": str(m.space_id),
-            "space_name": m.space_name,
-            "mime_type": m.mime_type,
-            "size_bytes": m.size_bytes,
-            "score": round(m.score, 4),
-        }
-        for m in found.matches
-    ]
+    matches = [_picture_match_dict(m) for m in found.matches]
     # The reads above began a transaction; end it before the write transaction.
     await session.commit()
 
-    used = {"picture": image is not None, "description": bool(words)}
+    # Keep the picture only now that the search has worked, so a refused query leaves nothing.
+    kept = None
+    if image is not None:
+        kept = await conversation_pictures.put(
+            organization_id=organization_id,
+            conversation_id=conversation_id,
+            data=image,
+            filename=filename,
+        )
+    used: dict = {"picture": image is not None, "description": bool(words)}
+    if kept is not None:
+        used["stored"] = True
+        used["picture_id"] = str(kept.picture_id)
     reply = (
         f"找到 {len(matches)} 张相似的图片。"
         if matches
         else "没有找到相似的图片。图片需要先上传到你有权限的空间，并等待索引完成。"
     )
-    return await _persist_image_turn(
-        session,
-        conversation_id=conversation_id,
-        organization_id=organization_id,
-        user_id=user_id,
-        user_content={"type": "text", "text": words, "image_query": used},
-        title=words[:_TITLE_MAX] if words else "以图搜图",
-        reply=reply,
-        matches=matches,
-        kind="image_search",
-        scope_mode=scope_mode,
-        scope_space_ids=found.space_ids,
-        audit_query=used,
-    )
+    try:
+        return await _persist_image_turn(
+            session,
+            conversation_id=conversation_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            user_content={"type": "text", "text": words, "image_query": used},
+            title=words[:_TITLE_MAX] if words else "以图搜图",
+            reply=reply,
+            matches=matches,
+            kind="image_search",
+            scope_mode=scope_mode,
+            scope_space_ids=found.space_ids,
+            audit_query=used,
+            picture=kept,
+        )
+    except BaseException:
+        # The question was not written, so the object has no owner: take it back.
+        if kept is not None:
+            await conversation_pictures.discard(kept.storage_key)
+        raise
 
 
 async def _persist_image_turn(
@@ -711,14 +738,20 @@ async def _persist_image_turn(
     scope_space_ids: list[uuid.UUID],
     audit_query: dict,
     correlation_id: str | None = None,
+    picture: conversation_pictures.StoredPicture | None = None,
 ) -> MessagePair:
     """Write a picture turn: both messages, the counters and the audit event together.
 
     No model is called, so the assistant message costs nothing. The caller must have
-    ended its read transaction. Only ids are audited, never the words or a picture.
+    ended its read transaction. Only ids are audited, never the words, a file name or a
+    picture. ``picture`` (already in object storage) gets its row in the same transaction.
     """
 
     correlation_id = correlation_id or uuid.uuid4().hex
+    # Both rows are written in one transaction, so the database clock would give them the
+    # same time and the list (oldest first, then by id) could show the answer above the
+    # question. Stamp the question first, explicitly.
+    asked_at = datetime.now(timezone.utc)
     async with session.begin():
         conversation = (
             await session.execute(select(Conversation).where(Conversation.id == conversation_id))
@@ -733,9 +766,21 @@ async def _persist_image_turn(
             cost={},
             correlation_id=correlation_id,
             status="completed",
+            created_at=asked_at,
         )
         session.add(user_message)
         await session.flush()
+        if picture is not None:
+            session.add(
+                conversation_pictures.row_for(
+                    picture,
+                    organization_id=organization_id,
+                    conversation_id=conversation.id,
+                    message_id=user_message.id,
+                    owner_user_id=user_id,
+                )
+            )
+            await session.flush()
         assistant_message = Message(
             conversation_id=conversation.id,
             organization_id=organization_id,
@@ -756,6 +801,7 @@ async def _persist_image_turn(
             cost={"amount": 0, "currency": "USD"},
             correlation_id=correlation_id,
             status="completed",
+            created_at=asked_at + timedelta(milliseconds=1),
         )
         session.add(assistant_message)
         await session.flush()
@@ -834,6 +880,122 @@ def _picture_reply(*, kind: str, shown: int, total: int, best: float | None) -> 
     return f"找到 {shown} 张相似的图片。"
 
 
+def _picture_match_dict(m) -> dict:
+    """One found picture as stored in a message's ``image_matches``."""
+
+    return {
+        "document_id": str(m.document_id),
+        "document_name": m.document_name,
+        "space_id": str(m.space_id),
+        "space_name": m.space_name,
+        "mime_type": m.mime_type,
+        "size_bytes": m.size_bytes,
+        "score": round(m.score, 4),
+    }
+
+
+def _readable_pictures(organization_id: uuid.UUID, scope, doc_access) -> tuple:
+    """WHERE clauses for the pictures this person may see right now (live permissions)."""
+
+    from quberi_api.domain.documents.models import Document
+    from quberi_api.services.documents.core import file_type_clause
+
+    return (
+        Document.organization_id == organization_id,
+        or_(Document.space_id.in_(scope), Document.id.in_(set(doc_access.granted))),
+        Document.id.not_in(doc_access.denied),
+        Document.status != "archived",
+        Document.review_state == "approved",
+        file_type_clause(Document.mime_type, "image"),
+    )
+
+
+# Pictures that may go with an ordinary answer. A few at most, and only when the question is
+# short enough to be a name or a phrase rather than a paragraph (the picture model reads
+# 64 tokens and a long question matches nothing in particular).
+RELATED_PICTURE_TOP_K = 4
+RELATED_PICTURE_MIN_SCORE = WEAK_PICTURE_MATCH
+RELATED_PICTURE_MAX_CHARS = 40
+
+
+async def related_pictures(
+    session: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+    text: str,
+) -> list[dict]:
+    """Pictures that might be what an ordinary question was after, or ``[]``.
+
+    Every question is also looked up in the picture index, because a text model cannot read
+    pictures and would answer "nothing found" about ones that exist ("动物母狮"). Only the
+    person's live permissions decide what can appear (the same filter as picture search), and
+    the closest few are kept only if they score at least ``RELATED_PICTURE_MIN_SCORE``.
+
+    The score cannot tell a right picture from the nearest wrong one (unrelated words reach
+    the same numbers), so these are offered as "possibly related", beside the answer, never
+    in place of it. Anything that goes wrong returns ``[]``: this must never break an answer.
+    Ends with the session's read transaction still open; callers commit before writing. A
+    failure undoes only its own SAVEPOINT, so the caller's objects stay usable.
+    """
+
+    from quberi_api.domain.documents.models import Document
+    from quberi_api.services.rag import image_search
+
+    query = (text or "").strip()
+    settings = get_settings()
+    if not query or len(query) > RELATED_PICTURE_MAX_CHARS or not settings.image_search_enabled:
+        return []
+    try:
+        # A SAVEPOINT: if anything inside fails, only it is undone. A plain rollback would
+        # expire every object the caller holds (the conversation) and break the answer.
+        async with session.begin_nested():
+            view = await get_conversation_for_user(
+                session,
+                conversation_id=conversation_id,
+                organization_id=organization_id,
+                user_id=user_id,
+            )
+            conversation = view.conversation
+            if _agent_binding(conversation) is not None:
+                return []  # an agent decides for itself what to look up
+            scope, _mode, doc_access = await effective_access_for_conversation(
+                session, conversation=conversation, caller_user_id=user_id
+            )
+            if not scope and not doc_access.granted:
+                return []
+            any_picture = (
+                await session.execute(
+                    select(Document.id)
+                    .where(*_readable_pictures(organization_id, scope, doc_access))
+                    .limit(1)
+                )
+            ).first()
+            if any_picture is None:
+                return []  # nothing to find: do not even load the picture model
+            vector = await image_search.embed_query(image=None, text=query)
+            qdrant = create_qdrant_client(settings)
+            try:
+                found = await image_search.search_images(
+                    session,
+                    qdrant=qdrant,
+                    organization_id=organization_id,
+                    space_ids=scope,
+                    query_vector=vector,
+                    top_k=RELATED_PICTURE_TOP_K,
+                    doc_access=doc_access,
+                )
+            finally:
+                await qdrant.close()
+    except Exception:  # noqa: BLE001 - a side search must never break the answer
+        import logging as _logging
+
+        _logging.getLogger(__name__).exception("related pictures failed; answering without them")
+        return []
+    return [_picture_match_dict(m) for m in found.matches if m.score >= RELATED_PICTURE_MIN_SCORE]
+
+
 async def plan_picture_turn(
     session: AsyncSession,
     *,
@@ -852,7 +1014,6 @@ async def plan_picture_turn(
     """
 
     from quberi_api.domain.documents.models import Document
-    from quberi_api.services.documents.core import file_type_clause
     from quberi_api.services.rag import image_search, picture_intent
 
     intent = picture_intent.classify(text)
@@ -875,14 +1036,7 @@ async def plan_picture_turn(
         await session.rollback()
         return None
 
-    readable = (
-        Document.organization_id == organization_id,
-        or_(Document.space_id.in_(scope), Document.id.in_(set(doc_access.granted))),
-        Document.id.not_in(doc_access.denied),
-        Document.status != "archived",
-        Document.review_state == "approved",
-        file_type_clause(Document.mime_type, "image"),
-    )
+    readable = _readable_pictures(organization_id, scope, doc_access)
     total = (
         await session.execute(select(func.count()).select_from(Document).where(*readable))
     ).scalar_one()
@@ -937,18 +1091,7 @@ async def plan_picture_turn(
             _logging.getLogger(__name__).exception("picture question failed; using text path")
             await session.rollback()
             return None
-        matches = [
-            {
-                "document_id": str(m.document_id),
-                "document_name": m.document_name,
-                "space_id": str(m.space_id),
-                "space_name": m.space_name,
-                "mime_type": m.mime_type,
-                "size_bytes": m.size_bytes,
-                "score": round(m.score, 4),
-            }
-            for m in found.matches
-        ]
+        matches = [_picture_match_dict(m) for m in found.matches]
         best = max((m["score"] for m in matches), default=None)
         if not matches:
             await session.rollback()
@@ -1003,6 +1146,7 @@ async def send_message_stream(
     text: str,
     review: bool = False,
     picture_plan: PicturePlan | None = None,
+    with_pictures: bool = True,
 ):
     """Streaming twin of :func:`send_message`.
 
@@ -1242,6 +1386,7 @@ async def send_message_stream(
                         scope_is_empty=scope_empty,
                         scope_mode=retrieved.scope_mode,
                         scope_space_ids=[str(x) for x in retrieved.space_ids],
+                        with_pictures=with_pictures,
                         model_id=ov_model,
                         binding_id=str(ov_binding) if ov_binding else None,
                         model=await describe_chat_model(
@@ -1311,6 +1456,19 @@ async def send_message_stream(
         finally:
             await qdrant.close()
 
+    # Pictures that might be what was asked for (the model cannot read pictures).
+    related = (
+        []
+        if not with_pictures or agent_id is not None or error_note
+        else await related_pictures(
+            session,
+            conversation_id=conversation.id,
+            organization_id=organization_id,
+            user_id=user_id,
+            text=text,
+        )
+    )
+
     # ---- Txn B: assistant message + counters ----
     assistant_message, content = await _persist_assistant_turn(
         session,
@@ -1324,6 +1482,7 @@ async def send_message_stream(
         citations_payload=citations_payload,
         assistant_meta=assistant_meta,
         error_note=error_note,
+        related=related,
         audit_extra={
             "scope_mode": scope_mode_used,
             "retrieved_document_ids": retrieved_doc_ids,
@@ -1369,6 +1528,7 @@ async def _persist_assistant_turn(
     error_note: str | None,
     audit_extra: dict,
     audit_action: str = "message.sent",
+    related: list[dict] | None = None,
 ) -> tuple[Message, dict]:
     """Save the assistant's reply, bump the counters, write the audit event."""
 
@@ -1382,6 +1542,8 @@ async def _persist_assistant_turn(
         content: dict = {"type": "text", "text": accumulated_answer}
         if citations_payload:
             content["citations"] = citations_payload
+        if related:
+            content["image_matches"] = related
         if assistant_meta:
             content["meta"] = assistant_meta
         if error_note:
@@ -1424,6 +1586,7 @@ async def _persist_assistant_turn(
                     "citation_count": len(citations_payload),
                     "model_id": assistant_meta.get("model_id"),
                     "error": error_note,
+                    **({"related_picture_ids": [m["document_id"] for m in related]} if related else {}),
                     **audit_extra,
                 },
             )
@@ -1662,6 +1825,19 @@ async def resume_reviewed_stream(
         assistant_meta = {"error": error_note, "review": review_meta}
         yield "error", {"message": error_note}
 
+    # Looking pictures up sends nothing to the model, so a held prompt's edits do not apply:
+    # it is the question as asked.
+    related = (
+        []
+        if error_note or not pending.with_pictures
+        else await related_pictures(
+            session,
+            conversation_id=conversation_id,
+            organization_id=organization_id,
+            user_id=user_id,
+            text=pending.query,
+        )
+    )
     assistant_message, content = await _persist_assistant_turn(
         session,
         conversation_id=conversation_id,
@@ -1674,6 +1850,7 @@ async def resume_reviewed_stream(
         citations_payload=citations_payload,
         assistant_meta=assistant_meta,
         error_note=error_note,
+        related=related,
         audit_extra={
             "scope_mode": pending.scope_mode,
             # What the model could actually see: the passages that were kept.

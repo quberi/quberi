@@ -78,7 +78,7 @@ async function failureOf(response: Response): Promise<ApiError> {
 /**
  * Find similar pictures from a picture, a description, or both. The reply is
  * an ordinary message pair; the answer carries ``image_matches``. The query
- * picture is read by the server in memory and never stored.
+ * picture is kept by the server for the person who sent it (see ``fetchQueryPicture``).
  *
  * The first search after a server start loads the picture model, which can
  * take a while, so this waits longer than ``apiFetch`` does.
@@ -123,6 +123,21 @@ export async function fetchThumbnail(
 ): Promise<Blob> {
   const response = await fetch(
     `${API_BASE}/api/v1/spaces/${spaceId}/documents/${documentId}/thumbnail`,
+    { headers: buildAuthHeaders(credentials), signal },
+  )
+  if (!response.ok) throw await failureOf(response)
+  return response.blob()
+}
+
+/** The picture a question was searched with. Only its sender can read it back. */
+export async function fetchQueryPicture(
+  credentials: DevCredentials,
+  conversationId: string,
+  messageId: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/conversations/${conversationId}/messages/${messageId}/picture`,
     { headers: buildAuthHeaders(credentials), signal },
   )
   if (!response.ok) throw await failureOf(response)
@@ -211,11 +226,13 @@ export async function* streamMessage(
   text: string,
   signal?: AbortSignal,
   review = false,
+  /** False: text only (no picture lookup, no picture shortcut). */
+  pictures = true,
 ): AsyncGenerator<ChatStreamEvent> {
   yield* postSse(
     credentials,
     `/api/v1/conversations/${conversationId}/messages/stream`,
-    { text, review },
+    pictures ? { text, review } : { text, review, pictures: false },
     signal,
   )
 }

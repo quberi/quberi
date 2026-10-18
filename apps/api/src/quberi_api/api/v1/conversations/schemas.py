@@ -26,6 +26,9 @@ class SendMessageRequest(BaseModel):
     # Hold the prompt for the person to read and edit before the model is
     # called (streaming endpoint only).
     review: bool = False
+    # Also look the question up in the picture index (and answer a plain "show me pictures"
+    # from it). Off means text only: no picture lookup, no picture shortcut.
+    pictures: bool = True
 
 
 class ReviewReferenceEdit(BaseModel):

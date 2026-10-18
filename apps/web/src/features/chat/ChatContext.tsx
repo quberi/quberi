@@ -27,7 +27,9 @@ import {
 } from './api'
 import type { ChatStreamEvent, ReviewEditsBody, ReviewPayload } from './api'
 import { getGuestQuota, streamGuestAsk } from './guestApi'
+import { forgetQueryPictures, rememberQueryPicture } from './queryPictures'
 import type { GuestQuota, GuestTurn } from './guestApi'
+import { SEARCH_MODES } from './types'
 import type {
   AgentTraceStep,
   ConversationSummary,
@@ -35,6 +37,7 @@ import type {
   MessageSummary,
   ScopeMode,
   ScopeSource,
+  SearchMode,
 } from './types'
 
 /**
@@ -99,6 +102,12 @@ interface ChatContextValue {
    */
   reviewBeforeSend: boolean
   setReviewBeforeSend: (on: boolean) => void
+  /**
+   * Where questions are looked up: documents, pictures, or both (the default). Per browser,
+   * like "check before sending". Pictures sent with a question always search the pictures.
+   */
+  searchMode: SearchMode
+  setSearchMode: (mode: SearchMode) => void
   /** The prompt currently held for review, if any. */
   pendingReview: { conversationId: string; review: ReviewPayload } | null
   /** An error about the held prompt itself (for example an edit was refused). */
@@ -139,6 +148,7 @@ const ChatContext = createContext<ChatContextValue | null>(null)
 
 
 const REVIEW_STORAGE_KEY = 'quberi.reviewBeforeSend'
+const SEARCH_MODE_STORAGE_KEY = 'quberi.searchMode'
 
 function toMessage(error: unknown): string {
   return error instanceof ApiError
@@ -150,6 +160,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const { credentials } = useAuth()
   const { i18n } = useTranslation()
   const { state: spacesState } = useSpaces()
+
+  // Pictures searched with are held in this tab only; let them go when the
+  // person signs out or the chat is closed.
+  const signedIn = credentials != null
+  useEffect(() => {
+    if (!signedIn) forgetQueryPictures()
+    return () => forgetQueryPictures()
+  }, [signedIn])
 
   // Spaces reached only through individually shared documents have no conversations
   // of their own and cannot anchor one; search still covers them (auto scope).
@@ -196,6 +214,22 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return false
     }
   })
+  const [searchMode, setSearchModeState] = useState<SearchMode>(() => {
+    try {
+      const saved = window.localStorage.getItem(SEARCH_MODE_STORAGE_KEY)
+      return SEARCH_MODES.find((m) => m === saved) ?? 'both'
+    } catch {
+      return 'both'
+    }
+  })
+  const setSearchMode = useCallback((mode: SearchMode) => {
+    setSearchModeState(mode)
+    try {
+      window.localStorage.setItem(SEARCH_MODE_STORAGE_KEY, mode)
+    } catch {
+      /* private mode: the choice just lasts for this page */
+    }
+  }, [])
   const [pendingReview, setPendingReview] = useState<{
     conversationId: string
     review: ReviewPayload
@@ -676,10 +710,19 @@ export function ChatProvider({ children }: PropsWithChildren) {
           text,
           undefined,
           reviewBeforeSend,
+          searchMode !== 'text',
         ),
       )
     },
-    [credentials, currentConversationId, sendGuestMessage, runStream, reviewBeforeSend, pendingReview],
+    [
+      credentials,
+      currentConversationId,
+      sendGuestMessage,
+      runStream,
+      reviewBeforeSend,
+      searchMode,
+      pendingReview,
+    ],
   )
   const sendImageSearch = useCallback(
     async (picture: File | null, text: string): Promise<boolean> => {
@@ -689,6 +732,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       setSending({ active: true, error: null })
       try {
         const res = await apiSendImageSearch(credentials, convId, picture, text)
+        // The server does not keep the picture; hold it here so the thread can show it.
+        if (picture) rememberQueryPicture(res.user_message.id, picture)
         // Only show it if the person is still looking at this conversation;
         // otherwise it is saved and appears when they come back.
         if (loadedConversationRef.current === convId) {
@@ -929,6 +974,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       sending,
       reviewBeforeSend,
       setReviewBeforeSend,
+      searchMode,
+      setSearchMode,
       pendingReview,
       reviewError,
       approveReview,
@@ -961,6 +1008,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       sending,
       reviewBeforeSend,
       setReviewBeforeSend,
+      searchMode,
+      setSearchMode,
       pendingReview,
       reviewError,
       approveReview,

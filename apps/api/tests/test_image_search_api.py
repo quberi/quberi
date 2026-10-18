@@ -26,9 +26,10 @@ from quberi_api.api.v1.conversations import router as conv_router
 from quberi_api.api.v1.spaces import documents as documents_router
 from quberi_api.core.config import get_settings
 from quberi_api.domain.audit.models import AuditEvent
-from quberi_api.domain.conversations.models import Conversation, Message
+from quberi_api.domain.conversations.models import Conversation, ConversationPicture, Message
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.spaces.models import Space
+from quberi_api.services import conversation_pictures
 from quberi_api.services import conversations as conversations_service
 from quberi_api.services import members as members_service
 from quberi_api.services import space_bindings as space_bindings_service
@@ -77,6 +78,43 @@ async def redis_client():
 @pytest.fixture(autouse=True)
 def fake_embedder(monkeypatch):
     monkeypatch.setattr(image_search, "get_image_embedder", lambda *_a, **_k: FakeEmbedder())
+
+
+@pytest.fixture(autouse=True)
+def picture_store(monkeypatch):
+    """Object storage stood in for by a dict: key -> bytes. ``store.fail`` makes puts fail."""
+
+    class Store(dict):
+        fail = False
+
+    objects = Store()
+    local = conversation_pictures.local_connector
+
+    async def fake_store(*, storage_key, source_stream, content_type, max_bytes):
+        if objects.fail:
+            raise OSError("object store is down")
+        data = source_stream.read()
+        objects[storage_key] = data
+        import hashlib
+
+        return SimpleNamespace(
+            storage_key=storage_key, size_bytes=len(data),
+            checksum_sha256=hashlib.sha256(data).hexdigest(),
+        )
+
+    def fake_open(storage_key):
+        async def stream():
+            yield objects[storage_key]
+
+        return stream()
+
+    async def fake_delete(storage_key):
+        objects.pop(storage_key, None)
+
+    monkeypatch.setattr(local, "store", fake_store)
+    monkeypatch.setattr(local, "open_stream", fake_open)
+    monkeypatch.setattr(local, "delete", fake_delete)
+    return objects
 
 
 class Who:
@@ -187,7 +225,9 @@ async def test_a_picture_finds_similar_pictures_and_the_answer_is_a_chat_message
     assert answer["meta"]["kind"] == "image_search"
     assert body["conversation"]["message_count"] == 2
     assert body["user_message"]["role"] == "user"
-    assert body["user_message"]["content"]["image_query"] == {"picture": True, "description": False}
+    query = body["user_message"]["content"]["image_query"]
+    assert query["picture"] is True and query["description"] is False and query["stored"] is True
+    uuid.UUID(query["picture_id"])
 
 
 async def test_words_alone_find_pictures_too(client, db_session, org_and_owner, qdrant):
@@ -204,7 +244,182 @@ async def test_words_alone_find_pictures_too(client, db_session, org_and_owner, 
     }
 
 
-async def test_the_query_picture_is_not_kept_anywhere(client, db_session, org_and_owner, qdrant):
+async def test_the_query_picture_is_kept_for_its_sender_and_described(
+    client, db_session, org_and_owner, qdrant, picture_store
+):
+    space = await _space(db_session, org_and_owner, "Parts")
+    await _picture(db_session, org_and_owner, qdrant, space, RED)
+    conv = await _conversation(db_session, org_and_owner)
+    data = _png("red", size=(33, 21))
+
+    resp = await _post(client, conv, file=data)
+
+    assert resp.status_code == 201, resp.text
+    message_id = uuid.UUID(resp.json()["user_message"]["id"])
+    row = (await db_session.execute(select(ConversationPicture))).scalar_one()
+    assert row.message_id == message_id
+    assert row.conversation_id == conv.id
+    assert row.organization_id == org_and_owner.organization_id
+    assert row.owner_user_id == org_and_owner.user_id
+    assert row.filename == "query.png"
+    assert (row.mime_type, row.width, row.height, row.size_bytes) == ("image/png", 33, 21, len(data))
+    import hashlib
+
+    assert row.checksum_sha256 == hashlib.sha256(data).hexdigest()
+    assert picture_store[row.storage_key] == data
+    assert str(row.id) == resp.json()["user_message"]["content"]["image_query"]["picture_id"]
+
+    back = await client.get(f"/api/v1/conversations/{conv.id}/messages/{message_id}/picture")
+
+    assert back.status_code == 200
+    assert back.content == data
+    assert back.headers["content-type"] == "image/png"
+    assert back.headers["x-content-type-options"] == "nosniff"
+    assert back.headers["cache-control"].startswith("private")
+    assert "sandbox" in back.headers["content-security-policy"]
+
+
+async def test_the_picture_comes_back_when_the_thread_is_opened_again(
+    client, db_session, org_and_owner, qdrant
+):
+    conv = await _conversation(db_session, org_and_owner)
+    sent = await _post(client, conv, file=_png("red"))
+    again = await client.get(f"/api/v1/conversations/{conv.id}/messages")
+
+    question = again.json()["items"][0]
+    assert question["id"] == sent.json()["user_message"]["id"]
+    assert question["content"]["image_query"]["stored"] is True
+
+
+async def test_only_the_sender_can_read_the_picture(
+    client, db_session, org_and_owner, qdrant
+):
+    conv = await _conversation(db_session, org_and_owner)
+    sent = await _post(client, conv, file=_png("red"))
+    message_id = sent.json()["user_message"]["id"]
+    await db_session.commit()
+    invited = await members_service.invite_member(
+        db_session, organization_id=org_and_owner.organization_id,
+        invited_by_user_id=org_and_owner.user_id, email=f"m-{uuid.uuid4().hex[:6]}@example.com",
+        display_name="Member", role_code="member",
+    )
+    other = await db_session.get(User, invited.user.id)
+    other.status = "active"
+    await db_session.flush()
+    await db_session.commit()
+    # The other member can see the sender's personal space, so seeing the thread is allowed...
+    await space_bindings_service.add_binding(
+        db_session, space_id=conv.space_id, organization_id=org_and_owner.organization_id,
+        actor_user_id=org_and_owner.user_id, subject_type="user", subject_id=other.id,
+        role_code="viewer",
+    )
+    await db_session.commit()
+    client.who.user = other
+
+    resp = await client.get(f"/api/v1/conversations/{conv.id}/messages/{message_id}/picture")
+
+    # ...but the picture is the sender's alone, and asking looks the same as "no such picture".
+    assert resp.status_code == 404
+    missing = await client.get(
+        f"/api/v1/conversations/{conv.id}/messages/{uuid.uuid4()}/picture"
+    )
+    assert missing.status_code == 404
+    assert missing.json() == resp.json()
+
+
+async def test_the_kind_is_found_by_decoding_not_by_the_upload_label(
+    client, db_session, org_and_owner, qdrant
+):
+    conv = await _conversation(db_session, org_and_owner)
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), "red").save(buf, format="JPEG")
+
+    # The test client labels every upload image/png; this one is a JPEG.
+    resp = await _post(client, conv, file=buf.getvalue())
+
+    assert resp.status_code == 201
+    row = (await db_session.execute(select(ConversationPicture))).scalar_one()
+    assert row.mime_type == "image/jpeg"
+
+
+async def test_the_file_name_is_a_plain_base_name(client, db_session, org_and_owner, qdrant):
+    conv = await _conversation(db_session, org_and_owner)
+    files = {"file": ("../../etc/evil.png", _png("red"), "image/png")}
+
+    resp = await client.post(_url(conv), files=files)
+
+    assert resp.status_code == 201
+    row = (await db_session.execute(select(ConversationPicture))).scalar_one()
+    assert row.filename == "evil.png"
+    # What a browser may send, and what a hostile client may: only the base name survives.
+    assert conversation_pictures.clean_filename("C:\\fakepath\\my photo.jpg") == "my photo.jpg"
+    assert conversation_pictures.clean_filename("a\x00b\x07c.png") == "abc.png"
+    assert conversation_pictures.clean_filename("x" * 400 + ".png") == "x" * 255
+    assert conversation_pictures.clean_filename("") == "picture"
+    assert conversation_pictures.clean_filename(None) == "picture"
+    assert conversation_pictures.clean_filename("../") == "picture"
+    # What a browser may send, and what a hostile client may: only the base name survives.
+    assert conversation_pictures.clean_filename("C:\\fakepath\\my photo.jpg") == "my photo.jpg"
+    assert conversation_pictures.clean_filename("a\x00b\x07c.png") == "abc.png"
+    assert conversation_pictures.clean_filename("x" * 400 + ".png") == "x" * 255
+    assert conversation_pictures.clean_filename("") == "picture"
+    assert conversation_pictures.clean_filename(None) == "picture"
+    assert conversation_pictures.clean_filename("../") == "picture"
+
+
+async def test_a_search_by_words_keeps_no_picture(
+    client, db_session, org_and_owner, qdrant, picture_store
+):
+    conv = await _conversation(db_session, org_and_owner)
+
+    resp = await _post(client, conv, text="a red part")
+
+    assert resp.status_code == 201
+    assert (await db_session.execute(select(ConversationPicture))).first() is None
+    assert picture_store == {}
+    assert "stored" not in resp.json()["user_message"]["content"]["image_query"]
+
+
+async def test_the_search_still_answers_when_the_picture_cannot_be_kept(
+    client, db_session, org_and_owner, qdrant, picture_store
+):
+    space = await _space(db_session, org_and_owner, "Parts")
+    await _picture(db_session, org_and_owner, qdrant, space, RED, "red.png")
+    conv = await _conversation(db_session, org_and_owner)
+    picture_store.fail = True
+
+    resp = await _post(client, conv, file=_png("red"))
+
+    assert resp.status_code == 201
+    assert _matches(resp)[0]["document_name"] == "red.png"
+    query = resp.json()["user_message"]["content"]["image_query"]
+    assert query == {"picture": True, "description": False}
+    assert (await db_session.execute(select(ConversationPicture))).first() is None
+    gone = await client.get(
+        f"/api/v1/conversations/{conv.id}/messages/{resp.json()['user_message']['id']}/picture"
+    )
+    assert gone.status_code == 404
+
+
+async def test_a_picture_is_taken_back_when_the_question_cannot_be_written(
+    client, db_session, org_and_owner, qdrant, picture_store, monkeypatch
+):
+    conv = await _conversation(db_session, org_and_owner)
+
+    async def broken(*_a, **_k):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(conversations_service, "_persist_image_turn", broken)
+
+    with pytest.raises(RuntimeError):
+        await _post(client, conv, file=_png("red"))
+
+    assert picture_store == {}
+
+
+async def test_the_picture_is_not_inside_messages_or_the_audit_log(
+    client, db_session, org_and_owner, qdrant
+):
     import base64
 
     space = await _space(db_session, org_and_owner, "Parts")
@@ -227,8 +442,9 @@ async def test_the_query_picture_is_not_kept_anywhere(client, db_session, org_an
     dumped = repr(stored) + repr(
         (await db_session.execute(select(AuditEvent.payload))).scalars().all()
     )
+    # The bytes and the file name live in object storage and the pictures table only.
     assert base64.b64encode(data[:24]).decode() not in dumped
-    assert "query.png" not in dumped  # not even the file name
+    assert "query.png" not in dumped
     assert repr(data[:16]) not in dumped
     # The words the person typed are in their own message but never in the audit log.
     audit = (
@@ -238,7 +454,8 @@ async def test_the_query_picture_is_not_kept_anywhere(client, db_session, org_an
     ).scalars().all()
     assert "my secret description" not in repr(audit)
     assert audit[-1]["kind"] == "image_search"
-    assert audit[-1]["query"] == {"picture": True, "description": True}
+    assert audit[-1]["query"]["picture"] is True and audit[-1]["query"]["description"] is True
+    assert audit[-1]["query"]["stored"] is True
 
 
 async def test_the_search_is_audited_with_document_ids_only(
@@ -371,7 +588,7 @@ async def test_someone_elses_conversation_is_not_found(client, db_session, org_a
 
 
 async def test_nothing_is_written_when_the_query_is_refused(
-    client, db_session, org_and_owner, qdrant
+    client, db_session, org_and_owner, qdrant, picture_store
 ):
     conv = await _conversation(db_session, org_and_owner)
 
@@ -386,6 +603,8 @@ async def test_nothing_is_written_when_the_query_is_refused(
         await db_session.commit()
 
     assert await _messages_in(db_session, conv) is None
+    assert (await db_session.execute(select(ConversationPicture))).first() is None
+    assert picture_store == {}
     refreshed = await db_session.get(Conversation, conv.id)
     await db_session.refresh(refreshed)
     assert refreshed.message_count == 0

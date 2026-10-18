@@ -1452,6 +1452,17 @@
       },
       "editedBadgeHint": "Before sending you edited the content or dropped some passages, so the citations show the original text while the model saw a slightly different version."
     },
+    "searchMode": {
+      "label": "Search in",
+      "text": "Text",
+      "image": "Pictures",
+      "both": "Both",
+      "textHint": "Look only in document text",
+      "imageHint": "Look only for pictures; no model is called",
+      "bothHint": "Look in document text and in pictures",
+      "textBlocked": "With a picture attached, only pictures can be searched",
+      "pictureOnlyHint": "No description, so this searches pictures only. Add words to ask the documents too."
+    },
     "imageSearch": {
       "pick": "Search with a picture",
       "pickHint": "Pick a picture to find similar ones in the spaces you can read. You can also paste or drop one into the box.",
@@ -1459,12 +1470,15 @@
       "byWordsMenuHint": "Describe the picture you want in words. No upload needed.",
       "byWordsHint": "Describe the picture you want",
       "placeholder": "Add a description (optional), then press Enter to search",
-      "notSaved": "Used for this search only, not saved",
+      "notSaved": "Kept in this conversation; only you can see it",
       "remove": "Cancel picture search",
       "dropHint": "Drop to search with this picture",
       "notPicture": "Only picture files can be used to search.",
       "tooBig": "The picture must be {{mb}} MB or smaller.",
       "askedWithPicture": "Picture search (picture not saved)",
+      "askedWithPictureKept": "Picture search",
+      "askedWithPictureShown": "Picture search (could not be saved; shown on this page only)",
+      "queryPictureAlt": "The picture used to search",
       "askedWithWords": "Picture search by description",
       "showPictures_one": "Show {{count}} picture on the right",
       "showPictures_other": "Show {{count}} pictures on the right",
@@ -1473,7 +1487,11 @@
       "railCount_other": "{{count}} pictures",
       "score": "Similarity {{score}}",
       "open": "View larger",
-      "noPreview": "Preview unavailable"
+      "noPreview": "Preview unavailable",
+      "unavailable": "This picture was deleted, or you can no longer view it",
+      "relatedTitle": "Possibly related pictures",
+      "showRelated_one": "{{count}} possibly related picture, shown on the right",
+      "showRelated_other": "{{count}} possibly related pictures, shown on the right"
     }
   },
   "orgSpaces": {
