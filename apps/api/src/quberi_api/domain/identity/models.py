@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint, false
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint, false, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -171,6 +171,11 @@ class User(DirectorySyncMixin, TimestampMixin, Base):
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="invited")
     attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # Bumped when every web session of this member must stop working at once (deactivation).
+    # A session carries the value it was issued with and is rejected when it no longer matches.
+    session_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
 
     # Populated by relationships defined in other modules once they import this
     # table. We only need the org side here to keep this file self-contained.

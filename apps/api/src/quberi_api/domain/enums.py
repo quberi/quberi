@@ -21,6 +21,19 @@ USER_STATUS = ("invited", "active", "suspended", "archived")
 SERVICE_ACCOUNT_STATUS = ("active", "disabled")
 GENERIC_STATUS = ("active", "archived")
 
+# Spaces have their own list: ``frozen`` is set only by the member-offboarding flow on a
+# deactivated member's personal space. Nobody can read a frozen space (not even its owner
+# or an administrator); the data stays until the member is reactivated.
+SPACE_STATUS = ("active", "archived", "frozen")
+FROZEN_SPACE_STATUS = "frozen"
+# Every read path accepts only these statuses, so a status added later is unreadable until
+# someone decides otherwise (fail closed).
+READABLE_SPACE_STATUSES = ("active", "archived")
+# Users in these states cannot sign in, hold a session, or take part in access checks.
+# ``invited`` is not listed: an invited person can be granted access to a space before
+# their first sign-in, which turns them ``active``.
+BLOCKED_USER_STATUSES = ("suspended", "archived")
+
 # ---------------------------------------------------------------------------
 # Identity providers
 # ---------------------------------------------------------------------------

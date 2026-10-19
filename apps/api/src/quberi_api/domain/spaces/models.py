@@ -36,11 +36,11 @@ from quberi_api.db.base import Base
 from quberi_api.db.types import TimestampMixin, UUIDPk
 from quberi_api.domain._constraints import in_values
 from quberi_api.domain.enums import (
-    GENERIC_STATUS,
     SPACE_ACCESS_REQUEST_ROLES,
     SPACE_ACCESS_REQUEST_STATUSES,
     SPACE_OWNER_TYPES,
     SPACE_PRESETS,
+    SPACE_STATUS,
     SPACE_TRUST_LEVELS,
     SPACE_VISIBILITY,
 )
@@ -56,7 +56,7 @@ class Space(TimestampMixin, Base):
         in_values("owner_type", SPACE_OWNER_TYPES, name="owner_type"),
         in_values("visibility", SPACE_VISIBILITY, name="visibility"),
         in_values("trust_level", SPACE_TRUST_LEVELS, name="trust_level"),
-        in_values("status", GENERIC_STATUS, name="status"),
+        in_values("status", SPACE_STATUS, name="status"),
         Index("ix_spaces_organization_id", "organization_id"),
         Index("ix_spaces_owner", "owner_type", "owner_id"),
         Index("ix_spaces_parent_space_id", "parent_space_id"),

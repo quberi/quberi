@@ -7,14 +7,17 @@
 * :class:`VerificationCode` — a short-lived one-time code sent to an email
   (later: phone) to prove ownership during login. Codes are stored hashed,
   expire quickly, and cap failed attempts.
+* :class:`RevokedSession` — the hash of a web session that was signed out before
+  it expired.
 """
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from quberi_api.db.base import Base
@@ -76,6 +79,29 @@ class VerificationCode(Base):
         DateTime(timezone=True), nullable=True
     )
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class RevokedSession(Base):
+    """One web session that was signed out before it expired.
+
+    Only the sha256 of the session token is stored, never the token. A row can be deleted
+    once ``expires_at`` has passed, because the token would be rejected as expired anyway.
+    """
+
+    __tablename__ = "revoked_sessions"
+    __table_args__ = (
+        Index("ix_revoked_sessions_expires_at", "expires_at"),
+        Index("ix_revoked_sessions_user_id", "user_id"),
+    )
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
