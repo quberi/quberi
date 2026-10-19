@@ -44,10 +44,10 @@ export function ScopeChipStrip() {
           <span
             className="chat-scope-chip chip-source"
             key={s.id}
-            title={s.space_slug}
+            title={s.hidden ? undefined : s.space_slug}
           >
             <Layers size={12} />
-            <span>{s.space_name}</span>
+            <span>{s.hidden ? t('chat.scope.hiddenSource') : s.space_name}</span>
           </span>
         ))
       )}

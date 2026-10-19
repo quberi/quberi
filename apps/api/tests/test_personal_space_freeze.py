@@ -918,6 +918,113 @@ async def test_quoted_passages_of_a_frozen_space_are_hidden_from_other_readers_u
     assert not after["private-notes.pdf"].get("text_hidden")
 
 
+def _picture(document, space_id, space_name):
+    return {
+        "document_id": str(document.id),
+        "document_name": document.name,
+        "space_id": str(space_id),
+        "space_name": space_name,
+        "mime_type": "image/png",
+        "size_bytes": 1234,
+        "score": 0.9,
+    }
+
+
+async def test_pictures_and_sources_of_a_frozen_space_lose_their_names_for_other_readers_until_it_thaws(
+    web, db_session, qdrant, blobs
+):
+    """Names of a closed space are blanked in a colleague's chat; the stored data is not."""
+    from quberi_api.domain.conversations.models import ConversationKnowledgeSource
+
+    w = await _world(db_session, qdrant, blobs)
+    org = w.boot.organization_id
+    await _grant(db_session, w.boot, w.private, SimpleNamespace(id=w.colleague.id), "viewer")
+    mine = await _personal_of(db_session, w.colleague.id)
+    conv = (
+        await conversations_service.create_conversation(
+            db_session, space_id=mine, organization_id=org, user_id=w.colleague.id, title="q"
+        )
+    ).conversation.id
+    shared_name = (
+        await db_session.execute(select(Space.name).where(Space.id == w.shared.id))
+    ).scalar_one()
+    shared_pic = SimpleNamespace(
+        id=(await _stored(db_session, w.boot, qdrant, w.shared, RED, blobs, "handbook.png")).id,
+        name="handbook.png",
+    )
+    db_session.add_all(
+        [
+            Message(
+                conversation_id=conv,
+                organization_id=org,
+                role="assistant",
+                content={
+                    "text": "found",
+                    "image_matches": [
+                        _picture(SimpleNamespace(id=w.private_pic.id, name="private.png"), w.private.id, "Leaver private"),
+                        _picture(shared_pic, w.shared.id, shared_name),
+                    ],
+                },
+            ),
+            ConversationKnowledgeSource(
+                conversation_id=conv, space_id=w.private.id, added_by_user_id=w.colleague.id
+            ),
+            ConversationKnowledgeSource(
+                conversation_id=conv, space_id=w.shared.id, added_by_user_id=w.colleague.id
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    async def shown():
+        await _as(web, db_session, w.boot, w.colleague.id)
+        resp = await web.get(f"/api/v1/conversations/{conv}/messages")
+        assert resp.status_code == 200, resp.text
+        reply = next(m for m in resp.json()["items"] if m["role"] == "assistant")
+        sources = await web.get(f"/api/v1/conversations/{conv}/scope-sources")
+        assert sources.status_code == 200, sources.text
+        await db_session.commit()
+        return (
+            {p["space_id"]: p for p in reply["content"]["image_matches"]},
+            {s["space_id"]: s for s in sources.json()["items"]},
+            resp.text + sources.text,
+        )
+
+    pictures, links, _ = await shown()
+    assert pictures[str(w.private.id)]["document_name"] == "private.png"
+    assert pictures[str(w.private.id)]["space_name"] == "Leaver private"
+    assert not pictures[str(w.private.id)].get("hidden")
+    assert links[str(w.private.id)]["space_name"] == "Leaver private"
+    assert links[str(w.private.id)]["hidden"] is False
+
+    await _freeze(db_session, w.boot, w.leaver.id)
+    pictures, links, raw = await shown()
+    closed = pictures[str(w.private.id)]
+    assert closed["hidden"] is True
+    assert (closed["document_name"], closed["space_name"], closed["mime_type"], closed["size_bytes"]) == ("", "", "", 0)
+    assert closed["document_id"] == str(w.private_pic.id)
+    assert "private.png" not in raw and "Leaver private" not in raw
+    assert links[str(w.private.id)]["hidden"] is True
+    assert links[str(w.private.id)]["space_name"] == "" and links[str(w.private.id)]["space_slug"] == ""
+    # What the reader may read anyway is untouched.
+    assert pictures[str(w.shared.id)]["document_name"] == "handbook.png"
+    assert pictures[str(w.shared.id)]["space_name"] == shared_name
+    assert not pictures[str(w.shared.id)].get("hidden")
+    assert links[str(w.shared.id)]["space_name"] == shared_name and links[str(w.shared.id)]["hidden"] is False
+    # Nothing stored was rewritten, and the source link is still there to be removed.
+    stored = (await db_session.execute(select(Message.content).where(Message.conversation_id == conv))).scalar_one()
+    await db_session.commit()
+    assert stored["image_matches"][0]["document_name"] == "private.png"
+    assert stored["image_matches"][0]["space_name"] == "Leaver private"
+
+    await _unfreeze(db_session, w.boot, w.leaver.id)
+    pictures, links, _ = await shown()
+    assert pictures[str(w.private.id)]["document_name"] == "private.png"
+    assert pictures[str(w.private.id)]["space_name"] == "Leaver private"
+    assert not pictures[str(w.private.id)].get("hidden")
+    assert links[str(w.private.id)]["space_name"] == "Leaver private" and links[str(w.private.id)]["hidden"] is False
+
+
 # ---------------------------------------------------------------------------
 # Cost
 # ---------------------------------------------------------------------------

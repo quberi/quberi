@@ -158,6 +158,7 @@ class ScopeSourceView(BaseModel):
     space_id: uuid.UUID
     space_name: str
     space_slug: str
+    hidden: bool = False
     added_by_user_id: Optional[uuid.UUID]
     created_at: datetime
 

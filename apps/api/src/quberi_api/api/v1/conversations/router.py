@@ -581,6 +581,7 @@ def _scope_source_view(v: conversations_service.KnowledgeSourceView) -> ScopeSou
         space_id=v.space_id,
         space_name=v.space_name,
         space_slug=v.space_slug,
+        hidden=v.hidden,
         added_by_user_id=link.added_by_user_id,
         created_at=link.created_at,
     )

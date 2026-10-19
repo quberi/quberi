@@ -209,6 +209,31 @@ describe('ImageMatchesRail', () => {
     await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(2))
   })
 
+  it('shows a picture of a closed space as a placeholder without names and fetches nothing', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(['x']), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const closed: ImageMatch = {
+      ...MATCHES[0],
+      document_name: '',
+      space_name: '',
+      mime_type: '',
+      size_bytes: 0,
+      hidden: true,
+    }
+    render(<ImageMatchesRail matches={[closed, MATCHES[1]]} railRef={{ current: null }} />)
+    expect(screen.getByText('chat.imageSearch.hiddenName')).toBeInTheDocument()
+    expect(screen.getByLabelText('chat.imageSearch.unavailable')).toBeInTheDocument()
+    // The open one beside it is shown as usual.
+    expect(screen.getByText('flange.jpg')).toBeInTheDocument()
+    expect(screen.getByText('Archive')).toBeInTheDocument()
+    // The closed card cannot be opened, and only the open picture is requested.
+    const [closedCard, openCard] = screen.getAllByRole('button')
+    expect(closedCard).toBeDisabled()
+    expect(openCard).toBeEnabled()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect((fetchMock.mock.calls[0][0] as string).includes('/spaces/s2/documents/d2/thumbnail')).toBe(true)
+  })
+
   it('shows a quiet placeholder, not a broken image, when a preview cannot be loaded', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 404 })))
     render(<ImageMatchesRail matches={[MATCHES[0]]} railRef={{ current: null }} />)

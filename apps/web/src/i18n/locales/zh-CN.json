@@ -1348,6 +1348,7 @@
     },
     "scope": {
       "summaryLabel": "知识来源",
+      "hiddenSource": "你无权查看的空间",
       "autoLabel_one": "全部可访问 · {{count}} 空间",
       "autoLabel_other": "全部可访问 · {{count}} 空间",
       "anchorPrefix": "锚定 · ",
@@ -1509,6 +1510,7 @@
       "score": "相似度 {{score}}",
       "open": "查看大图",
       "noPreview": "无法显示预览",
+      "hiddenName": "你无权查看的图片",
       "unavailable": "这张图片已被删除，或你已没有查看权限",
       "relatedTitle": "可能相关的图片",
       "showRelated_other": "另有 {{count}} 张可能相关的图片，在右侧查看",

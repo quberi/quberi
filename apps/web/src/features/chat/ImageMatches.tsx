@@ -64,8 +64,9 @@ function useProtectedImage(load: ((signal: AbortSignal) => Promise<Blob>) | null
 export function MatchThumbnail({ match }: { match: ImageMatch }) {
   const { t } = useTranslation()
   const { credentials } = useAuth()
+  // A picture whose space is closed to the reader is not fetched at all.
   const state = useProtectedImage(
-    credentials
+    credentials && !match.hidden
       ? (signal) => fetchThumbnail(credentials, match.space_id, match.document_id, signal)
       : null,
     `${match.space_id}/${match.document_id}`,
@@ -73,7 +74,7 @@ export function MatchThumbnail({ match }: { match: ImageMatch }) {
   if (state.kind === 'ready') {
     return <img alt={match.document_name} className="image-match-thumb" src={state.url} />
   }
-  const unavailable = isUnavailable(state)
+  const unavailable = match.hidden === true || isUnavailable(state)
   const hint = unavailable ? t('chat.imageSearch.unavailable') : t('chat.imageSearch.noPreview')
   return (
     <span
@@ -185,16 +186,17 @@ export function ImageMatchesRail({
           <li key={m.document_id}>
             <button
               className="image-match-card"
+              disabled={m.hidden === true}
               onClick={() => setOpen(m)}
-              title={t('chat.imageSearch.open')}
+              title={m.hidden ? undefined : t('chat.imageSearch.open')}
               type="button"
             >
               <MatchThumbnail match={m} />
-              <span className="image-match-name" title={m.document_name}>
-                {m.document_name}
+              <span className="image-match-name" title={m.hidden ? undefined : m.document_name}>
+                {m.hidden ? t('chat.imageSearch.hiddenName') : m.document_name}
               </span>
               <small className="image-match-meta">
-                <span title={m.space_name}>{m.space_name}</span>
+                {!m.hidden && <span title={m.space_name}>{m.space_name}</span>}
                 {m.score !== undefined && (
                   <>
                     <span className="dot-sep">·</span>

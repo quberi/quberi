@@ -36,6 +36,8 @@ export interface ImageMatch {
   mime_type: string
   size_bytes: number
   score: number
+  /** Names are emptied because the space is closed to this reader. */
+  hidden?: boolean
 }
 
 /**
@@ -133,6 +135,8 @@ export interface ScopeSource {
   space_id: string
   space_name: string
   space_slug: string
+  /** Name and slug are emptied because the space is closed to this reader. */
+  hidden?: boolean
   added_by_user_id: string | null
   created_at: string
 }

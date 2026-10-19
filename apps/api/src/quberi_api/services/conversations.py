@@ -277,52 +277,89 @@ async def contents_for_reader(
     organization_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> dict[uuid.UUID, dict]:
-    """What each message shows this reader: quoted passages only from what they can read.
+    """What each message shows this reader: only what they can read right now.
 
-    An answer stores the passages it cited, verbatim, inside the message. If the space a
-    passage came from is closed to the reader now (a personal space frozen when its owner
-    was deactivated, access taken away, a document hidden from them), the passage text is
-    emptied and ``text_hidden`` is set; the title, source and position stay. The stored
-    message is not changed, so the text is back as soon as the reader can read it again.
-    Messages without such citations are returned as they are.
+    An answer stores the passages it cited, verbatim, and the pictures it found (with file
+    and space names), inside the message. If the space one of them came from is closed to the
+    reader now (a personal space frozen when its owner was deactivated, access taken away, a
+    document hidden from them):
+
+    * a passage has its text emptied and ``text_hidden`` set; title, source and position stay;
+    * a picture has its file name, space name, type and size emptied and ``hidden`` set; only
+      the ids stay, and the picture itself is served by endpoints that check access anyway.
+
+    The stored message is not changed, so everything is back as soon as the reader can read
+    it again. Messages without such items are returned as they are.
     """
 
-    wanted = {
-        (m.id, i): c
-        for m in messages
-        for i, c in enumerate((m.content or {}).get("citations") or [])
-        if isinstance(c, dict) and c.get("text") and c.get("space_id") and c.get("document_id")
-    }
+    def stored(content: dict | None, key: str) -> list:
+        return [x for x in (content or {}).get(key) or [] if isinstance(x, dict)]
+
+    def wants_check(item: dict, *, passage: bool) -> bool:
+        return bool(
+            (not passage or item.get("text")) and item.get("space_id") and item.get("document_id")
+        )
+
     contents = {m.id: m.content for m in messages}
-    if not wanted:
+    if not any(
+        wants_check(x, passage=True) for m in messages for x in stored(m.content, "citations")
+    ) and not any(
+        wants_check(x, passage=False) for m in messages for x in stored(m.content, "image_matches")
+    ):
         return contents
     readable = await list_accessible_space_ids(
         session, user_id=user_id, organization_id=organization_id
     )
     access = await load_doc_access(session, user_id=user_id, organization_id=organization_id)
 
-    def may_read(citation: dict) -> bool:
+    def may_read(item: dict) -> bool:
         try:
             return access.allows(
-                document_id=uuid.UUID(str(citation["document_id"])),
-                space_id=uuid.UUID(str(citation["space_id"])),
+                document_id=uuid.UUID(str(item["document_id"])),
+                space_id=uuid.UUID(str(item["space_id"])),
                 readable_spaces=readable,
             )
         except ValueError:
             return False
 
-    closed = {key for key, c in wanted.items() if not may_read(c)}
+    def hide_passage(item: dict) -> dict:
+        if wants_check(item, passage=True) and not may_read(item):
+            return {**item, "text": "", "text_hidden": True}
+        return item
+
+    def hide_picture(item: dict) -> dict:
+        if isinstance(item, dict) and wants_check(item, passage=False) and not may_read(item):
+            return {
+                **item,
+                "document_name": "",
+                "space_name": "",
+                "mime_type": "",
+                "size_bytes": 0,
+                "hidden": True,
+            }
+        return item
+
     for message in messages:
-        if not any((message.id, i) in closed for i in range(len(message.content["citations"]))):
+        content = message.content or {}
+        citations = content.get("citations")
+        pictures = content.get("image_matches")
+        shown_citations = (
+            [hide_passage(c) if isinstance(c, dict) else c for c in citations]
+            if isinstance(citations, list)
+            else citations
+        )
+        shown_pictures = (
+            [hide_picture(p) for p in pictures] if isinstance(pictures, list) else pictures
+        )
+        if shown_citations == citations and shown_pictures == pictures:
             continue
         # A copy: the stored content must stay as it was written.
-        contents[message.id] = {
-            **message.content,
-            "citations": [
-                {**c, "text": "", "text_hidden": True} if (message.id, i) in closed else c
-                for i, c in enumerate(message.content["citations"])
-            ],
-        }
+        copy = dict(content)
+        if shown_citations != citations:
+            copy["citations"] = shown_citations
+        if shown_pictures != pictures:
+            copy["image_matches"] = shown_pictures
+        contents[message.id] = copy
     return contents
 
 
@@ -2005,6 +2042,9 @@ class KnowledgeSourceView:
     space_id: uuid.UUID
     space_name: str
     space_slug: str
+    # The reader cannot read the space now (frozen, access taken away): name and slug are
+    # emptied, the link itself stays so it can still be removed.
+    hidden: bool = False
 
 
 async def _load_conversation_for_user(
@@ -2319,7 +2359,9 @@ async def list_scope_sources(
     Always returns the *stored* links — including any that the current
     caller has since lost access to. The RAG pipeline is what filters
     against live access at query time; the management surface should
-    still show the link so an admin can prune it.
+    still show the link so an admin can prune it. For a space the caller
+    cannot read now (a frozen personal space, access taken away) the name
+    and slug are emptied and ``hidden`` is set; the stored link is unchanged.
     """
 
     await _load_conversation_for_user(
@@ -2341,9 +2383,18 @@ async def list_scope_sources(
             .order_by(ConversationKnowledgeSource.created_at.asc())
         )
     ).all()
+    if not rows:
+        return []
+    readable = await list_accessible_space_ids(
+        session, user_id=caller_user_id, organization_id=organization_id
+    )
     return [
         KnowledgeSourceView(
-            link=link, space_id=sid, space_name=name, space_slug=slug
+            link=link,
+            space_id=sid,
+            space_name=name if sid in readable else "",
+            space_slug=slug if sid in readable else "",
+            hidden=sid not in readable,
         )
         for link, sid, name, slug in rows
     ]

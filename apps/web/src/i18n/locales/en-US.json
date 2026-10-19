@@ -1348,6 +1348,7 @@
     },
     "scope": {
       "summaryLabel": "Sources",
+      "hiddenSource": "Space you cannot view",
       "autoLabel_one": "All accessible · {{count}} space",
       "autoLabel_other": "All accessible · {{count}} spaces",
       "anchorPrefix": "Anchor · ",
@@ -1509,6 +1510,7 @@
       "score": "Similarity {{score}}",
       "open": "View larger",
       "noPreview": "Preview unavailable",
+      "hiddenName": "Picture you cannot view",
       "unavailable": "This picture was deleted, or you can no longer view it",
       "relatedTitle": "Possibly related pictures",
       "showRelated_one": "{{count}} possibly related picture, shown on the right",
