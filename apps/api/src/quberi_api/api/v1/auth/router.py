@@ -499,6 +499,13 @@ async def feishu_callback(
             _oauth_popup_html(source="quberi-feishu-login", ok=False, payload={"message": str(exc)}),
             status_code=400,
         )
+    except AccountUnavailableError as exc:
+        return HTMLResponse(
+            _oauth_popup_html(
+                source="quberi-feishu-login", ok=False, payload={"message": str(exc)}
+            ),
+            status_code=403,
+        )
     except Exception as exc:  # noqa: BLE001
         return HTMLResponse(
             _oauth_popup_html(source="quberi-feishu-login", ok=False, payload={"message": f"unexpected: {exc}"}),
@@ -872,6 +879,8 @@ async def google_callback(
         )
     except google_login_service.GoogleLoginError as exc:
         return fail(str(exc), 400)
+    except AccountUnavailableError as exc:
+        return fail(str(exc), 403)
     except Exception as exc:  # noqa: BLE001
         return fail(f"unexpected: {exc}", 500)
 

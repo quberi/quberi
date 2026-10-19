@@ -370,3 +370,81 @@ async def test_require_caller_costs_one_select(client, db_session, org_and_owner
     reads = [s for s in seen if s.lstrip().upper().startswith("SELECT")]
     assert len(reads) == 1, reads
     assert "revoked_sessions" in reads[0]
+# ---------------------------------------------------------------------------
+# Platform-token impersonation (development only) follows the same rules
+# ---------------------------------------------------------------------------
+@pytest.fixture
+async def dev_client(db_session):
+    from pydantic import SecretStr
+    app = FastAPI()
+    app.state.settings = get_settings().model_copy(
+        update={"environment": "development", "platform_admin_token": SecretStr("dev-token-for-tests")}
+    )
+    @app.get("/api/v1/ping")
+    async def ping(caller: CallerContext = Depends(require_caller)):
+        return {"user": str(caller.user.id)}
+    register_exception_handlers(app)
+    async def _session():
+        yield db_session
+    app.dependency_overrides[dependencies.get_db_session] = _session
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        yield c
+async def _impersonate(client, db, boot, person):
+    slug = (
+        await db.execute(select(Organization.slug).where(Organization.id == boot.organization_id))
+    ).scalar_one()
+    await db.commit()
+    return await client.get(
+        "/api/v1/ping",
+        headers={
+            "Authorization": "Bearer dev-token-for-tests",
+            "X-Quberi-Organization": slug,
+            "X-Quberi-User-Email": person.email,
+        },
+    )
+async def test_impersonation_with_the_platform_token_is_refused_for_a_suspended_user(
+    dev_client, db_session, org_and_owner
+):
+    person = await _member(db_session, org_and_owner)
+    assert (await _impersonate(dev_client, db_session, org_and_owner, person)).status_code == 200
+    await _set_user(db_session, person.id, status="suspended")
+    assert (await _impersonate(dev_client, db_session, org_and_owner, person)).status_code == 401
+async def test_impersonation_with_the_platform_token_is_refused_in_an_inactive_organization(
+    dev_client, db_session, org_and_owner
+):
+    person = await _member(db_session, org_and_owner)
+    await db_session.execute(
+        update(Organization)
+        .where(Organization.id == org_and_owner.organization_id)
+        .values(status="suspended")
+    )
+    await db_session.commit()
+    assert (await _impersonate(dev_client, db_session, org_and_owner, person)).status_code == 401
+# ---------------------------------------------------------------------------
+# Clean-up of signed-out records
+# ---------------------------------------------------------------------------
+async def test_the_clean_up_removes_only_records_whose_token_has_expired(db_session, org_and_owner):
+    from datetime import datetime, timedelta, timezone
+    from quberi_api.workers.rag import purge_revoked_sessions
+    person = await _member(db_session, org_and_owner)
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            RevokedSession(token_hash="a" * 64, user_id=person.id, expires_at=now - timedelta(hours=1)),
+            RevokedSession(token_hash="b" * 64, user_id=person.id, expires_at=now + timedelta(days=1)),
+        ]
+    )
+    await db_session.commit()
+    class _Factory:
+        def __call__(self):
+            return self
+        async def __aenter__(self):
+            return db_session
+        async def __aexit__(self, *exc):
+            return False
+    removed = await purge_revoked_sessions({"session_factory": _Factory()})
+    assert removed == 1
+    left = (await db_session.execute(select(RevokedSession.token_hash))).scalars().all()
+    assert left == ["b" * 64]

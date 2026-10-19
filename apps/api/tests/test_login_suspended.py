@@ -509,3 +509,46 @@ async def test_a_popup_callback_for_a_suspended_account_shows_the_unavailable_me
     assert resp.status_code == 403
     assert "token" not in resp.text
     assert "unexpected" not in resp.text
+async def _suspend_everything(db, p):
+    await db.execute(
+        update(User).where(User.id == p.personal_user_id).values(status="suspended")
+    )
+    await db.commit()
+async def test_google_popup_callback_answers_403_when_the_real_login_refuses(
+    client, db_session, org_and_owner, monkeypatch
+):
+    """The route must map the service's refusal itself, not only the session step after it."""
+    p = await _person(db_session, org_and_owner)
+    await _suspend_everything(db_session, p)
+    sub = f"g-{uuid.uuid4().hex}"
+    await _link(db_session, p.identity_id, "google", sub)
+    _patch_google(monkeypatch, sub=sub, email=p.home)
+    monkeypatch.setattr(auth_module, "_google_login_redirect_uri", lambda: "http://test/cb")
+    state = google_login._seal_state(google_login._PURPOSE_LOGIN)
+    resp = await client.get("/api/v1/auth/google/callback", params={"code": "c", "state": state})
+    assert resp.status_code == 403
+    assert "token" not in resp.text
+    assert "unexpected" not in resp.text
+async def test_feishu_popup_callback_answers_403_when_the_real_login_refuses(
+    client, db_session, org_and_owner, monkeypatch
+):
+    p = await _person(db_session, org_and_owner)
+    await _suspend_everything(db_session, p)
+    open_id = f"ou_{uuid.uuid4().hex}"
+    await _link(db_session, p.identity_id, "lark", open_id)
+    _patch_feishu(monkeypatch, open_id=open_id)
+    monkeypatch.setattr(auth_module, "_feishu_login_redirect_uri", lambda: "http://test/cb")
+    state = feishu_login._seal_state(feishu_login._PURPOSE_LOGIN)
+    resp = await client.get("/api/v1/auth/feishu/callback", params={"code": "c", "state": state})
+    assert resp.status_code == 403
+    assert "token" not in resp.text
+    assert "unexpected" not in resp.text
+async def test_a_stranger_email_is_not_refused_and_finds_no_account(db_session, org_and_owner):
+    """Only a suspended account's own mailbox is refused; any other new address finds none.
+
+    (Creating the new account is the existing provisioning path, which does not run under
+    this fixture's shared session, so the lookup that decides it is checked on its own.)
+    """
+    await _person(db_session, org_and_owner)
+    fresh = f"fresh-{uuid.uuid4().hex[:8]}@example.com"
+    assert await verification_service._find_active_user(db_session, fresh) is None
