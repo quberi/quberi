@@ -21,6 +21,7 @@ from leaking one byte at a time.
 
 from __future__ import annotations
 
+import logging
 import secrets
 from dataclasses import dataclass
 from typing import Optional
@@ -32,10 +33,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.core.config import Settings
+from quberi_api.domain.auth.models import RevokedSession
+from quberi_api.domain.enums import BLOCKED_USER_STATUSES
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.platform_admin.models import PlatformAdmin
 from quberi_api.services import platform_admin as platform_admin_service
-from quberi_api.services.auth.session import read_session
+from quberi_api.services.auth.session import (
+    SessionClaims,
+    read_session,
+    session_token_hash,
+)
+
+log = logging.getLogger(__name__)
 
 # Bearer scheme. ``auto_error=False`` lets us produce our own 401 wording
 # rather than FastAPI's default ``{"detail": "Not authenticated"}``.
@@ -202,6 +211,52 @@ def _bearer_token(
     return credentials.credentials
 
 
+async def optional_bearer_token(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+) -> Optional[str]:
+    """The bearer token if one was sent, else ``None`` (never raises)."""
+
+    return _bearer_token(credentials)
+
+
+class SessionInvalidError(HTTPException):
+    """The session can no longer be used: the account is unavailable, the token was
+    signed out, or the member's sessions were revoked.
+
+    It is an ``HTTPException`` so an app without the custom handler still answers a
+    plain 401. The handler in ``api.errors`` adds ``code: "session_invalid"``, which is
+    the only thing the web client treats as "sign out now".
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="session no longer valid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def _rejection_reason(row, claims: SessionClaims) -> Optional[str]:
+    """Why a session token must be refused, or ``None`` to let it through.
+
+    Logged for operators; the caller always gets the same 401, so nobody can tell
+    "deactivated" from "expired".
+    """
+
+    if row is None:
+        return "unknown_user_or_organization"
+    user, organization, revoked = row
+    if user.status in BLOCKED_USER_STATUSES:
+        return "user_not_active"
+    if organization.status != "active":
+        return "organization_not_active"
+    if claims.session_version != user.session_version:
+        return "session_version_changed"
+    if revoked is not None:
+        return "signed_out"
+    return None
+
+
 async def require_caller(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
@@ -226,38 +281,42 @@ async def require_caller(
     if token:
         claims = read_session(token)
         if claims is not None:
+            # One round trip: user + organization, plus a primary-key look-up of
+            # the signed-out list (usually no row).
             stmt = (
-                select(User, Organization)
+                select(User, Organization, RevokedSession.token_hash)
                 .join(Organization, Organization.id == User.organization_id)
+                .outerjoin(
+                    RevokedSession,
+                    RevokedSession.token_hash == session_token_hash(token),
+                )
                 .where(User.id == claims.user_id)
                 .where(Organization.id == claims.organization_id)
             )
             row = (await session.execute(stmt)).first()
-            if row is not None and row[0].status == "invited" and not claims.is_guest:
+            reason = _rejection_reason(row, claims)
+            if reason is not None:
+                await session.commit()
+                log.info("session rejected: %s user=%s", reason, claims.user_id)
+                raise SessionInvalidError()
+            user, organization, _ = row
+            if user.status == "invited" and not claims.is_guest:
                 # A session token is only minted after a successful sign-in, so someone
                 # holding one has accepted their invitation. Mark them active, once.
                 await session.execute(
                     update(User)
-                    .where(User.id == row[0].id, User.status == "invited")
+                    .where(User.id == user.id, User.status == "invited")
                     .values(status="active")
                 )
                 await session.commit()
-                await session.refresh(row[0])
+                await session.refresh(user)
             else:
                 await session.commit()
-            if row is not None:
-                user, organization = row
-                return CallerContext(
-                    user=user,
-                    organization=organization,
-                    is_platform_admin=False,
-                    is_guest=claims.is_guest,
-                )
-            # Session references a user/org that no longer exists → 401.
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="session no longer valid",
-                headers={"WWW-Authenticate": "Bearer"},
+            return CallerContext(
+                user=user,
+                organization=organization,
+                is_platform_admin=False,
+                is_guest=claims.is_guest,
             )
 
     # ---- Path 2: dev impersonation (non-production only) ----
@@ -278,6 +337,8 @@ async def require_caller(
         .join(Organization, Organization.id == User.organization_id)
         .where(Organization.slug == org_slug)
         .where(User.email == user_email)
+        .where(User.status.notin_(BLOCKED_USER_STATUSES))
+        .where(Organization.status == "active")
     )
     row = (await session.execute(stmt)).first()
     await session.commit()

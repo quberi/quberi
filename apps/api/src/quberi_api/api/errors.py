@@ -19,6 +19,8 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from quberi_api.api.security import SessionInvalidError
+from quberi_api.services.auth.account_status import AccountUnavailableError
 from quberi_api.services.errors import (
     AlreadyExistsError,
     ForbiddenError,
@@ -135,6 +137,25 @@ async def _handle_not_found(_: Request, exc: NotFoundError) -> JSONResponse:
     )
 
 
+async def _handle_session_invalid(_: Request, exc: SessionInvalidError) -> JSONResponse:
+    # ``code`` is what the web client keys off to sign the person out.
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content={"detail": exc.detail, "code": "session_invalid"},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def _handle_account_unavailable(
+    _: Request, exc: AccountUnavailableError
+) -> JSONResponse:
+    # Sign-in refused (no session exists yet), so this is not "session_invalid".
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content={"detail": str(exc), "code": "account_unavailable"},
+    )
+
+
 async def _handle_service_error(_: Request, exc: ServiceError) -> JSONResponse:
     # Programmer error surfaced through a ServiceError subclass we do not have
     # a dedicated mapping for — log and hide the details.
@@ -156,6 +177,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(OccupantsRemainError, _handle_occupants_remain)
     app.add_exception_handler(HeadcountExceededError, _handle_headcount_exceeded)
     app.add_exception_handler(FrozenPositionError, _handle_frozen_position)
+    app.add_exception_handler(SessionInvalidError, _handle_session_invalid)
+    app.add_exception_handler(AccountUnavailableError, _handle_account_unavailable)
     app.add_exception_handler(ForbiddenError, _handle_forbidden)
     app.add_exception_handler(AlreadyExistsError, _handle_already_exists)
     app.add_exception_handler(NotFoundError, _handle_not_found)

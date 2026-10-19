@@ -184,6 +184,21 @@ async def backfill_pictures(ctx: dict) -> int:
     return queued
 
 
+async def purge_revoked_sessions(ctx: dict) -> int:
+    """Drop signed-out session records whose token has expired anyway."""
+
+    from sqlalchemy import delete, func
+
+    from quberi_api.domain.auth.models import RevokedSession
+
+    async with ctx["session_factory"]() as session:
+        result = await session.execute(
+            delete(RevokedSession).where(RevokedSession.expires_at < func.now())
+        )
+        await session.commit()
+    return int(result.rowcount or 0)
+
+
 class WorkerSettings:
     """arq entry point discovered by ``arq quberi_api.workers.rag.WorkerSettings``."""
 
@@ -193,6 +208,7 @@ class WorkerSettings:
         cron(sweep_guest_sandbox, minute=0, run_at_startup=True),
         # Pictures uploaded before picture search existed; cheap when there is none.
         cron(backfill_pictures, minute=7, run_at_startup=True),
+        cron(purge_revoked_sessions, minute=30),
     ]
     on_startup = on_startup
     on_shutdown = on_shutdown

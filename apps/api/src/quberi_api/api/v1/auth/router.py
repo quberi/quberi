@@ -29,6 +29,7 @@ from quberi_api.core.config import get_settings
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.api.security import (
     CallerContext,
+    optional_bearer_token,
     require_caller,
     require_platform_admin,
 )
@@ -61,7 +62,10 @@ from quberi_api.services.auth.email_sender import (
     EmailSendError,
     send_email_with_failover,
 )
-from quberi_api.services.auth.session import issue_session
+from quberi_api.services.auth.account_status import (
+    AccountUnavailableError,
+)
+from quberi_api.services.auth.session import mint_session, revoke_session
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 email_settings_router = APIRouter(prefix="/admin", tags=["auth"])
@@ -112,7 +116,8 @@ async def verify(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)
         ) from exc
 
-    token = issue_session(
+    token = await mint_session(
+        session,
         identity_id=uuid.UUID(resolved.identity_id),
         user_id=uuid.UUID(resolved.user_id),
         organization_id=uuid.UUID(resolved.organization_id),
@@ -165,7 +170,8 @@ async def guest(
 
     import uuid
 
-    token = issue_session(
+    token = await mint_session(
+        session,
         identity_id=uuid.UUID(str(refs.guest_identity_id)),
         user_id=uuid.UUID(str(refs.guest_user_id)),
         organization_id=uuid.UUID(str(refs.organization_id)),
@@ -238,7 +244,8 @@ async def phone_verify(
 
     import uuid
 
-    token = issue_session(
+    token = await mint_session(
+        session,
         identity_id=uuid.UUID(resolved.identity_id),
         user_id=uuid.UUID(resolved.user_id),
         organization_id=uuid.UUID(resolved.organization_id),
@@ -516,17 +523,35 @@ async def feishu_callback(
     resolved = outcome.resolved
     import uuid
 
-    token = issue_session(
-        identity_id=uuid.UUID(resolved.identity_id),
-        user_id=uuid.UUID(resolved.user_id),
-        organization_id=uuid.UUID(resolved.organization_id),
-        email=resolved.email,
-    )
-    org_role = await authz_service.get_direct_org_role(
-        session,
-        organization_id=uuid.UUID(resolved.organization_id),
-        user_id=uuid.UUID(resolved.user_id),
-    )
+    try:
+        token = await mint_session(
+            session,
+            identity_id=uuid.UUID(resolved.identity_id),
+            user_id=uuid.UUID(resolved.user_id),
+            organization_id=uuid.UUID(resolved.organization_id),
+            email=resolved.email,
+        )
+        org_role = await authz_service.get_direct_org_role(
+            session,
+            organization_id=uuid.UUID(resolved.organization_id),
+            user_id=uuid.UUID(resolved.user_id),
+        )
+    except AccountUnavailableError as exc:
+        return HTMLResponse(
+            _oauth_popup_html(
+                source="quberi-feishu-login", ok=False, payload={"message": str(exc)}
+            ),
+            status_code=403,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return HTMLResponse(
+            _oauth_popup_html(
+                source="quberi-feishu-login",
+                ok=False,
+                payload={"message": f"unexpected: {exc}"},
+            ),
+            status_code=500,
+        )
     return HTMLResponse(
         _oauth_popup_html(source="quberi-feishu-login", 
             ok=True,
@@ -595,7 +620,8 @@ async def feishu_bind_verify(
 
     import uuid
 
-    token = issue_session(
+    token = await mint_session(
+        session,
         identity_id=uuid.UUID(resolved.identity_id),
         user_id=uuid.UUID(resolved.user_id),
         organization_id=uuid.UUID(resolved.organization_id),
@@ -668,7 +694,8 @@ async def feishu_bind_phone_verify(
 
     import uuid
 
-    token = issue_session(
+    token = await mint_session(
+        session,
         identity_id=uuid.UUID(resolved.identity_id),
         user_id=uuid.UUID(resolved.user_id),
         organization_id=uuid.UUID(resolved.organization_id),
@@ -850,17 +877,23 @@ async def google_callback(
 
     import uuid
 
-    token = issue_session(
-        identity_id=uuid.UUID(resolved.identity_id),
-        user_id=uuid.UUID(resolved.user_id),
-        organization_id=uuid.UUID(resolved.organization_id),
-        email=resolved.email,
-    )
-    org_role = await authz_service.get_direct_org_role(
-        session,
-        organization_id=uuid.UUID(resolved.organization_id),
-        user_id=uuid.UUID(resolved.user_id),
-    )
+    try:
+        token = await mint_session(
+            session,
+            identity_id=uuid.UUID(resolved.identity_id),
+            user_id=uuid.UUID(resolved.user_id),
+            organization_id=uuid.UUID(resolved.organization_id),
+            email=resolved.email,
+        )
+        org_role = await authz_service.get_direct_org_role(
+            session,
+            organization_id=uuid.UUID(resolved.organization_id),
+            user_id=uuid.UUID(resolved.user_id),
+        )
+    except AccountUnavailableError as exc:
+        return fail(str(exc), 403)
+    except Exception as exc:  # noqa: BLE001
+        return fail(f"unexpected: {exc}", 500)
     return _google_result_response(
         flow=flow,
         ok=True,
@@ -931,7 +964,8 @@ async def switch_organization(
     )
     await session.commit()
 
-    token = issue_session(
+    token = await mint_session(
+        session,
         identity_id=caller.user.identity_id,
         user_id=target_user.id,
         organization_id=org.id,
@@ -986,10 +1020,16 @@ async def me(
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
-async def logout() -> Response:
-    # Stateless tokens: logout is a client-side drop. Endpoint exists so the
-    # client has a stable call, and so a future server-side revocation list
-    # can hook in here without a contract change.
+async def logout(
+    token: Optional[str] = Depends(optional_bearer_token),
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    # Signs out this session only (other devices stay signed in). It does not go
+    # through ``require_caller`` so that a deactivated member, or a token that is
+    # already invalid, still gets a clean 204 and learns nothing about their status.
+    if token:
+        await revoke_session(session, token)
+        await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
