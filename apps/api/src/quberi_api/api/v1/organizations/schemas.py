@@ -54,3 +54,27 @@ class MemberSummary(BaseModel):
 class MemberList(BaseModel):
     items: list[MemberSummary]
     total: int
+
+
+class DeactivationEffects(BaseModel):
+    """What deactivating a member did (all zero when nothing changed)."""
+
+    oauth_grants_revoked: int
+    feishu_tokens_removed: int
+    feishu_sources_paused: int
+    private_model_bindings_removed: int
+    org_model_selections_removed: int
+    other_org_selections_invalidated: int
+    personal_spaces_frozen: int
+
+
+class DeactivationResponse(BaseModel):
+    member: MemberSummary
+    changed: bool
+    effects: DeactivationEffects
+
+
+class ReactivationResponse(BaseModel):
+    member: MemberSummary
+    changed: bool
+    personal_spaces_unfrozen: int

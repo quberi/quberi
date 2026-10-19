@@ -3,8 +3,10 @@
 * GET   /api/v1/organizations/current/members             — every member of the caller's org
 * POST  /api/v1/organizations/current/members             — invite a new member
 * PATCH /api/v1/organizations/current/members/{user_id}   — change a member's org role
+* POST  /api/v1/organizations/current/members/{user_id}/deactivate   — owner only
+* POST  /api/v1/organizations/current/members/{user_id}/reactivate   — owner only
 
-All three require ``require_caller`` (any authenticated user in the org)
+The first three require ``require_caller`` (any authenticated user in the org)
 *plus* an ``owner`` or ``admin`` role binding on the organisation itself —
 enforced here via ``caller_has_org_role``. The member directory (who's in
 the org, their roles) is management information, not something every
@@ -22,12 +24,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import CallerContext, require_caller
+from quberi_api.api.v1.organizations._guards import require_org_owner
 from quberi_api.api.v1.organizations.schemas import (
+    DeactivationEffects,
+    DeactivationResponse,
     InviteMemberRequest,
     MemberList,
     MemberSummary,
+    ReactivationResponse,
     SetMemberRoleRequest,
 )
+from quberi_api.services import member_lifecycle
 from quberi_api.services import members as members_service
 from quberi_api.services.authz import caller_has_org_role
 from quberi_api.services.errors import InvalidInputError, NotFoundError
@@ -157,3 +164,67 @@ async def set_member_role(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
     return _summary(view)
+
+
+async def _member_summary(
+    session: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID
+) -> MemberSummary:
+    """The member as the list shows them, read after the change was committed."""
+
+    views = await members_service.list_members(session, organization_id=organization_id)
+    view = next(v for v in views if v.user.id == user_id)
+    return _summary(view)
+
+
+@router.post(
+    "/members/{user_id}/deactivate",
+    response_model=DeactivationResponse,
+    summary="Deactivate a member (organisation owner only)",
+)
+async def deactivate_member(
+    user_id: uuid.UUID,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> DeactivationResponse:
+    await require_org_owner(caller, session)
+    result = await member_lifecycle.deactivate_member(
+        session,
+        organization_id=caller.organization.id,
+        actor_user_id=caller.user.id,
+        target_user_id=user_id,
+    )
+    member = await _member_summary(
+        session, organization_id=caller.organization.id, user_id=user_id
+    )
+    return DeactivationResponse(
+        member=member,
+        changed=result.changed,
+        effects=DeactivationEffects(**vars(result.effects)),
+    )
+
+
+@router.post(
+    "/members/{user_id}/reactivate",
+    response_model=ReactivationResponse,
+    summary="Reactivate a deactivated member (organisation owner only)",
+)
+async def reactivate_member(
+    user_id: uuid.UUID,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> ReactivationResponse:
+    await require_org_owner(caller, session)
+    result = await member_lifecycle.reactivate_member(
+        session,
+        organization_id=caller.organization.id,
+        actor_user_id=caller.user.id,
+        target_user_id=user_id,
+    )
+    member = await _member_summary(
+        session, organization_id=caller.organization.id, user_id=user_id
+    )
+    return ReactivationResponse(
+        member=member,
+        changed=result.changed,
+        personal_spaces_unfrozen=result.personal_spaces_unfrozen,
+    )
