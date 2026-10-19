@@ -705,7 +705,8 @@
     "guestCta": "Sign in / sign up"
   },
   "common": {
-    "close": "Close"
+    "close": "Close",
+    "requestFailed": "The request failed. Check your input and try again."
   },
   "account": {
     "open": "Account",

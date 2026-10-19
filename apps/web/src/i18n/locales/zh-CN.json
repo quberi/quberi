@@ -705,7 +705,8 @@
     "guestCta": "登录 / 注册"
   },
   "common": {
-    "close": "关闭"
+    "close": "关闭",
+    "requestFailed": "请求失败,请检查填写的内容后重试。"
   },
   "account": {
     "open": "账户",

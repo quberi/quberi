@@ -1,3 +1,4 @@
+import i18next from 'i18next'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiError,
@@ -73,5 +74,67 @@ describe('session-ended signal', () => {
     expect(empty.code).toBeUndefined()
     expect(heard).toHaveBeenCalledTimes(1)
     stop()
+  })
+})
+
+describe('a detail that is not text', () => {
+  const validation = [
+    { type: 'missing', loc: ['body', 'name'], msg: 'Field required', input: {} },
+    { type: 'string_too_short', loc: ['body', 'slug'], msg: 'String should have at least 3 characters' },
+  ]
+
+  afterEach(async () => {
+    vi.unstubAllGlobals()
+    if (i18next.isInitialized) await i18next.changeLanguage('en-US')
+  })
+
+  it('shows one generic line, not the JSON, and keeps the status and the original detail', async () => {
+    const failure = await apiErrorFrom(jsonResponse(422, { detail: validation }), 'fallback text')
+    expect(failure.status).toBe(422)
+    expect(failure.rawDetail).toEqual(validation)
+    for (const shown of [failure.detail, failure.message]) {
+      expect(shown).not.toContain('{')
+      expect(shown).not.toContain('Field required')
+      expect(shown).not.toContain('loc')
+    }
+    expect(failure.detail).not.toBe('')
+    expect(failure.detail).not.toBe('fallback text')
+  })
+
+  it('goes through apiFetch too', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(422, { detail: validation })))
+    const failure = (await apiFetch('/api/v1/x', { method: 'POST', body: {} }).catch(
+      (e: unknown) => e,
+    )) as ApiError
+    expect(failure).toBeInstanceOf(ApiError)
+    expect(failure.status).toBe(422)
+    expect(failure.detail).not.toContain('{')
+    expect(failure.rawDetail).toEqual(validation)
+  })
+
+  it('is worded in the chosen language', async () => {
+    await i18next.init({
+      lng: 'zh-CN',
+      resources: {
+        'zh-CN': { translation: { common: { requestFailed: '请求失败,请检查填写的内容后重试。' } } },
+        'en-US': { translation: { common: { requestFailed: 'The request failed.' } } },
+      },
+    })
+    expect((await apiErrorFrom(jsonResponse(422, { detail: validation }))).detail).toBe(
+      '请求失败,请检查填写的内容后重试。',
+    )
+    await i18next.changeLanguage('en-US')
+    expect((await apiErrorFrom(jsonResponse(422, { detail: validation }))).detail).toBe(
+      'The request failed.',
+    )
+  })
+
+  it('leaves a text detail, a missing detail and the fallback as they were', async () => {
+    const text = await apiErrorFrom(jsonResponse(409, { detail: 'name taken' }), 'fb')
+    expect(text.detail).toBe('name taken')
+    expect(text.rawDetail).toBeUndefined()
+    const none = await apiErrorFrom(jsonResponse(500, {}), 'fb')
+    expect(none.detail).toBe('fb')
+    expect(none.rawDetail).toBeUndefined()
   })
 })

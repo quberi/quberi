@@ -9,8 +9,11 @@
  * Anything the server returns as JSON is passed back to the caller as
  * ``T``. ``ApiError`` carries the HTTP status plus the ``detail`` string
  * from the API so UI code can render targeted messages (401 vs 409 vs 500).
+ * A ``detail`` that is not a string (a 422 validation list, say) is kept as
+ * ``rawDetail`` for code, while ``detail`` becomes one generic localized line.
  */
 
+import i18next from 'i18next'
 import type { DevCredentials } from '../auth/types'
 import { getGuestToken } from '../auth/guestToken'
 
@@ -23,13 +26,28 @@ export class ApiError extends Error {
   readonly detail: string
   /** Machine-readable reason the server gave (e.g. ``session_invalid``), when it gave one. */
   readonly code?: string
+  /** The ``detail`` exactly as the server sent it when it was not a string (e.g. a 422 error list). */
+  readonly rawDetail?: unknown
 
-  constructor(status: number, detail: string, code?: string) {
+  constructor(status: number, detail: string, code?: string, rawDetail?: unknown) {
     super(detail || `Request failed with status ${status}`)
     this.status = status
     this.detail = detail
     this.code = code
+    this.rawDetail = rawDetail
   }
+}
+
+/**
+ * One line, in the language the person has chosen, for an error whose ``detail`` is not
+ * text. The global i18next instance is the one the app initialises, so this follows a
+ * language switch without a hook; before init it falls back to plain English.
+ */
+function genericErrorText(): string {
+  const text = i18next.t('common.requestFailed', { defaultValue: '' })
+  return typeof text === 'string' && text
+    ? text
+    : 'The request failed. Check your input and try again.'
 }
 
 /** Fired on ``window`` when the server says the signed-in session has ended. */
@@ -54,16 +72,21 @@ export function notifyIfSessionInvalid(status: number, code?: string): void {
 export async function apiErrorFrom(response: Response, fallback = ''): Promise<ApiError> {
   let detail = ''
   let code: string | undefined
+  let rawDetail: unknown
   try {
     const payload = (await response.json()) as { detail?: unknown; code?: unknown }
     if (typeof payload.detail === 'string') detail = payload.detail
-    else if (payload.detail) detail = JSON.stringify(payload.detail)
+    else if (payload.detail) {
+      // Never show the raw structure: keep it for code, show one generic line.
+      rawDetail = payload.detail
+      detail = genericErrorText()
+    }
     if (typeof payload.code === 'string') code = payload.code
   } catch {
     // no JSON body: the status is all we have
   }
   notifyIfSessionInvalid(response.status, code)
-  return new ApiError(response.status, detail || fallback, code)
+  return new ApiError(response.status, detail || fallback, code, rawDetail)
 }
 
 interface RequestOptions {
