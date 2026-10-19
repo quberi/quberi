@@ -270,6 +270,62 @@ async def list_messages(
     return view.conversation, messages
 
 
+async def contents_for_reader(
+    session: AsyncSession,
+    *,
+    messages: list[Message],
+    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict[uuid.UUID, dict]:
+    """What each message shows this reader: quoted passages only from what they can read.
+
+    An answer stores the passages it cited, verbatim, inside the message. If the space a
+    passage came from is closed to the reader now (a personal space frozen when its owner
+    was deactivated, access taken away, a document hidden from them), the passage text is
+    emptied and ``text_hidden`` is set; the title, source and position stay. The stored
+    message is not changed, so the text is back as soon as the reader can read it again.
+    Messages without such citations are returned as they are.
+    """
+
+    wanted = {
+        (m.id, i): c
+        for m in messages
+        for i, c in enumerate((m.content or {}).get("citations") or [])
+        if isinstance(c, dict) and c.get("text") and c.get("space_id") and c.get("document_id")
+    }
+    contents = {m.id: m.content for m in messages}
+    if not wanted:
+        return contents
+    readable = await list_accessible_space_ids(
+        session, user_id=user_id, organization_id=organization_id
+    )
+    access = await load_doc_access(session, user_id=user_id, organization_id=organization_id)
+
+    def may_read(citation: dict) -> bool:
+        try:
+            return access.allows(
+                document_id=uuid.UUID(str(citation["document_id"])),
+                space_id=uuid.UUID(str(citation["space_id"])),
+                readable_spaces=readable,
+            )
+        except ValueError:
+            return False
+
+    closed = {key for key, c in wanted.items() if not may_read(c)}
+    for message in messages:
+        if not any((message.id, i) in closed for i in range(len(message.content["citations"]))):
+            continue
+        # A copy: the stored content must stay as it was written.
+        contents[message.id] = {
+            **message.content,
+            "citations": [
+                {**c, "text": "", "text_hidden": True} if (message.id, i) in closed else c
+                for i, c in enumerate(message.content["citations"])
+            ],
+        }
+    return contents
+
+
 # ---------------------------------------------------------------------------
 # Mutations
 # ---------------------------------------------------------------------------

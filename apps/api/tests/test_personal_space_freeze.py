@@ -28,6 +28,7 @@ from quberi_api.api.v1.spaces import documents as documents_router
 from quberi_api.api.v1.spaces import router as spaces_module
 from quberi_api.core.config import get_settings
 from quberi_api.domain.audit.models import AuditEvent
+from quberi_api.domain.conversations.models import Message
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.spaces.models import Space
@@ -839,6 +840,82 @@ async def test_a_suspended_person_is_shared_nothing_even_in_an_active_space(db_s
     # The same rule still serves everyone else it names.
     await _rule(db_session, w.boot, w.shared, other, "allow", "user", w.colleague.id)
     assert await _can(db_session, w.boot, w.colleague, other)
+
+
+def _cite(document, space_id, text):
+    return {
+        "index": 1,
+        "document_id": str(document.id),
+        "space_id": str(space_id),
+        "document_name": document.name,
+        "chunk_index": 0,
+        "text": text,
+        "score": 0.9,
+        "used": True,
+        "char_start": 0,
+        "char_end": len(text),
+    }
+
+
+async def test_quoted_passages_of_a_frozen_space_are_hidden_from_other_readers_until_it_thaws(
+    web, db_session, qdrant, blobs
+):
+    """A passage cited into somebody else's chat is blanked for them while its space is closed."""
+    w = await _world(db_session, qdrant, blobs)
+    org = w.boot.organization_id
+    # The person shared the personal space with a colleague, who then cited it in their own chat.
+    await _grant(db_session, w.boot, w.private, SimpleNamespace(id=w.colleague.id), "viewer")
+    mine = await _personal_of(db_session, w.colleague.id)
+    conv = (
+        await conversations_service.create_conversation(
+            db_session, space_id=mine, organization_id=org, user_id=w.colleague.id, title="q"
+        )
+    ).conversation.id
+    db_session.add(
+        Message(
+            conversation_id=conv,
+            organization_id=org,
+            role="assistant",
+            content={
+                "text": "answer",
+                "citations": [
+                    _cite(w.private_note, w.private.id, "SECRET private passage"),
+                    _cite(w.handbook, w.shared.id, "Handbook passage"),
+                ],
+            },
+        )
+    )
+    await db_session.commit()
+
+    async def shown():
+        await _as(web, db_session, w.boot, w.colleague.id)
+        resp = await web.get(f"/api/v1/conversations/{conv}/messages")
+        assert resp.status_code == 200, resp.text
+        reply = next(m for m in resp.json()["items"] if m["role"] == "assistant")
+        await db_session.commit()
+        return {c["document_name"]: c for c in reply["content"]["citations"]}
+
+    before = await shown()
+    assert before["private-notes.pdf"]["text"] == "SECRET private passage"
+    assert not before["private-notes.pdf"].get("text_hidden")
+
+    await _freeze(db_session, w.boot, w.leaver.id)
+    closed = await shown()
+    hidden = closed["private-notes.pdf"]
+    assert hidden["text"] == "" and hidden["text_hidden"] is True
+    assert hidden["document_name"] == "private-notes.pdf" and hidden["space_id"] == str(w.private.id)
+    # What the reader may read anyway is untouched.
+    assert closed["handbook.pdf"]["text"] == "Handbook passage"
+    assert "SECRET" not in json.dumps(closed)
+    # The stored message was not rewritten.
+    stored = (await db_session.execute(select(Message.content).where(Message.conversation_id == conv))).scalar_one()
+    await db_session.commit()
+    assert stored["citations"][0]["text"] == "SECRET private passage"
+
+    await _unfreeze(db_session, w.boot, w.leaver.id)
+    after = await shown()
+    assert after["private-notes.pdf"]["text"] == "SECRET private passage"
+    assert not after["private-notes.pdf"].get("text_hidden")
 
 
 # ---------------------------------------------------------------------------

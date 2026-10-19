@@ -87,12 +87,12 @@ def _summary(conversation: Conversation, *, is_owner: bool) -> ConversationSumma
     )
 
 
-def _message_summary(message: Message) -> MessageSummary:
+def _message_summary(message: Message, content: dict | None = None) -> MessageSummary:
     return MessageSummary(
         id=message.id,
         conversation_id=message.conversation_id,
         role=message.role,
-        content=message.content,
+        content=message.content if content is None else content,
         author_user_id=message.author_user_id,
         status=message.status,
         correlation_id=message.correlation_id,
@@ -169,9 +169,15 @@ async def list_messages(
         user_id=caller.user.id,
     )
     is_owner = conversation.created_by_user_id == caller.user.id
+    contents = await conversations_service.contents_for_reader(
+        session,
+        messages=messages,
+        organization_id=caller.organization.id,
+        user_id=caller.user.id,
+    )
     return MessageList(
         conversation=_summary(conversation, is_owner=is_owner),
-        items=[_message_summary(m) for m in messages],
+        items=[_message_summary(m, contents[m.id]) for m in messages],
         total=len(messages),
     )
 
