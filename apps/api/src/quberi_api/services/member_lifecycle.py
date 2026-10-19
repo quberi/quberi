@@ -194,7 +194,9 @@ async def reactivate_member(
         if restored not in ("active", "invited"):
             restored = "active"
         target.status = restored
-        target.attributes = {k: v for k, v in (target.attributes or {}).items() if k != "offboarding"}
+        target.attributes = {
+            k: v for k, v in (target.attributes or {}).items() if k != "offboarding"
+        }
         thawed = await space_freeze.unfreeze_personal_spaces(
             session,
             organization_id=organization_id,
