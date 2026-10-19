@@ -34,6 +34,7 @@ from quberi_api.domain.conversations.models import (
     ConversationKnowledgeSource,
     Message,
 )
+from quberi_api.domain.enums import READABLE_SPACE_STATUSES
 from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.qdrant import create_qdrant_client
 from quberi_api.infrastructure.redis import create_redis_client
@@ -43,6 +44,7 @@ from quberi_api.services.ai.base import ChatMessage as LlmMessage
 from quberi_api.services.authz import (
     list_accessible_space_ids,
     resolve_effective_role_codes,
+    user_is_blocked,
 )
 from quberi_api.services import conversation_pictures
 from quberi_api.services.doc_acl import load_doc_access
@@ -2000,7 +2002,9 @@ async def _caller_has_space_view(
             )
         )
     ).scalar_one_or_none()
-    if space is None:
+    if space is None or space.status not in READABLE_SPACE_STATUSES:
+        return False
+    if await user_is_blocked(session, user_id=user_id):
         return False
     if space.owner_type == "user" and space.owner_id == user_id:
         return True
@@ -2010,6 +2014,7 @@ async def _caller_has_space_view(
         organization_id=organization_id,
         resource_type="space",
         resource_id=space_id,
+        user_blocked=False,
     )
     if codes:
         return True

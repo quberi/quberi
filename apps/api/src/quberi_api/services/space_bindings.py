@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.authz.catalog import SYSTEM_ROLE_CODES
 from quberi_api.domain.authz.models import Role, RoleBinding
+from quberi_api.domain.enums import FROZEN_SPACE_STATUS
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.org.models import Group, OrganizationUnit
 from quberi_api.domain.positions.models import Position
@@ -88,7 +89,8 @@ async def _load_space(
         Space.organization_id == organization_id,
     )
     space = (await session.execute(stmt)).scalar_one_or_none()
-    if space is None:
+    # A frozen space answers like a missing one: nobody changes or reads its access list.
+    if space is None or space.status == FROZEN_SPACE_STATUS:
         raise NotFoundError(f"space not found: {space_id}")
     return space
 
@@ -297,6 +299,8 @@ async def grant_in_transaction(
     space and all of its initial grants succeed or fail together.
     """
 
+    if space.status == FROZEN_SPACE_STATUS:
+        raise NotFoundError(f"space not found: {space.id}")
     validated_subject_type = _validate_subject_type(subject_type)
     validated_role = _validate_role_code(role_code)
     guard = await access_guard.watch(
@@ -412,6 +416,7 @@ async def remove_binding(
     actor_user_id: uuid.UUID,
 ) -> None:
     async with session.begin():
+        await _load_space(session, space_id=space_id, organization_id=organization_id)
         stmt = select(RoleBinding, Role.code).join(
             Role, Role.id == RoleBinding.role_id
         ).where(

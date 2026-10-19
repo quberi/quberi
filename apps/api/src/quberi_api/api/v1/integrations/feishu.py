@@ -18,6 +18,8 @@ from quberi_api.api.admin_gate import require_org_admin
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import CallerContext, require_caller
 from quberi_api.domain.documents.models import Document
+from quberi_api.domain.enums import READABLE_SPACE_STATUSES
+from quberi_api.domain.spaces.models import Space
 from quberi_api.services import feishu_sources
 from quberi_api.services.integrations.feishu import (
     FeishuAuthError,
@@ -185,9 +187,12 @@ async def feishu_document_content(
     synced = (
         await session.execute(
             select(Document.id)
+            .join(Space, Space.id == Document.space_id)
             .where(
                 Document.organization_id == caller.organization.id,
                 Document.external_ref["doc_token"].astext == document_id,
+                # A frozen personal space is closed to everyone, administrators included.
+                Space.status.in_(READABLE_SPACE_STATUSES),
             )
             .limit(1)
         )

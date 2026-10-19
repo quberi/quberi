@@ -32,7 +32,8 @@ from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services import access_guard, doc_acl, document_sources
 from quberi_api.services.documents import review as review_service
-from quberi_api.services.authz import resolve_effective_role_codes
+from quberi_api.domain.enums import READABLE_SPACE_STATUSES
+from quberi_api.services.authz import resolve_effective_role_codes, user_is_blocked
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
@@ -263,19 +264,14 @@ async def _caller_space_role(
     user_id: uuid.UUID,
     organization_id: uuid.UUID,
     space_id: uuid.UUID,
+    user_blocked: Optional[bool] = None,
 ) -> Optional[str]:
-    """Return the highest role code the caller has on the space, or None."""
+    """Return the highest role code the caller has on the space, or None.
 
-    codes = await resolve_effective_role_codes(
-        session,
-        user_id=user_id,
-        organization_id=organization_id,
-        resource_type="space",
-        resource_id=space_id,
-    )
-    # Space owner check: if the space is a personal space owned directly
-    # by this user, they always have owner semantics even without an
-    # explicit binding.
+    Nobody has a role on a space that is not in a readable status (a frozen personal
+    space), and a suspended or archived user has none anywhere, owner shortcut included.
+    Callers that already know the user is in good standing pass ``user_blocked=False``.
+    """
     space = (
         await session.execute(
             select(Space).where(
@@ -284,9 +280,22 @@ async def _caller_space_role(
             )
         )
     ).scalar_one_or_none()
-    if space is None:
+    if space is None or space.status not in READABLE_SPACE_STATUSES:
         return None
-    if space.owner_type == "user" and space.owner_id == user_id:
+    if user_blocked is None:
+        user_blocked = await user_is_blocked(session, user_id=user_id)
+    codes = await resolve_effective_role_codes(
+        session,
+        user_id=user_id,
+        organization_id=organization_id,
+        resource_type="space",
+        resource_id=space_id,
+        user_blocked=user_blocked,
+    )
+    # Space owner check: if the space is a personal space owned directly
+    # by this user, they always have owner semantics even without an
+    # explicit binding.
+    if space.owner_type == "user" and space.owner_id == user_id and not user_blocked:
         codes = codes | {"owner"}
     if not codes:
         return None

@@ -32,12 +32,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 from sqlalchemy import Select, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.authz.models import Role, RoleBinding
+from quberi_api.domain.enums import BLOCKED_USER_STATUSES, READABLE_SPACE_STATUSES
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.org.models import (
     Group,
@@ -256,6 +257,19 @@ async def _group_ids_for_user(
     return hits
 
 
+async def user_is_blocked(session: AsyncSession, *, user_id: uuid.UUID) -> bool:
+    """True when the user is suspended or archived (one primary-key lookup).
+
+    A missing row is *not* blocked: unit tests pass bare ids, and a real request always
+    has its user row checked by ``require_caller`` first.
+    """
+
+    status = (
+        await session.execute(select(User.status).where(User.id == user_id))
+    ).scalar_one_or_none()
+    return status in BLOCKED_USER_STATUSES
+
+
 async def resolve_effective_role_bindings(
     session: AsyncSession,
     *,
@@ -263,6 +277,7 @@ async def resolve_effective_role_bindings(
     organization_id: uuid.UUID,
     resource_type: str,
     resource_id: uuid.UUID,
+    user_blocked: Optional[bool] = None,
 ) -> list[EffectiveBinding]:
     """Return every ``RoleBinding`` that applies to ``(user, resource)``.
 
@@ -274,7 +289,14 @@ async def resolve_effective_role_bindings(
     * ``resource_type`` matches literally. ``resource_id`` is checked exactly;
       inherited access from a parent space or org is out of scope until we
       add ``inheritance_policy`` evaluation.
+    * A suspended or archived user has no effective bindings. Callers that already know
+      the user is in good standing pass ``user_blocked=False`` to skip the lookup.
     """
+
+    if user_blocked is None:
+        user_blocked = await user_is_blocked(session, user_id=user_id)
+    if user_blocked:
+        return []
 
     position_ids = await _user_position_ids(
         session, user_id=user_id, organization_id=organization_id
@@ -367,6 +389,7 @@ async def resolve_effective_role_codes(
     organization_id: uuid.UUID,
     resource_type: str,
     resource_id: uuid.UUID,
+    user_blocked: Optional[bool] = None,
 ) -> set[str]:
     bindings = await resolve_effective_role_bindings(
         session,
@@ -374,6 +397,7 @@ async def resolve_effective_role_codes(
         organization_id=organization_id,
         resource_type=resource_type,
         resource_id=resource_id,
+        user_blocked=user_blocked,
     )
     return {b.role_code for b in bindings}
 
@@ -449,7 +473,20 @@ async def list_accessible_space_ids(
     A space is visible when the user either owns it directly (personal
     spaces) OR any ``RoleBinding`` with ``resource_type='space'`` matches
     them via the same four paths as the full evaluator.
+
+    Only spaces in a readable status count (a frozen personal space is invisible to
+    everyone, its owner included), and a suspended or archived user sees nothing.
     """
+
+    status = (
+        await session.execute(
+            select(User.status).where(
+                User.id == user_id, User.organization_id == organization_id
+            )
+        )
+    ).scalar_one_or_none()
+    if status in BLOCKED_USER_STATUSES:
+        return set()
 
     position_ids = await _user_position_ids(
         session, user_id=user_id, organization_id=organization_id
@@ -521,7 +558,15 @@ async def list_accessible_space_ids(
     )
 
     unioned = union_all(*subject_predicates).subquery()
-    rows = await session.execute(select(unioned.c[0]).distinct())
+    rows = await session.execute(
+        select(Space.id)
+        .join(unioned, unioned.c[0] == Space.id)
+        .where(
+            Space.organization_id == organization_id,
+            Space.status.in_(READABLE_SPACE_STATUSES),
+        )
+        .distinct()
+    )
     return {row for row in rows.scalars().all() if row is not None}
 
 
@@ -979,6 +1024,7 @@ async def list_effective_space_members(
             select(User.id, User.display_name, User.email).where(
                 User.id.in_(all_uids),
                 User.organization_id == organization_id,
+                User.status.notin_(BLOCKED_USER_STATUSES),
             )
         )
     ).all()

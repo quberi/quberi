@@ -107,7 +107,11 @@ async def list_spaces(
     for view, item in zip(views, items):
         if view.shared_only_documents == 0:
             item.caller_role = await documents_core._caller_space_role(
-                session, user_id=user_id, organization_id=organization_id, space_id=view.space.id
+                session,
+                user_id=user_id,
+                organization_id=organization_id,
+                space_id=view.space.id,
+                user_blocked=False,
             )
     return SpaceList(items=items, total=len(items))
 
@@ -261,6 +265,7 @@ async def get_space(
             user_id=caller.user.id,
             organization_id=caller.organization.id,
             space_id=view.space.id,
+            user_blocked=False,
         )
     return detail
 
