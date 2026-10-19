@@ -282,6 +282,11 @@ export function ReviewCard({
         </span>
         <span className="review-dest">{destination}</span>
       </header>
+      {model?.model_fallback && (
+        <p className="review-summary warn" role="note">
+          {t('chat.modelFallback')}
+        </p>
+      )}
 
       <p className={flagged > 0 ? 'review-summary warn' : 'review-summary'}>
         {flagged > 0

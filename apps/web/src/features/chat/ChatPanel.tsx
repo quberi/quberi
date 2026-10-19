@@ -1420,7 +1420,9 @@ function CitationsRail({
                   </span>
                 )}
               </small>
-              <p className="chat-citation-preview">{trimPreview(c.text)}</p>
+              <p className="chat-citation-preview">
+                {c.text_hidden ? t('chat.citations.textHidden') : trimPreview(c.text)}
+              </p>
               <span className="chat-citation-open-hint">
                 {t('chat.citations.openDocument')}
               </span>

@@ -7,7 +7,7 @@ export interface SpaceSummary {
   preset: 'personal' | 'collaborative' | 'managed'
   visibility: 'private' | 'organization' | 'public_link'
   trust_level: 'trusted' | 'guided' | 'exploratory'
-  status: 'active' | 'archived'
+  status: 'active' | 'archived' | 'frozen'
   owner_type: 'user' | 'group' | 'organization_unit' | 'organization'
   owner_id: string
   is_owner: boolean

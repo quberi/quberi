@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ApiError } from '../api/client'
 import { useMembers } from '../members/MembersContext'
+import { isAssignable } from '../spaceAccess/useSubjectCandidates'
 import { useOrgUnits } from '../orgUnits/OrgUnitsContext'
 
 import { usePositions } from './PositionsContext'
@@ -233,7 +234,7 @@ export function AssignOccupantDialog({
 
   const candidates = useMemo(() => {
     if (allMembers.kind !== 'ready') return []
-    return allMembers.items.filter((m) => !currentUserIds.has(m.id))
+    return allMembers.items.filter((m) => isAssignable(m) && !currentUserIds.has(m.id))
   }, [allMembers, currentUserIds])
 
   useEffect(() => {

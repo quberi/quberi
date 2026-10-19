@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ApiError } from '../api/client'
 import { useMembers } from '../members/MembersContext'
+import { isAssignable } from '../spaceAccess/useSubjectCandidates'
 
 import { useOrgUnits } from './OrgUnitsContext'
 import type { OrgUnitNode, OrgUnitType } from './types'
@@ -334,7 +335,7 @@ export function AddMemberDialog({ open, onClose, unitId }: AddMemberProps) {
 
   const candidates = useMemo(() => {
     if (allMembers.kind !== 'ready') return []
-    return allMembers.items.filter((m) => !alreadyMember.has(m.id))
+    return allMembers.items.filter((m) => isAssignable(m) && !alreadyMember.has(m.id))
   }, [allMembers, alreadyMember])
 
   useEffect(() => {

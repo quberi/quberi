@@ -9,6 +9,11 @@ import { usePositions } from '../positions/PositionsContext'
 
 import type { AccessSubjectType } from './types'
 
+/** Deactivated and archived accounts cannot be given anything, so pickers leave them out. */
+export function isAssignable(member: { status: string }): boolean {
+  return member.status !== 'suspended' && member.status !== 'archived'
+}
+
 export interface SubjectCandidate {
   id: string
   label: string
@@ -48,7 +53,7 @@ export function useSubjectCandidates(
     switch (subjectType) {
       case 'user':
         return members.kind === 'ready'
-          ? members.items.map((m) => ({
+          ? members.items.filter(isAssignable).map((m) => ({
               id: m.id,
               label: m.display_name,
               subtitle: m.email,

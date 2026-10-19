@@ -1,5 +1,6 @@
 import {
   Briefcase,
+  ClipboardList,
   Clock3,
   Loader2,
   Mail,
@@ -7,9 +8,11 @@ import {
   RefreshCw,
   ShieldCheck,
   ShieldOff,
+  UserCheck,
   UserCog,
   UserPlus,
   Users,
+  UserX,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -19,8 +22,12 @@ import { useAuth } from '../auth/AuthContext'
 import { listGroupsForUser } from '../groups/api'
 import type { GroupListItem } from '../groups/types'
 
+import { DeactivateMemberDialog } from './DeactivateMemberDialog'
 import { InviteMemberDialog } from './InviteMemberDialog'
 import { useMembers } from './MembersContext'
+import { OffboardingDialog } from './OffboardingDialog'
+import { offboardingErrorText } from './memberErrors'
+import './offboarding.css'
 import type { MemberRole, MemberSummary } from './types'
 
 /**
@@ -55,20 +62,41 @@ function roleBadgeClass(role: MemberRole): string {
 function MemberRow({
   member,
   isSelf,
+  isOwnerViewer,
 }: {
   member: MemberSummary
   isSelf: boolean
+  isOwnerViewer: boolean
 }) {
   const { t } = useTranslation()
-  const { setRole } = useMembers()
+  const { setRole, reactivate } = useMembers()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dialog, setDialog] = useState<'deactivate' | 'offboarding' | null>(null)
+  const suspended = member.status === 'suspended'
+  // Only the organisation owner may deactivate or restore, and never the owner row or
+  // their own. The server enforces all of this; the buttons are just not offered.
+  const canManage =
+    isOwnerViewer && !isSelf && member.role_code !== 'owner' && member.status !== 'archived'
+
+  const restore = async () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await reactivate(member.id)
+    } catch (err) {
+      setError(offboardingErrorText(t, err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   // Role control only makes sense for admin/member rows the caller isn't
   // themselves — owner is untouchable (backend rejects it anyway, but we
   // don't even show the affordance), and nobody edits their own role.
   const canToggleRole =
-    !isSelf && (member.role_code === 'admin' || member.role_code === 'member')
+    !isSelf && !suspended && (member.role_code === 'admin' || member.role_code === 'member')
 
   const toggleRole = async () => {
     if (!canToggleRole || busy) return
@@ -87,7 +115,7 @@ function MemberRow({
   }
 
   return (
-    <li className="member-row" data-user-id={member.id}>
+    <li className={suspended ? 'member-row is-suspended' : 'member-row'} data-user-id={member.id}>
       <span className="member-avatar" aria-hidden="true">
         {member.display_name.charAt(0).toUpperCase() || '?'}
       </span>
@@ -145,12 +173,43 @@ function MemberRow({
             ? t(`members.role.${member.role_code}`)
             : t('members.role.none')}
         </span>
-        {member.is_pending && (
+        {suspended && (
+          <span className="badge badge-suspended">
+            <UserX size={13} aria-hidden="true" /> {t('members.suspended')}
+          </span>
+        )}
+        {member.is_pending && !suspended && (
           <span className="badge badge-pending">
             <Clock3 size={13} /> {t('members.pending')}
           </span>
         )}
         <UserGroupsChip userId={member.id} />
+        {canManage && (
+          <span className="member-owner-actions">
+            {suspended ? (
+              <>
+                <button
+                  className="ghost-button"
+                  disabled={busy}
+                  onClick={() => void restore()}
+                  type="button"
+                >
+                  {busy ? <Loader2 size={13} className="spin" /> : <UserCheck size={13} />}
+                  <span>{t('members.reactivate')}</span>
+                </button>
+                <button className="ghost-button" onClick={() => setDialog('offboarding')} type="button">
+                  <ClipboardList size={13} />
+                  <span>{t('members.offboarding')}</span>
+                </button>
+              </>
+            ) : (
+              <button className="ghost-button" onClick={() => setDialog('deactivate')} type="button">
+                <UserX size={13} />
+                <span>{t('members.deactivate')}</span>
+              </button>
+            )}
+          </span>
+        )}
         {canToggleRole && (
           <button
             className="ghost-button member-role-toggle"
@@ -173,6 +232,16 @@ function MemberRow({
           </button>
         )}
       </span>
+      {dialog === 'deactivate' && (
+        <DeactivateMemberDialog
+          member={member}
+          onClose={() => setDialog(null)}
+          onDone={() => setDialog('offboarding')}
+        />
+      )}
+      {dialog === 'offboarding' && (
+        <OffboardingDialog member={member} onClose={() => setDialog(null)} />
+      )}
     </li>
   )
 }
@@ -301,9 +370,18 @@ export function MembersPanel() {
   // and roll the rest into ``other``.
   const tally = (() => {
     if (state.kind !== 'ready') return null
-    const t0 = { total: state.items.length, owner: 0, admin: 0, member: 0, other: 0, pending: 0 }
+    const t0 = {
+      total: state.items.length,
+      owner: 0,
+      admin: 0,
+      member: 0,
+      other: 0,
+      pending: 0,
+      suspended: 0,
+    }
     for (const m of state.items) {
-      if (m.is_pending) t0.pending += 1
+      if (m.status === 'suspended') t0.suspended += 1
+      else if (m.is_pending) t0.pending += 1
       switch (m.role_code) {
         case 'owner':
           t0.owner += 1
@@ -348,6 +426,10 @@ export function MembersPanel() {
           <div className="members-role-tally-item">
             <small>{t('members.tally.pending')}</small>
             <strong>{tally.pending}</strong>
+          </div>
+          <div className="members-role-tally-item">
+            <small>{t('members.tally.suspended')}</small>
+            <strong>{tally.suspended}</strong>
           </div>
         </section>
       )}
@@ -401,6 +483,7 @@ export function MembersPanel() {
               <MemberRow
                 key={m.id}
                 member={m}
+                isOwnerViewer={credentials?.orgRole === 'owner'}
                 isSelf={
                   Boolean(credentials?.userEmail) &&
                   m.email.toLowerCase() === credentials?.userEmail.toLowerCase()

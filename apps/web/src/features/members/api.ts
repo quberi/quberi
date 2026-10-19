@@ -1,7 +1,16 @@
 import { apiFetch } from '../api/client'
 import type { DevCredentials } from '../auth/types'
 
-import type { InvitableRole, InviteMemberInput, MemberList, MemberSummary } from './types'
+import type {
+  DeactivationResponse,
+  InvitableRole,
+  InviteMemberInput,
+  MemberList,
+  MemberSummary,
+  OffboardingChecklist,
+  ReactivationResponse,
+  TransferSpacesResponse,
+} from './types'
 
 const MEMBERS_PATH = '/api/v1/organizations/current/members'
 
@@ -29,5 +38,50 @@ export function setMemberRole(
     method: 'PATCH',
     body: { role },
     credentials,
+  })
+}
+
+export function deactivateMember(
+  credentials: DevCredentials,
+  userId: string,
+): Promise<DeactivationResponse> {
+  return apiFetch<DeactivationResponse>(`${MEMBERS_PATH}/${userId}/deactivate`, {
+    method: 'POST',
+    credentials,
+    timeoutMs: 30_000,
+  })
+}
+
+export function reactivateMember(
+  credentials: DevCredentials,
+  userId: string,
+): Promise<ReactivationResponse> {
+  return apiFetch<ReactivationResponse>(`${MEMBERS_PATH}/${userId}/reactivate`, {
+    method: 'POST',
+    credentials,
+  })
+}
+
+export function getOffboardingChecklist(
+  credentials: DevCredentials,
+  userId: string,
+): Promise<OffboardingChecklist> {
+  return apiFetch<OffboardingChecklist>(`${MEMBERS_PATH}/${userId}/offboarding`, {
+    credentials,
+    timeoutMs: 30_000,
+  })
+}
+
+export function transferSpaces(
+  credentials: DevCredentials,
+  userId: string,
+  newOwnerUserId: string,
+  spaceIds: string[],
+): Promise<TransferSpacesResponse> {
+  return apiFetch<TransferSpacesResponse>(`${MEMBERS_PATH}/${userId}/offboarding/transfer-spaces`, {
+    method: 'POST',
+    body: { new_owner_user_id: newOwnerUserId, space_ids: spaceIds },
+    credentials,
+    timeoutMs: 60_000,
   })
 }

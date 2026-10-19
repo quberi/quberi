@@ -425,7 +425,14 @@
         "external_access.granted": "{{actor}} connected an outside tool",
         "external_access.revoked": "An outside tool was disconnected",
         "knowledge.external_search": "{{actor}}'s outside tool searched the knowledge base",
-        "organization.external_tools_changed": "{{actor}} changed the outside-tools setting"
+        "organization.external_tools_changed": "{{actor}} changed the outside-tools setting",
+        "member.deactivated": "{{actor}} deactivated {{resource}}",
+        "member.reactivated": "{{actor}} reactivated {{resource}}",
+        "space.frozen": "{{actor}} froze the personal space {{resource}}",
+        "space.unfrozen": "{{actor}} unfroze the personal space {{resource}}",
+        "member.spaces_transferred": "{{actor}} handed over spaces owned by {{resource}}",
+        "space.owner_transferred": "{{actor}} handed over ownership of {{resource}}",
+        "ai_model_selection.invalidated": "A member's private key was removed and an organisation model choice stopped working"
       },
       "time": {
         "now": "just now",
@@ -511,7 +518,14 @@
         "external_access.granted": "Outside tool connected",
         "external_access.revoked": "Outside tool disconnected",
         "knowledge.external_search": "Outside tool search",
-        "organization.external_tools_changed": "Outside tools setting changed"
+        "organization.external_tools_changed": "Outside tools setting changed",
+        "member.deactivated": "Member deactivated",
+        "member.reactivated": "Member reactivated",
+        "space.frozen": "Personal space frozen",
+        "space.unfrozen": "Personal space unfrozen",
+        "member.spaces_transferred": "Member's spaces handed over",
+        "space.owner_transferred": "Space ownership handed over",
+        "ai_model_selection.invalidated": "Model choice invalidated"
       }
     }
   },
@@ -850,10 +864,15 @@
     "tally": {
       "total": "Total members",
       "other": "Other roles",
-      "pending": "Pending invites"
+      "pending": "Pending invites",
+      "suspended": "Deactivated"
     },
     "promoteToAdmin": "Make admin",
-    "demoteToMember": "Make member"
+    "demoteToMember": "Make member",
+    "suspended": "Deactivated",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "offboarding": "Offboarding checklist"
   },
   "inviteMember": {
     "title": "Invite a new member",
@@ -1324,7 +1343,8 @@
       "empty": "This answer has no sources yet.",
       "openDocument": "Open document",
       "viewerLoading": "Re-extracting the document text…",
-      "viewerHighlightHint": "Jumped to and highlighted the cited passage."
+      "viewerHighlightHint": "Jumped to and highlighted the cited passage.",
+      "textHidden": "Passage hidden: you can no longer view this source."
     },
     "scope": {
       "summaryLabel": "Sources",
@@ -1493,7 +1513,8 @@
       "relatedTitle": "Possibly related pictures",
       "showRelated_one": "{{count}} possibly related picture, shown on the right",
       "showRelated_other": "{{count}} possibly related pictures, shown on the right"
-    }
+    },
+    "modelFallback": "The model chosen earlier is no longer available. This answer will use the default model."
   },
   "orgSpaces": {
     "title": "Enterprise spaces",
@@ -1624,5 +1645,80 @@
     "inboxTitle": "Uploads waiting for your approval",
     "inboxLine": "{{space}}: {{count}} waiting",
     "inboxOpen": "Review"
+  },
+  "deactivateDialog": {
+    "title": "Deactivate {{name}}",
+    "intro": "Once deactivated, this happens to {{name}} right away:",
+    "loading": "Reading what will change…",
+    "loadError": "Could not read what will change",
+    "sessions": "Every signed-in web session ends and they cannot sign in again.",
+    "oauth": "All their outside-tool connections are revoked ({{count}}).",
+    "feishu": "Their Feishu authorisation is deleted ({{tokens}}) and the Feishu syncs they connected are paused ({{sources}}).",
+    "byok": "Their private model keys are deleted ({{count}}).",
+    "byokGlobal": "Private model keys belong to the person's global identity, so deleting them also stops them working in other organisations and personal accounts. The person has to enter them again.",
+    "personal": "Their personal space is frozen: nobody, including owners and administrators, can search or open it. The data is kept and the space is unfrozen when the member is reactivated.",
+    "keeps": "What they uploaded to shared spaces stays and can still be found by people with access.",
+    "needsTransfer": "{{count}} collaboration spaces they own need a new owner. Hand them over from the offboarding checklist after deactivating.",
+    "orgChatFallback": "The organisation's chat model uses this person's private key. After deactivating, chat switches to the platform default model and counts against the platform's free allowance.",
+    "embeddingBlocked": "The organisation's embedding model uses this person's private key. Choose an organisation or platform model in the AI settings first, then deactivate.",
+    "restoreNote": "Reactivating only restores the account and the personal space. Deleted or revoked credentials and paused syncs are not restored; the person signs in again and reconnects what they need.",
+    "cancel": "Cancel",
+    "confirm": "Deactivate member"
+  },
+  "offboarding": {
+    "title": "Offboarding checklist · {{name}}",
+    "close": "Close",
+    "loading": "Reading the checklist…",
+    "loadError": "Could not read the checklist",
+    "notSuspended": "This member is not deactivated yet. Deactivate them first to hand over their spaces.",
+    "ownedTitle": "Collaboration spaces they own ({{count}})",
+    "ownedEmpty": "No collaboration spaces to deal with.",
+    "needsOwner": "No other owner: needs a handover",
+    "hasOtherOwner": "Also owned by: {{names}} (no handover needed)",
+    "pendingGoesAlong": "{{count}} pending files go along",
+    "moreHidden": "{{count}} more not shown. Refresh after handling these.",
+    "newOwner": "New owner",
+    "chooseOwner": "Choose a member…",
+    "transfer": "Hand over selected spaces ({{count}})",
+    "resultsTitle": "Handover result",
+    "resultsSummary": "{{transferred}} handed over, {{already}} handed over earlier, {{skipped}} skipped, {{failed}} failed.",
+    "result": {
+      "transferred": "Handed over",
+      "already_done": "Handed over earlier",
+      "skipped": "Skipped",
+      "failed": "Failed"
+    },
+    "code": {
+      "personal_space": "Personal spaces are not handed over",
+      "not_owned_by_member": "This member does not own the space",
+      "space_not_active": "The space is archived; restore it first",
+      "has_other_owner": "Another owner exists; the old owner role stays but has no effect while deactivated",
+      "space_not_found": "Space not found",
+      "not_allowed": "Not allowed",
+      "invalid_state": "The space cannot be handed over in its current state"
+    },
+    "reviewerTitle": "Spaces where they are a reviewer ({{count}})",
+    "reviewerEmpty": "No spaces where they are directly an approver.",
+    "reviewerHint": "Review duties cannot be handed over. The space owner has to grant a new reviewer.",
+    "noReviewer": "No reviewer",
+    "otherReviewers": "{{count}} other reviewers",
+    "reviewers": "{{count}} reviewers",
+    "pendingCount": "{{count}} pending",
+    "uploadsTitle": "Their uploads waiting for review ({{count}})",
+    "uploadsEmpty": "No uploads waiting for review.",
+    "uploadsHint": "These files stay pending and are handled by the space's current reviewers. Once approved, people with access can find them.",
+    "error": {
+      "org_embedding_uses_private_key": "The organisation's embedding model uses this person's private key. Choose another model in the AI settings first.",
+      "cannot_deactivate_self": "You cannot deactivate yourself.",
+      "cannot_deactivate_owner": "The organisation owner cannot be deactivated.",
+      "member_archived": "This account is archived and cannot be managed.",
+      "member_not_suspended": "Deactivate the member first.",
+      "no_spaces": "Choose at least one space.",
+      "batch_too_large": "At most 100 spaces at a time.",
+      "new_owner_not_found": "The new owner is not in this organisation.",
+      "new_owner_is_departed_member": "The new owner cannot be the departed member.",
+      "new_owner_not_active": "The new owner must be an active member.",
+      "new_owner_is_org_owner": "The organisation owner cannot own a space."
+    }
   }
 }

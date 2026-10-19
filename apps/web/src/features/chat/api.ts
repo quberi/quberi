@@ -173,7 +173,13 @@ export interface ReviewPayload {
   pending_id?: string
   expires_in?: number
   /** ``vendor`` is null for a model run locally. */
-  model?: { model_id: string; display_name: string; vendor: string | null }
+  model?: {
+    model_id: string
+    display_name: string
+    vendor: string | null
+    /** The model the conversation asked for is gone; the default one is used instead. */
+    model_fallback?: boolean
+  }
   question: ReviewPart
   history: ReviewHistoryTurn[]
   references: ReviewReference[]

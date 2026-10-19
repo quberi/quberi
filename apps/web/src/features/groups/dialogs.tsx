@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ApiError } from '../api/client'
 import { useMembers } from '../members/MembersContext'
+import { isAssignable } from '../spaceAccess/useSubjectCandidates'
 import { useOrgUnits } from '../orgUnits/OrgUnitsContext'
 import { usePositions } from '../positions/PositionsContext'
 
@@ -321,7 +322,7 @@ export function AddGroupMemberDialog({
   const options = useMemo(() => {
     if (memberType === 'user' && allMembers.kind === 'ready') {
       return allMembers.items
-        .filter((m) => !currentKeys.has(`user:${m.id}`))
+        .filter((m) => isAssignable(m) && !currentKeys.has(`user:${m.id}`))
         .map((m) => ({ id: m.id, label: `${m.display_name} · ${m.email}` }))
     }
     if (memberType === 'organization_unit' && units.kind === 'ready') {

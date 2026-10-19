@@ -23,6 +23,8 @@ export interface MessageCitation {
   used: boolean
   char_start: number
   char_end: number
+  /** The passage is empty because its space is closed to this reader. */
+  text_hidden?: boolean
 }
 
 /** One picture found by a picture search (see ``POST /conversations/{id}/image-search``). */

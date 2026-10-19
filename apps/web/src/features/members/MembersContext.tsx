@@ -4,8 +4,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 
-import { inviteMember, listMembers, setMemberRole } from './api'
-import type { InvitableRole, InviteMemberInput, MemberSummary } from './types'
+import { deactivateMember, inviteMember, listMembers, reactivateMember, setMemberRole } from './api'
+import type {
+  DeactivationResponse,
+  InvitableRole,
+  InviteMemberInput,
+  MemberSummary,
+  ReactivationResponse,
+} from './types'
 
 type LoadState =
   | { kind: 'idle' }
@@ -18,6 +24,9 @@ interface MembersContextValue {
   reload: () => Promise<void>
   invite: (input: InviteMemberInput) => Promise<MemberSummary>
   setRole: (userId: string, role: InvitableRole) => Promise<MemberSummary>
+  /** Organisation owner only. Suspends the member and ends what they could do. */
+  deactivate: (userId: string) => Promise<DeactivationResponse>
+  reactivate: (userId: string) => Promise<ReactivationResponse>
 }
 
 const MembersContext = createContext<MembersContextValue | null>(null)
@@ -81,9 +90,37 @@ export function MembersProvider({ children }: PropsWithChildren) {
     [credentials],
   )
 
+  const replaceMember = useCallback((updated: MemberSummary) => {
+    setState((prev) =>
+      prev.kind === 'ready'
+        ? { kind: 'ready', items: prev.items.map((m) => (m.id === updated.id ? updated : m)) }
+        : prev,
+    )
+  }, [])
+
+  const deactivate = useCallback(
+    async (userId: string): Promise<DeactivationResponse> => {
+      if (!credentials) throw new Error('not signed in')
+      const result = await deactivateMember(credentials, userId)
+      replaceMember(result.member)
+      return result
+    },
+    [credentials, replaceMember],
+  )
+
+  const reactivate = useCallback(
+    async (userId: string): Promise<ReactivationResponse> => {
+      if (!credentials) throw new Error('not signed in')
+      const result = await reactivateMember(credentials, userId)
+      replaceMember(result.member)
+      return result
+    },
+    [credentials, replaceMember],
+  )
+
   const value = useMemo<MembersContextValue>(
-    () => ({ state, reload: load, invite, setRole }),
-    [state, load, invite, setRole],
+    () => ({ state, reload: load, invite, setRole, deactivate, reactivate }),
+    [state, load, invite, setRole, deactivate, reactivate],
   )
 
   return <MembersContext.Provider value={value}>{children}</MembersContext.Provider>

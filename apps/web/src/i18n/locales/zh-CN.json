@@ -425,7 +425,14 @@
         "external_access.granted": "{{actor}} 连接了一个外部工具",
         "external_access.revoked": "一个外部工具已断开连接",
         "knowledge.external_search": "{{actor}} 的外部工具检索了知识库",
-        "organization.external_tools_changed": "{{actor}} 修改了外部工具开关"
+        "organization.external_tools_changed": "{{actor}} 修改了外部工具开关",
+        "member.deactivated": "{{actor}} 停用了成员 {{resource}}",
+        "member.reactivated": "{{actor}} 恢复了成员 {{resource}}",
+        "space.frozen": "{{actor}} 冻结了个人空间 {{resource}}",
+        "space.unfrozen": "{{actor}} 解冻了个人空间 {{resource}}",
+        "member.spaces_transferred": "{{actor}} 移交了 {{resource}} 名下的空间",
+        "space.owner_transferred": "{{actor}} 移交了空间 {{resource}} 的所有权",
+        "ai_model_selection.invalidated": "一个成员的私有密钥被移除,组织的一项模型选择已失效"
       },
       "time": {
         "now": "刚刚",
@@ -511,7 +518,14 @@
         "external_access.granted": "连接外部工具",
         "external_access.revoked": "断开外部工具",
         "knowledge.external_search": "外部工具检索",
-        "organization.external_tools_changed": "调整外部工具开关"
+        "organization.external_tools_changed": "调整外部工具开关",
+        "member.deactivated": "停用成员",
+        "member.reactivated": "恢复成员",
+        "space.frozen": "冻结个人空间",
+        "space.unfrozen": "解冻个人空间",
+        "member.spaces_transferred": "移交成员的空间",
+        "space.owner_transferred": "移交空间所有权",
+        "ai_model_selection.invalidated": "模型选择失效"
       }
     }
   },
@@ -850,10 +864,15 @@
     "tally": {
       "total": "成员总数",
       "other": "其他角色",
-      "pending": "待接受邀请"
+      "pending": "待接受邀请",
+      "suspended": "已停用"
     },
     "promoteToAdmin": "设为管理员",
-    "demoteToMember": "设为成员"
+    "demoteToMember": "设为成员",
+    "suspended": "已停用",
+    "deactivate": "停用",
+    "reactivate": "恢复",
+    "offboarding": "离职清单"
   },
   "inviteMember": {
     "title": "邀请新成员",
@@ -1318,7 +1337,8 @@
       "empty": "这条回答暂无引用来源。",
       "openDocument": "查看原文",
       "viewerLoading": "正在重新提取文档文本…",
-      "viewerHighlightHint": "已为你定位到引用片段并高亮显示。"
+      "viewerHighlightHint": "已为你定位到引用片段并高亮显示。",
+      "textHidden": "原文已隐藏:你已无权查看这个来源。"
     },
     "role": {
       "user": "你",
@@ -1493,7 +1513,8 @@
       "relatedTitle": "可能相关的图片",
       "showRelated_other": "另有 {{count}} 张可能相关的图片，在右侧查看",
       "showRelated_one": "另有 {{count}} 张可能相关的图片，在右侧查看"
-    }
+    },
+    "modelFallback": "原先选择的模型已不可用,这次将改用默认模型回答。"
   },
   "orgSpaces": {
     "title": "企业空间",
@@ -1624,5 +1645,80 @@
     "inboxTitle": "有上传等你审批",
     "inboxLine": "{{space}}：{{count}} 份待审批",
     "inboxOpen": "去审批"
+  },
+  "deactivateDialog": {
+    "title": "停用成员 {{name}}",
+    "intro": "停用后,{{name}} 将立即发生以下变化:",
+    "loading": "正在读取影响范围…",
+    "loadError": "读取影响范围失败",
+    "sessions": "所有已登录的网页会话立即失效,且无法再登录。",
+    "oauth": "撤销其全部外部工具授权(共 {{count}} 个)。",
+    "feishu": "删除其飞书授权({{tokens}} 个),并暂停其创建的飞书同步来源({{sources}} 个)。",
+    "byok": "删除其私有模型密钥(共 {{count}} 个)。",
+    "byokGlobal": "此人的私有模型密钥属于其全局身份,删除后在其他组织或个人账户中也将失效,需要本人重新填写。",
+    "personal": "其个人空间将被冻结:任何人(包括所有者和管理员)都无法搜索或打开,数据保留,恢复成员后自动解冻。",
+    "keeps": "其上传到共享空间的内容会保留,其他有权限的人仍可检索。",
+    "needsTransfer": "其名下有 {{count}} 个协作空间需要移交给新的所有者,停用后可在“离职清单”中批量移交。",
+    "orgChatFallback": "组织当前的聊天模型使用了此人的私有密钥,停用后将改用平台默认模型,并按平台免费额度计量。",
+    "embeddingBlocked": "组织的嵌入模型使用了此人的私有密钥。请先在 AI 设置中改用组织或平台模型,再停用此成员。",
+    "restoreNote": "恢复成员只会恢复账号和个人空间;已删除或已撤销的凭据、已暂停的同步不会恢复,本人需要重新登录并重新连接。",
+    "cancel": "取消",
+    "confirm": "确认停用"
+  },
+  "offboarding": {
+    "title": "离职清单 · {{name}}",
+    "close": "关闭",
+    "loading": "正在读取清单…",
+    "loadError": "读取清单失败",
+    "notSuspended": "该成员尚未停用。请先停用,才能移交其名下的空间。",
+    "ownedTitle": "名下的协作空间({{count}})",
+    "ownedEmpty": "没有需要处理的协作空间。",
+    "needsOwner": "没有其他所有者,需要移交",
+    "hasOtherOwner": "另有所有者:{{names}}(无需移交)",
+    "pendingGoesAlong": "{{count}} 个待审批文件会一并移交",
+    "moreHidden": "还有 {{count}} 个未显示,处理后刷新。",
+    "newOwner": "新的所有者",
+    "chooseOwner": "选择一位成员…",
+    "transfer": "移交所选空间({{count}})",
+    "resultsTitle": "移交结果",
+    "resultsSummary": "已移交 {{transferred}} 个,此前已移交 {{already}} 个,跳过 {{skipped}} 个,失败 {{failed}} 个。",
+    "result": {
+      "transferred": "已移交",
+      "already_done": "此前已移交",
+      "skipped": "已跳过",
+      "failed": "失败"
+    },
+    "code": {
+      "personal_space": "个人空间不移交",
+      "not_owned_by_member": "该成员不是此空间的所有者",
+      "space_not_active": "空间已归档,恢复后再处理",
+      "has_other_owner": "另有所有者;他的旧所有者绑定仍在,但停用后不生效",
+      "space_not_found": "找不到该空间",
+      "not_allowed": "没有权限执行",
+      "invalid_state": "空间状态不允许移交"
+    },
+    "reviewerTitle": "担任审批人的空间({{count}})",
+    "reviewerEmpty": "没有以审批人身份直接授权的空间。",
+    "reviewerHint": "审批职责不能移交,需要由空间的所有者重新授权新的审批人。",
+    "noReviewer": "无人审批",
+    "otherReviewers": "另有 {{count}} 位审批人",
+    "reviewers": "{{count}} 位审批人",
+    "pendingCount": "{{count}} 个待审批",
+    "uploadsTitle": "其待审批的上传({{count}})",
+    "uploadsEmpty": "没有待审批的上传。",
+    "uploadsHint": "这些文件保持待审批,由空间现有的审批人处理;通过后即可被有权限的人检索。",
+    "error": {
+      "org_embedding_uses_private_key": "组织的嵌入模型使用了此人的私有密钥。请先在 AI 设置中改用组织或平台模型,再停用。",
+      "cannot_deactivate_self": "不能停用自己。",
+      "cannot_deactivate_owner": "不能停用组织所有者。",
+      "member_archived": "该账号已归档,无法管理。",
+      "member_not_suspended": "请先停用该成员。",
+      "no_spaces": "请至少选择一个空间。",
+      "batch_too_large": "一次最多移交 100 个空间。",
+      "new_owner_not_found": "新的所有者不在本组织。",
+      "new_owner_is_departed_member": "新的所有者不能是离职成员本人。",
+      "new_owner_not_active": "新的所有者必须是已启用的成员。",
+      "new_owner_is_org_owner": "组织所有者不能担任空间所有者。"
+    }
   }
 }
