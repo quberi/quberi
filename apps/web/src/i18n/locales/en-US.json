@@ -686,6 +686,7 @@
   "auth": {
     "signedInAs": "Signed in as",
     "signOut": "Sign out",
+    "sessionInvalid": "Your session has ended. Please sign in again.",
     "guest": "Guest",
     "guestCta": "Sign in / sign up"
   },

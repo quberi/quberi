@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, apiFetch, buildAuthHeaders } from '../api/client'
+import { API_BASE, apiErrorFrom, apiFetch, buildAuthHeaders } from '../api/client'
 import type { DevCredentials } from '../auth/types'
 
 import type {
@@ -63,16 +63,8 @@ export const MAX_QUERY_PICTURE_BYTES = 10 * 1024 * 1024
 /** Longest description that can go with (or replace) a query picture. */
 export const MAX_IMAGE_QUERY_TEXT = 500
 
-async function failureOf(response: Response): Promise<ApiError> {
-  let detail = ''
-  try {
-    const payload = (await response.json()) as { detail?: unknown }
-    if (typeof payload.detail === 'string') detail = payload.detail
-    else if (payload.detail) detail = JSON.stringify(payload.detail)
-  } catch {
-    /* no JSON body: the status is all we have */
-  }
-  return new ApiError(response.status, detail)
+async function failureOf(response: Response) {
+  return apiErrorFrom(response)
 }
 
 /**
@@ -296,14 +288,7 @@ async function* postSse(
     signal,
   })
   if (!response.ok || !response.body) {
-    let detail = ''
-    try {
-      const payload = (await response.json()) as { detail?: string }
-      detail = payload.detail ?? ''
-    } catch {
-      /* fall through */
-    }
-    throw new ApiError(response.status, detail || 'stream open failed')
+    throw await apiErrorFrom(response, 'stream open failed')
   }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()

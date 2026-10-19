@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, apiFetch, buildAuthHeaders } from '../api/client'
+import { API_BASE, apiErrorFrom, apiFetch, buildAuthHeaders } from '../api/client'
 import type { DevCredentials } from '../auth/types'
 
 export interface AccountProfile {
@@ -45,13 +45,7 @@ export async function uploadAvatar(
     body: form,
   })
   if (!resp.ok) {
-    let detail = ''
-    try {
-      detail = ((await resp.json()) as { detail?: string }).detail ?? ''
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(resp.status, detail)
+    throw await apiErrorFrom(resp)
   }
   return (await resp.json()) as AccountProfile
 }

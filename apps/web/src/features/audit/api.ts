@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, apiFetch, buildAuthHeaders } from '../api/client'
+import { API_BASE, apiErrorFrom, apiFetch, buildAuthHeaders } from '../api/client'
 import type { DevCredentials } from '../auth/types'
 
 import type { AuditEventPage, AuditFilters, RecentEventList } from './types'
@@ -55,6 +55,6 @@ export async function exportAuditCsv(
     `${API_BASE}/api/v1/organizations/current/audit-events.csv${query ? `?${query}` : ''}`,
     { headers: buildAuthHeaders(credentials) },
   )
-  if (!response.ok) throw new ApiError(response.status, '')
+  if (!response.ok) throw await apiErrorFrom(response)
   return response.blob()
 }

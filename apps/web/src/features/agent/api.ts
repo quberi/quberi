@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, apiFetch, buildAuthHeaders } from '../api/client'
+import { API_BASE, apiErrorFrom, apiFetch, buildAuthHeaders } from '../api/client'
 import type { DevCredentials } from '../auth/types'
 
 import type {
@@ -146,14 +146,7 @@ export async function* streamAgentRun(
     },
   )
   if (!response.ok || !response.body) {
-    let detail = ''
-    try {
-      const body = (await response.json()) as { detail?: string }
-      detail = body.detail ?? ''
-    } catch {
-      /* fall through */
-    }
-    throw new ApiError(response.status, detail || 'agent stream open failed')
+    throw await apiErrorFrom(response, 'agent stream open failed')
   }
 
   const reader = response.body.getReader()

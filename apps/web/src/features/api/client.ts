@@ -21,12 +21,49 @@ const API_BASE_URL = (
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
+  /** Machine-readable reason the server gave (e.g. ``session_invalid``), when it gave one. */
+  readonly code?: string
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, code?: string) {
     super(detail || `Request failed with status ${status}`)
     this.status = status
     this.detail = detail
+    this.code = code
   }
+}
+
+/** Fired on ``window`` when the server says the signed-in session has ended. */
+export const SESSION_INVALID_EVENT = 'quberi:session-invalid'
+
+/**
+ * Tell the app the session is over, but only for the one answer that means it:
+ * 401 with ``code: "session_invalid"``. A 401 for a wrong sign-in code carries no
+ * such code and must not sign anyone out.
+ */
+export function notifyIfSessionInvalid(status: number, code?: string): void {
+  if (status === 401 && code === 'session_invalid') {
+    window.dispatchEvent(new Event(SESSION_INVALID_EVENT))
+  }
+}
+
+/**
+ * Turn a failed ``Response`` into an ``ApiError`` (reading ``detail`` and ``code``
+ * from a JSON body when there is one) and raise the session-ended signal if it applies.
+ * ``fallback`` is used as the message when the server sent none.
+ */
+export async function apiErrorFrom(response: Response, fallback = ''): Promise<ApiError> {
+  let detail = ''
+  let code: string | undefined
+  try {
+    const payload = (await response.json()) as { detail?: unknown; code?: unknown }
+    if (typeof payload.detail === 'string') detail = payload.detail
+    else if (payload.detail) detail = JSON.stringify(payload.detail)
+    if (typeof payload.code === 'string') code = payload.code
+  } catch {
+    // no JSON body: the status is all we have
+  }
+  notifyIfSessionInvalid(response.status, code)
+  return new ApiError(response.status, detail || fallback, code)
 }
 
 interface RequestOptions {
@@ -74,15 +111,7 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
     })
 
     if (!response.ok && !(opts.allowUnready && response.status === 503)) {
-      let detail = ''
-      try {
-        const payload = (await response.json()) as { detail?: string | unknown }
-        if (typeof payload.detail === 'string') detail = payload.detail
-        else if (payload.detail) detail = JSON.stringify(payload.detail)
-      } catch {
-        // ignore JSON parse errors — we still throw ApiError with the status
-      }
-      throw new ApiError(response.status, detail)
+      throw await apiErrorFrom(response)
     }
 
     // 204 (and any other body-less response) → return ``undefined`` cast as T.

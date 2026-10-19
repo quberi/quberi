@@ -1,4 +1,4 @@
-import { apiFetch } from '../api/client'
+import { API_BASE, apiFetch } from '../api/client'
 import type { DevCredentials } from './types'
 
 import type { SessionUser } from './AuthContext'
@@ -122,5 +122,17 @@ export function switchOrganization(
     method: 'POST',
     body: { organization_id: organizationId },
     credentials,
+  })
+}
+
+/**
+ * End this session on the server so the token stops working everywhere. Best effort:
+ * the caller drops its own copy of the credentials whether or not this succeeds.
+ */
+export async function logout(token: string): Promise<void> {
+  await fetch(`${API_BASE}/api/v1/auth/logout`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    keepalive: true,
   })
 }

@@ -6,7 +6,14 @@
  * two things ``apiFetch`` doesn't do today.
  */
 
-import { API_BASE, ApiError, apiFetch, buildAuthHeaders } from '../api/client'
+import {
+  API_BASE,
+  ApiError,
+  apiErrorFrom,
+  apiFetch,
+  buildAuthHeaders,
+  notifyIfSessionInvalid,
+} from '../api/client'
 import type { DevCredentials } from '../auth/types'
 
 import type {
@@ -112,14 +119,7 @@ export async function downloadDocument(
     headers: buildAuthHeaders(credentials),
   })
   if (!response.ok) {
-    let detail = ''
-    try {
-      const body = (await response.json()) as { detail?: string }
-      detail = body.detail ?? ''
-    } catch {
-      /* swallow */
-    }
-    throw new ApiError(response.status, detail)
+    throw await apiErrorFrom(response)
   }
   const disposition = response.headers.get('content-disposition') ?? ''
   const filename = extractFilename(disposition)
@@ -177,8 +177,9 @@ export function uploadDocument(
         resolve(xhr.response as DocumentSummary)
         // (For guests the response is a small subset; callers re-read the list.)
       } else {
-        const body = xhr.response as { detail?: string } | undefined
-        reject(new ApiError(xhr.status, body?.detail ?? ''))
+        const body = xhr.response as { detail?: string; code?: string } | undefined
+        notifyIfSessionInvalid(xhr.status, body?.code)
+        reject(new ApiError(xhr.status, body?.detail ?? '', body?.code))
       }
     }
     if (signal) {

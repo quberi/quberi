@@ -6,7 +6,7 @@ Public (no session required):
 
 Session-scoped:
 * GET  /api/v1/auth/me            — current user/org
-* POST /api/v1/auth/logout        — client-side token drop (stateless)
+* POST /api/v1/auth/logout        — ends this session on the server (revokes the token)
 
 Platform-admin (bearer admin token):
 * GET  /api/v1/admin/email-settings

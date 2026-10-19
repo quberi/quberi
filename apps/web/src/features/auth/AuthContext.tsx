@@ -1,5 +1,7 @@
 import type { PropsWithChildren } from 'react'
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { SESSION_INVALID_EVENT } from '../api/client'
+import { logout } from './api'
 
 import { consumeGoogleRedirectResult } from './googleRedirect'
 import { clearCredentials, loadCredentials, saveCredentials } from './storage'
@@ -29,6 +31,9 @@ interface AuthContextValue {
   /** Patch the cached display name (after the user edits it on the account page). */
   updateDisplayName: (displayName: string) => void
   signOut: () => void
+  /** Set when the server ended the session (e.g. the member was deactivated). */
+  notice: 'sessionInvalid' | null
+  clearNotice: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -98,9 +103,34 @@ export function AuthProvider({ children }: PropsWithChildren) {
     })
   }, [])
 
+  const [notice, setNotice] = useState<'sessionInvalid' | null>(null)
+  const clearNotice = useCallback(() => setNotice(null), [])
+  const latest = useRef<DevCredentials | null>(credentials)
+  latest.current = credentials
+
   const signOut = useCallback(() => {
+    // Ask the server to end the session too, so a copied token stops working.
+    // If that fails the person is still signed out here.
+    const token = latest.current?.sessionToken
+    if (token && !latest.current?.isGuest) {
+      void logout(token).catch(() => undefined)
+    }
     clearCredentials()
     setCredentials(null)
+  }, [])
+
+  // The server answered "this session is over" (deactivated member, signed out elsewhere).
+  // A guest's short-lived token is not a sign-in, so it is left alone.
+  useEffect(() => {
+    const onSessionInvalid = () => {
+      const current = latest.current
+      if (!current || current.isGuest) return
+      clearCredentials()
+      setCredentials(null)
+      setNotice('sessionInvalid')
+    }
+    window.addEventListener(SESSION_INVALID_EVENT, onSessionInvalid)
+    return () => window.removeEventListener(SESSION_INVALID_EVENT, onSessionInvalid)
   }, [])
 
   const value = useMemo(
@@ -112,8 +142,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signInAsGuest,
       updateDisplayName,
       signOut,
+      notice,
+      clearNotice,
     }),
-    [credentials, signIn, signInWithSession, signInAsGuest, updateDisplayName, signOut],
+    [
+      credentials,
+      signIn,
+      signInWithSession,
+      signInAsGuest,
+      updateDisplayName,
+      signOut,
+      notice,
+      clearNotice,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

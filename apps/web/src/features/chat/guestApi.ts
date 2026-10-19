@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, apiFetch, buildAuthHeaders } from '../api/client'
+import { API_BASE, apiErrorFrom, apiFetch, buildAuthHeaders } from '../api/client'
 import type { DevCredentials } from '../auth/types'
 
 import type { MessageCitation } from './types'
@@ -74,15 +74,7 @@ export async function* streamGuestAsk(
   })
 
   if (!response.ok || !response.body) {
-    let detail = ''
-    try {
-      const body = (await response.json()) as { detail?: unknown }
-      // FastAPI sends a string for our errors, a list for validation errors.
-      detail = typeof body.detail === 'string' ? body.detail : ''
-    } catch {
-      /* fall through */
-    }
-    throw new ApiError(response.status, detail || 'guest question failed')
+    throw await apiErrorFrom(response, 'guest question failed')
   }
 
   const reader = response.body.getReader()

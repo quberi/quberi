@@ -1,5 +1,7 @@
 import type { PropsWithChildren } from 'react'
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from './AuthContext'
 
 import { AuthDialog } from './AuthDialog'
 import { googleRedirectError } from './googleRedirect'
@@ -24,6 +26,16 @@ export function AuthModalProvider({ children }: PropsWithChildren) {
     googleRedirectError(),
   )
   const [open, setOpen] = useState(() => redirectError !== null)
+  // The server ended the session (for example the member was deactivated): sign-in opens
+  // with a message saying so, instead of the app quietly turning into the guest view.
+  const { notice, clearNotice } = useAuth()
+  const { t } = useTranslation()
+  useEffect(() => {
+    if (notice !== 'sessionInvalid') return
+    setRedirectError(t('auth.sessionInvalid'))
+    setOpen(true)
+    clearNotice()
+  }, [notice, clearNotice, t])
   const openAuth = useCallback(() => setOpen(true), [])
   const closeAuth = useCallback(() => {
     setOpen(false)
