@@ -47,6 +47,10 @@ from quberi_api.domain.identity.models import (
 )
 from quberi_api.services.auth import phone_auth as phone_auth_service
 from quberi_api.services.auth import verification as verification_service
+from quberi_api.services.auth.account_status import (
+    best_login_user,
+    raise_if_identity_suspended,
+)
 from quberi_api.services.auth.verification import (
     ResolvedLogin,
     _consume_valid_code,
@@ -329,17 +333,11 @@ async def _login_existing_identity(
 ) -> Optional[ResolvedLogin]:
     """Return a ResolvedLogin for an existing identity's account, or None."""
 
-    row = (
-        await session.execute(
-            select(User, Organization)
-            .join(Organization, Organization.id == User.organization_id)
-            .where(User.identity_id == identity_id)
-            .where(User.status != "archived")
-            # Prefer the personal org so returning users land "home".
-            .order_by(Organization.tier.desc(), User.created_at.asc())
-            .limit(1)
-        )
-    ).first()
+    # Prefers the personal org so returning users land "home".
+    row = await best_login_user(session, identity_id=identity_id)
+    if row is None:
+        # A suspended member must not be given a fresh account in its place.
+        await raise_if_identity_suspended(session, identity_id=identity_id)
     await session.commit()
     if row is None:
         return None
@@ -509,7 +507,8 @@ async def _attach_subject_to(
     prov_user_id = provisional.get("user_id") if provisional else None
     if prov_user_id:
         stale = await session.get(User, uuid.UUID(prov_user_id))
-        if stale is not None:
+        # A suspended account is waiting to be reactivated; never retire it here.
+        if stale is not None and stale.status != "suspended":
             stale.status = "archived"
 
 
@@ -683,16 +682,9 @@ async def bind_phone_and_resolve(
     ).scalar_one_or_none()
     found_data = None
     if phone_identity is not None:
-        row = (
-            await session.execute(
-                select(User, Organization)
-                .join(Organization, Organization.id == User.organization_id)
-                .where(User.identity_id == phone_identity.id)
-                .where(User.status != "archived")
-                .order_by(Organization.tier.desc(), User.created_at.asc())
-                .limit(1)
-            )
-        ).first()
+        row = await best_login_user(session, identity_id=phone_identity.id)
+        if row is None:
+            await raise_if_identity_suspended(session, identity_id=phone_identity.id)
         if row is not None:
             user, org = row
             found_data = {

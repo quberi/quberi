@@ -29,6 +29,11 @@ from quberi_api.core.config import get_settings
 from quberi_api.domain.auth.models import VerificationCode
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.services.auth import email_settings as email_settings_service
+from quberi_api.services.auth.account_status import (
+    ACCOUNT_UNAVAILABLE_MESSAGE,
+    AccountUnavailableError,
+    login_usable,
+)
 from quberi_api.services.auth.email_sender import (
     EmailSendError,
     send_email_with_failover,
@@ -65,17 +70,38 @@ def _hash_code(email: str, code: str) -> str:
 async def _find_active_user(
     session: AsyncSession, email: str
 ) -> Optional[tuple[User, Organization]]:
+    """The account this verified email may sign in to, or ``None`` for a new email.
+
+    A code proves control of the address and nothing more, so only a row whose own
+    email is that address can be signed in. The row's identity is never consulted: a
+    recycled mailbox must not lead to another account of the previous owner, and a
+    social login that reuses this lookup must not get a new subject linked to it.
+    If the only matching rows are suspended, the sign-in is refused instead of
+    falling through to creating a fresh account.
+    """
+
     row = (
         await session.execute(
             select(User, Organization)
             .join(Organization, Organization.id == User.organization_id)
             .where(func.lower(User.email) == email)
-            .where(User.status != "archived")
+            .where(login_usable())
             .order_by(User.created_at.asc())
             .limit(1)
         )
     ).first()
-    return (row[0], row[1]) if row else None
+    if row is not None:
+        return (row[0], row[1])
+    suspended = (
+        await session.execute(
+            select(User.id)
+            .where(func.lower(User.email) == email, User.status == "suspended")
+            .limit(1)
+        )
+    ).first()
+    if suspended is not None:
+        raise AccountUnavailableError(ACCOUNT_UNAVAILABLE_MESSAGE)
+    return None
 
 
 async def request_code(

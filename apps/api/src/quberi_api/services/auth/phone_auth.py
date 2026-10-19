@@ -24,7 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.core.config import get_settings
 from quberi_api.domain.auth.models import VerificationCode
-from quberi_api.domain.identity.models import Identity, Organization, User
+from quberi_api.domain.identity.models import Identity
+from quberi_api.services.auth.account_status import (
+    best_login_user,
+    raise_if_identity_suspended,
+)
 from quberi_api.services.auth.sms_sender import send_sms
 from quberi_api.services.auth.verification import (
     ResolvedLogin,
@@ -207,16 +211,10 @@ async def verify_phone_and_resolve(
 async def _login_existing(
     session: AsyncSession, *, identity_id, phone: str
 ) -> Optional[ResolvedLogin]:
-    row = (
-        await session.execute(
-            select(User, Organization)
-            .join(Organization, Organization.id == User.organization_id)
-            .where(User.identity_id == identity_id)
-            .where(User.status != "archived")
-            .order_by(Organization.tier.desc(), User.created_at.asc())
-            .limit(1)
-        )
-    ).first()
+    row = await best_login_user(session, identity_id=identity_id)
+    if row is None:
+        # A suspended member must not be given a fresh account in its place.
+        await raise_if_identity_suspended(session, identity_id=identity_id)
     await session.commit()
     if row is None:
         return None

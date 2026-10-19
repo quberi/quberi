@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.identity.models import Organization, User
+from quberi_api.services.auth.account_status import login_usable
 from quberi_api.services.errors import InvalidInputError, NotFoundError
 from quberi_api.services.onboarding import bootstrap_organization
 
@@ -36,7 +37,7 @@ class MyOrganization:
 async def list_my_organizations(
     session: AsyncSession, *, identity_id: uuid.UUID
 ) -> list[MyOrganization]:
-    """Every organisation this identity has a (non-archived) membership in.
+    """Every organisation this identity has a membership in that may sign in.
 
     Covers both self-created orgs (personal, or a team they founded) and
     orgs they were invited into — membership is a single ``User`` row
@@ -48,7 +49,7 @@ async def list_my_organizations(
             select(User, Organization)
             .join(Organization, Organization.id == User.organization_id)
             .where(User.identity_id == identity_id)
-            .where(User.status != "archived")
+            .where(login_usable())
             .order_by(Organization.created_at.asc())
         )
     ).all()
@@ -133,7 +134,7 @@ async def resolve_switch_target(
 ) -> User:
     """Return the caller's ``User`` row in ``organization_id``, if a member.
 
-    Raises :class:`NotFoundError` if the identity has no (non-archived)
+    Raises :class:`NotFoundError` if the identity has no usable
     membership there — this is the authorization check for switching: you
     can only switch into an org you already belong to.
     """
@@ -143,7 +144,7 @@ async def resolve_switch_target(
             select(User).where(
                 User.identity_id == identity_id,
                 User.organization_id == organization_id,
-                User.status != "archived",
+                login_usable(),
             )
         )
     ).scalar_one_or_none()
