@@ -373,7 +373,9 @@ async def test_a_forged_or_expired_link_is_a_plain_404(
     boot, space, doc, tokens, path = await _found(http, db_session, redis_client, qdrant, blobs)
     grant = (await db_session.execute(select(OAuthGrant).where(OAuthGrant.user_id == boot.user_id))).scalar_one()
 
-    tampered = path[:-5] + ("A" if path[-5] != "A" else "B") + ".jpg"
+    # Flip a character inside the MAC. The last character of the token only carries two
+    # unused padding bits, so changing it can leave the decoded bytes (and the link) intact.
+    tampered = path[:-15] + ("A" if path[-15] != "A" else "B") + path[-14:]
     old = links.sign(
         get_settings(), user_id=boot.user_id, grant_id=grant.id, document_id=doc.id, now=time.time() - 3600
     )
