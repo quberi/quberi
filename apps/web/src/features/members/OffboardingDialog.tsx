@@ -74,10 +74,11 @@ export function OffboardingDialog({ member, onClose }: Props) {
   )
 
   const suspended = checklist?.member.status === 'suspended'
-  const names = useMemo(
-    () => new Map((checklist?.owned_spaces ?? []).map((s) => [s.space_id, s.name])),
-    [checklist],
-  )
+  // Names of every space seen so far: after a handover the reloaded list no longer has them,
+  // but the result list still has to say which space each line is about.
+  const seenNames = useRef(new Map<string, string>())
+  for (const s of checklist?.owned_spaces ?? []) seenNames.current.set(s.space_id, s.name)
+  const names = seenNames.current
   const canSubmit = suspended && newOwner !== '' && selected.size > 0 && !submitting
 
   const toggle = (id: string) =>
