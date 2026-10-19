@@ -125,7 +125,13 @@ async def transfer_owner(
     organization_id: uuid.UUID,
     actor_user_id: uuid.UUID,
     new_owner_user_id: uuid.UUID,
+    offboarded_user_id: uuid.UUID | None = None,
 ) -> OwnerTransfer:
+    """Hand the space to ``new_owner_user_id``.
+
+    ``offboarded_user_id`` is set when the handover is part of a member's departure; it is
+    written to the audit event so a repeated request can tell the work was already done.
+    """
     async with session.begin():
         guard = await access_guard.watch(
             session, actor_user_id=actor_user_id, organization_id=organization_id
@@ -225,6 +231,14 @@ async def transfer_owner(
             )
         if space.owner_type == "user":
             space.owner_id = target.id
+        payload = {
+            "mode": mode,
+            "new_owner_user_id": str(target.id),
+            "new_owner_name": target.display_name,
+            "removed_owner_user_ids": [str(u) for u in removed],
+        }
+        if offboarded_user_id is not None:
+            payload["offboarded_user_id"] = str(offboarded_user_id)
         session.add(
             AuditEvent(
                 organization_id=organization_id,
@@ -234,12 +248,7 @@ async def transfer_owner(
                 resource_type="space",
                 resource_id=space_id,
                 space_id=space_id,
-                payload={
-                    "mode": mode,
-                    "new_owner_user_id": str(target.id),
-                    "new_owner_name": target.display_name,
-                    "removed_owner_user_ids": [str(u) for u in removed],
-                },
+                payload=payload,
             )
         )
         await session.flush()
