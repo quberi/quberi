@@ -435,6 +435,21 @@ async def sync_source(
     connector = _EXTERNAL_CONNECTORS.get(row.kind)
     if connector is None:
         raise InvalidInputError(f"no connector registered for kind {row.kind!r}")
+    if row.status != "active":
+        # Say why only when it is known: a source paused for another reason, or one in
+        # error, must not be reported as belonging to a deactivated member.
+        if (row.config or {}).get("paused_reason") == "member_deactivated":
+            return ConnectorResult(
+                ok=False,
+                message="已暂停:连接者已停用。 "
+                "Paused: the member who connected it has been deactivated.",
+                details={},
+            )
+        return ConnectorResult(
+            ok=False,
+            message="该来源当前不是启用状态。 This source is not active.",
+            details={},
+        )
 
     # The get_source() call above executed a SELECT which auto-began a
     # transaction; commit it so the audit-write below can open its own.

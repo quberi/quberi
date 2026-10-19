@@ -63,7 +63,7 @@ def model(monkeypatch):
     )
 
     async def fake_resolve(*_a, **_k):
-        return types.SimpleNamespace(provider=provider, model=spec)
+        return types.SimpleNamespace(provider=provider, model=spec, fallback=False)
 
     monkeypatch.setattr(generate_module, "_resolve_chat", fake_resolve)
     return provider

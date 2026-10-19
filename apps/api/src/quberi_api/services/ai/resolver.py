@@ -38,6 +38,15 @@ class ProviderResolutionError(RuntimeError):
     """Raised when no binding can serve the requested (org, purpose)."""
 
 
+class BindingUnavailableError(ProviderResolutionError):
+    """A specifically chosen binding no longer exists, is hidden from the caller or is off.
+
+    Kept apart from the parent so a caller can fall back to the default model for this
+    case only. A binding that exists but cannot do chat is a setup mistake, and stays a
+    plain :class:`ProviderResolutionError` so it is not hidden by a silent model switch.
+    """
+
+
 @dataclass(frozen=True)
 class ResolvedProvider:
     """The result of :func:`resolve_chat_provider` / :func:`resolve_embedding_provider`.
@@ -51,6 +60,9 @@ class ResolvedProvider:
     model: ModelSpec
     binding_id: uuid.UUID
     is_platform_default: bool
+    # True when the model the conversation asked for was gone and this is the default
+    # instead (see ``rag.generate._resolve_chat``).
+    fallback: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +282,7 @@ async def resolve_chat_provider_explicit(
         )
     ).scalar_one_or_none()
     if binding is None or binding.status != "active":
-        raise ProviderResolutionError("chosen model binding not found or inactive")
+        raise BindingUnavailableError("chosen model binding not found or inactive")
     model = _spec_for(model_id, binding.provider_kind, "chat")
     provider = _instantiate(binding, model)
     if not isinstance(provider, ChatProvider):

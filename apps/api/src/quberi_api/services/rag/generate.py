@@ -46,6 +46,7 @@ from quberi_api.services.ai import (
     resolve_chat_provider_explicit,
 )
 from quberi_api.services.ai.base import ChatMessage, ChatProvider
+from quberi_api.services.ai.resolver import BindingUnavailableError
 from quberi_api.services.rag.vector_store import RetrievedChunk
 
 _log = logging.getLogger(__name__)
@@ -63,13 +64,25 @@ async def _resolve_chat(
     when both are given, otherwise the org default / platform fallback."""
 
     if model_id and binding_id:
-        return await resolve_chat_provider_explicit(
-            session,
-            organization_id=organization_id,
-            identity_id=identity_id,
-            binding_id=binding_id,
-            model_id=model_id,
-        )
+        try:
+            return await resolve_chat_provider_explicit(
+                session,
+                organization_id=organization_id,
+                identity_id=identity_id,
+                binding_id=binding_id,
+                model_id=model_id,
+            )
+        except BindingUnavailableError:
+            # The chosen binding is gone (for example its owner left and the key was
+            # removed). Answer with the organisation or platform default rather than
+            # fail; the sender sees the change in the pre-send preview. Only ids are logged.
+            _log.info(
+                "chat binding %s unavailable for org %s; using the default model",
+                binding_id,
+                organization_id,
+            )
+            resolved = await resolve_chat_provider(session, organization_id=organization_id)
+            return replace(resolved, fallback=True)
     return await resolve_chat_provider(session, organization_id=organization_id)
 
 
@@ -94,11 +107,14 @@ async def describe_chat_model(
         binding_id=binding_id,
     )
     spec = resolved.model
-    return {
+    described = {
         "model_id": spec.model_id,
         "display_name": spec.display_name,
         "vendor": spec.vendor,
     }
+    if resolved.fallback:
+        described["model_fallback"] = True
+    return described
 
 
 # ---------------------------------------------------------------------------

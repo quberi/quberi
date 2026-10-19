@@ -35,6 +35,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.core.config import Settings, get_settings
+from quberi_api.domain.enums import BLOCKED_USER_STATUSES
+from quberi_api.domain.identity.models import User
 from quberi_api.domain.integrations.models import (
     Integration,
     IntegrationOAuthState,
@@ -157,8 +159,15 @@ async def exchange_code(
     await session.commit()
     async with session.begin():
         await session.delete(state_row)
+        user_status = (
+            await session.execute(select(User.status).where(User.id == user_id))
+        ).scalar_one_or_none()
     if expires_at < now:
         raise OAuthError("OAuth state expired; please retry the connection")
+    if user_status is None or user_status in BLOCKED_USER_STATUSES:
+        # The authorisation was started before the member was deactivated: do not write
+        # a fresh Feishu grant for an account that is no longer available.
+        raise OAuthError("account unavailable")
 
     # -- exchange code for tokens --
     result = await _token_request(

@@ -30,3 +30,17 @@ class QuotaExceededError(ServiceError):
 
 class ForbiddenError(ServiceError):
     """The caller may not do this, even though they can see it (HTTP 403)."""
+
+
+class OffboardingRequestError(ServiceError):
+    """A deactivation or handover request cannot be carried out as asked.
+
+    ``code`` is a short machine-readable reason the web client keys off, and
+    ``http_status`` is the status the API answers with (409 for "fix the setup
+    first", 400 for a bad request).
+    """
+
+    def __init__(self, code: str, message: str, http_status: int = 409) -> None:
+        super().__init__(message)
+        self.code = code
+        self.http_status = http_status

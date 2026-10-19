@@ -20,12 +20,14 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from quberi_api.api.security import SessionInvalidError
+from quberi_api.services.ai.resolver import ProviderResolutionError
 from quberi_api.services.auth.account_status import AccountUnavailableError
 from quberi_api.services.errors import (
     AlreadyExistsError,
     ForbiddenError,
     InvalidInputError,
     NotFoundError,
+    OffboardingRequestError,
     QuotaExceededError,
     ServiceError,
 )
@@ -156,6 +158,31 @@ async def _handle_account_unavailable(
     )
 
 
+async def _handle_offboarding_request(
+    _: Request, exc: OffboardingRequestError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"detail": str(exc), "code": exc.code},
+    )
+
+
+async def _handle_provider_unresolved(
+    _: Request, exc: ProviderResolutionError
+) -> JSONResponse:
+    # No model can serve this organisation right now (for example the key behind its
+    # selection was removed). A fixed message: the exception text carries ids.
+    logger.warning("model provider could not be resolved: %s", type(exc).__name__)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "此组织的模型尚未配置,请联系管理员。 "
+            "The organisation's model is not configured. Contact an administrator.",
+            "code": "model_not_configured",
+        },
+    )
+
+
 async def _handle_service_error(_: Request, exc: ServiceError) -> JSONResponse:
     # Programmer error surfaced through a ServiceError subclass we do not have
     # a dedicated mapping for — log and hide the details.
@@ -179,6 +206,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(FrozenPositionError, _handle_frozen_position)
     app.add_exception_handler(SessionInvalidError, _handle_session_invalid)
     app.add_exception_handler(AccountUnavailableError, _handle_account_unavailable)
+    app.add_exception_handler(OffboardingRequestError, _handle_offboarding_request)
+    app.add_exception_handler(ProviderResolutionError, _handle_provider_unresolved)
     app.add_exception_handler(ForbiddenError, _handle_forbidden)
     app.add_exception_handler(AlreadyExistsError, _handle_already_exists)
     app.add_exception_handler(NotFoundError, _handle_not_found)
