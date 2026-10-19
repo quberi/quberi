@@ -39,6 +39,7 @@
 .member-row.is-suspended .member-body strong,
 .member-row.is-suspended .member-avatar { opacity: .55; }
 .badge-suspended { background: #fdecec; color: #8a1c1c; border: 1px solid #f0a8a8; }
+.offboarding-list .badge-archived { margin-left: 8px; background: rgba(230, 220, 220, .5); color: #8a4d4d; border: 1px solid rgba(180, 100, 100, .25); }
 .member-owner-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 /* A suspended row carries an extra badge and two buttons; keep the name column readable. */
 @media (min-width: 961px) {
