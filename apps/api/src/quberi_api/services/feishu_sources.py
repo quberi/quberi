@@ -26,6 +26,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.documents.models import DocumentSource, FeishuFolderClaim
+from quberi_api.domain.enums import BLOCKED_USER_STATUSES, READABLE_SPACE_STATUSES
+from quberi_api.domain.identity.models import User
 from quberi_api.domain.integrations.models import Integration
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services.errors import (
@@ -70,6 +72,50 @@ def parse_target_space_id(config: dict | None) -> uuid.UUID:
         raise InvalidInputError(
             "需要指定目标空间。 A target space is required."
         ) from None
+
+
+# Why a source that is still marked active must not write right now. The scheduled
+# job and the manual sync both ask :func:`sync_block_reason`, so they cannot drift.
+BLOCK_CONNECTOR_SUSPENDED = "connector suspended"
+BLOCK_TARGET_UNAVAILABLE = "target space unavailable"
+
+
+async def sync_block_reason(
+    session: AsyncSession, source: DocumentSource
+) -> Optional[str]:
+    """Why this source must not sync now, or ``None`` when it may.
+
+    * the member who connected it is suspended or archived (a source whose connector
+      row is gone, ``created_by_user_id`` NULL, has nobody to judge and may sync);
+    * its target space is gone or not readable (a frozen space takes no writes, synced
+      ones included). A source without a target space is left to the config check.
+    """
+    if source.created_by_user_id is not None:
+        connector_status = (
+            await session.execute(
+                select(User.status).where(User.id == source.created_by_user_id)
+            )
+        ).scalar_one_or_none()
+        if connector_status in BLOCKED_USER_STATUSES:
+            return BLOCK_CONNECTOR_SUSPENDED
+    raw_target = (source.config or {}).get("target_space_id")
+    if not raw_target:
+        return None
+    try:
+        target_id = uuid.UUID(str(raw_target))
+    except (ValueError, TypeError, AttributeError):
+        return BLOCK_TARGET_UNAVAILABLE
+    target_status = (
+        await session.execute(
+            select(Space.status).where(
+                Space.id == target_id,
+                Space.organization_id == source.organization_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if target_status not in READABLE_SPACE_STATUSES:
+        return BLOCK_TARGET_UNAVAILABLE
+    return None
 
 
 async def prepare_config(

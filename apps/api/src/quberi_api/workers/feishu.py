@@ -17,9 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from qdrant_client import AsyncQdrantClient
 
 from quberi_api.domain.documents.models import DocumentSource
-from quberi_api.domain.enums import BLOCKED_USER_STATUSES, READABLE_SPACE_STATUSES
-from quberi_api.domain.identity.models import User
-from quberi_api.domain.spaces.models import Space
+from quberi_api.services import feishu_sources
 
 _log = logging.getLogger(__name__)
 
@@ -68,37 +66,23 @@ async def sync_feishu_source(ctx: dict[str, Any] | None, source_id: str) -> dict
         if row.status != "active":
             _log.info("feishu source %s not synced: source not active", source_id)
             return {"source_id": source_id, "skipped": "source not active"}
-        if row.created_by_user_id is not None:
-            connector_status = (
-                await session.execute(
-                    select(User.status).where(User.id == row.created_by_user_id)
-                )
-            ).scalar_one_or_none()
-            if connector_status in BLOCKED_USER_STATUSES:
-                # A sync queued before the member was deactivated, or a source missed
-                # when they were: stop it for good. A source whose connector row is gone
-                # (created_by_user_id NULL) has nobody to judge and keeps syncing.
-                await _pause_for_member(session, sid, row.created_by_user_id)
-                _log.info("feishu source %s not synced: connector suspended", source_id)
-                return {"source_id": source_id, "skipped": "connector suspended"}
+        block = await feishu_sources.sync_block_reason(session, row)
+        if block == feishu_sources.BLOCK_CONNECTOR_SUSPENDED:
+            # A sync queued before the member was deactivated, or a source missed
+            # when they were: stop it for good.
+            await _pause_for_member(session, sid, row.created_by_user_id)
+            _log.info("feishu source %s not synced: connector suspended", source_id)
+            return {"source_id": source_id, "skipped": "connector suspended"}
+        if block is not None:
+            # Gone, or frozen (a frozen space takes no writes, synced ones included).
+            _log.info("feishu source %s not synced: target space unavailable", source_id)
+            return {"source_id": source_id, "skipped": "target space unavailable"}
         config = row.config or {}
         folder_token = config.get("folder_token")
         target_space_id = config.get("target_space_id")
         if not folder_token or not target_space_id:
             return {"source_id": source_id, "skipped": "missing config"}
 
-        target_status = (
-            await session.execute(
-                select(Space.status).where(
-                    Space.id == uuid.UUID(str(target_space_id)),
-                    Space.organization_id == row.organization_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if target_status not in READABLE_SPACE_STATUSES:
-            # Gone, or frozen (a frozen space takes no writes, synced ones included).
-            _log.info("feishu source %s not synced: target space unavailable", source_id)
-            return {"source_id": source_id, "skipped": "target space unavailable"}
         from quberi_api.services.documents.connectors.feishu import (
             sync_folder_documents,
         )

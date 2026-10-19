@@ -450,6 +450,24 @@ async def sync_source(
             message="该来源当前不是启用状态。 This source is not active.",
             details={},
         )
+    if row.kind == "feishu":
+        # Same rule as the scheduled job: no writes for a suspended connector or into
+        # a target space that is gone or frozen.
+        block = await feishu_sources.sync_block_reason(session, row)
+        if block == feishu_sources.BLOCK_CONNECTOR_SUSPENDED:
+            return ConnectorResult(
+                ok=False,
+                message="已暂停:连接者已停用。 "
+                "Paused: the member who connected it has been deactivated.",
+                details={},
+            )
+        if block is not None:
+            return ConnectorResult(
+                ok=False,
+                message="目标空间当前不可用,无法同步。 "
+                "The target space is not available, so nothing was synced.",
+                details={},
+            )
 
     # The get_source() call above executed a SELECT which auto-began a
     # transaction; commit it so the audit-write below can open its own.

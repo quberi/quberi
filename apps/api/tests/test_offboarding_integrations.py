@@ -318,6 +318,91 @@ async def test_the_manual_sync_says_why_only_when_it_is_the_deactivation(db_sess
         assert "deactivated" not in said.message
 
 
+async def _manual_sync(db, boot, source_id):
+    await db.commit()
+    return await sources_service.sync_source(
+        db,
+        source_id=source_id,
+        organization_id=boot.organization_id,
+        actor_user_id=boot.user_id,
+    )
+
+
+@pytest.fixture
+def manual_connector(monkeypatch):
+    """Counts how often the manual sync reaches the connector (the part that writes)."""
+    counter = _Sync()
+
+    async def sync(config, credentials):
+        await counter()
+
+    monkeypatch.setattr(sources_service._EXTERNAL_CONNECTORS["feishu"], "sync", sync)
+    return counter
+
+
+async def test_the_manual_sync_refuses_a_frozen_target_and_works_again_after_it_thaws(
+    db_session, manual_connector
+):
+    from quberi_api.domain.documents.models import Document
+    from quberi_api.domain.spaces.models import Space
+
+    boot = await _org(db_session)
+    member = await _invite(db_session, boot, "member")
+    space = await _shared_space(db_session, boot)
+    # The source predates the freeze and its connector is still an active member.
+    source = await _feishu_source(db_session, boot, created_by=member.id, space_id=space.id)
+
+    async def documents():
+        await db_session.commit()
+        return (
+            await db_session.execute(
+                select(func.count()).select_from(Document).where(Document.space_id == space.id)
+            )
+        ).scalar_one()
+
+    async def set_space(status):
+        await db_session.execute(update(Space).where(Space.id == space.id).values(status=status))
+        await db_session.commit()
+
+    await set_space("frozen")
+    said = await _manual_sync(db_session, boot, source)
+    assert not said.ok and "目标空间当前不可用" in said.message
+    assert manual_connector.calls == 0
+    assert await documents() == 0
+    audited = (
+        await db_session.execute(
+            select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.action == "document_source.sync_attempted",
+                AuditEvent.resource_id == source,
+            )
+        )
+    ).scalar_one()
+    assert audited == 0
+    assert (await _source(db_session, source)).status == "active"  # waits for the space
+
+    await set_space("active")
+    said = await _manual_sync(db_session, boot, source)
+    assert said.ok and manual_connector.calls == 1
+
+
+async def test_the_manual_sync_refuses_a_suspended_connector_and_a_missing_target(
+    db_session, manual_connector
+):
+    boot = await _org(db_session)
+    leaver = await _invite(db_session, boot, "member")
+    space = await _shared_space(db_session, boot)
+    by_leaver = await _feishu_source(db_session, boot, created_by=leaver.id, space_id=space.id)
+    gone = await _feishu_source(db_session, boot, created_by=boot.user_id, space_id=uuid.uuid4())
+    await db_session.execute(update(User).where(User.id == leaver.id).values(status="suspended"))
+    await db_session.commit()
+
+    said = await _manual_sync(db_session, boot, by_leaver)
+    assert not said.ok and "连接者已停用" in said.message
+    said = await _manual_sync(db_session, boot, gone)
+    assert not said.ok and "目标空间当前不可用" in said.message
+    assert manual_connector.calls == 0
+
+
 async def test_an_authorisation_started_before_deactivation_writes_no_new_grant(
     db_session, monkeypatch
 ):
