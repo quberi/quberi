@@ -75,6 +75,10 @@ class ExternalAuthError(Exception):
         self.status = status
 
 
+# Why a grant was revoked when a member is deactivated (shown in the audit log).
+REVOKE_MEMBER_DEACTIVATED = "member_deactivated"
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -94,8 +98,13 @@ def _audit(
     *,
     actor_type: str = "user",
     reason: Optional[str] = None,
+    actor_user_id: Optional[uuid.UUID] = None,
 ) -> None:
-    """Record a change to a grant. Ids and labels only - never a token."""
+    """Record a change to a grant. Ids and labels only - never a token.
+
+    ``actor_user_id`` names someone other than the grant's holder who made the change
+    (an administrator deactivating the member); without it the holder is the actor.
+    """
 
     payload: dict = {
         "grant_id": str(grant.id),
@@ -108,7 +117,7 @@ def _audit(
         AuditEvent(
             organization_id=grant.organization_id,
             actor_type=actor_type,
-            actor_id=grant.user_id if actor_type == "user" else None,
+            actor_id=(actor_user_id or grant.user_id) if actor_type == "user" else None,
             action=action,
             resource_type="oauth_grant",
             resource_id=grant.id,
@@ -425,6 +434,47 @@ async def revoke_grant_for_user(
                 session, grant, "external_access.revoked", reason="revoked_by_user"
             )
         return True
+
+
+async def revoke_all_for_user(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    reason: str,
+) -> int:
+    """Revoke every live grant of one member; returns how many were revoked.
+
+    Runs inside the caller's transaction (it opens none), so deactivating a member
+    ends their outside-tool access in the same commit as everything else.
+    Grants that are already revoked are left as they are, so a second call changes
+    nothing and writes nothing.
+    """
+
+    grants = (
+        (
+            await session.execute(
+                select(OAuthGrant)
+                .where(OAuthGrant.user_id == user_id, OAuthGrant.revoked_at.is_(None))
+                .order_by(OAuthGrant.created_at, OAuthGrant.id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    now = _now()
+    for grant in grants:
+        grant.revoked_at = now
+        grant.revoke_reason = reason
+        _audit(
+            session,
+            grant,
+            "external_access.revoked",
+            reason=reason,
+            actor_user_id=actor_user_id,
+        )
+    return len(grants)
 
 
 # ---------------------------------------------------------------------------
