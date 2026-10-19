@@ -378,7 +378,10 @@ async def dev_client(db_session):
     from pydantic import SecretStr
     app = FastAPI()
     app.state.settings = get_settings().model_copy(
-        update={"environment": "development", "platform_admin_token": SecretStr("dev-token-for-tests")}
+        update={
+            "environment": "development",
+            "platform_admin_token": SecretStr("dev-token-for-tests"),
+        }
     )
     @app.get("/api/v1/ping")
     async def ping(caller: CallerContext = Depends(require_caller)):
@@ -427,13 +430,18 @@ async def test_impersonation_with_the_platform_token_is_refused_in_an_inactive_o
 # ---------------------------------------------------------------------------
 async def test_the_clean_up_removes_only_records_whose_token_has_expired(db_session, org_and_owner):
     from datetime import datetime, timedelta, timezone
+
     from quberi_api.workers.rag import purge_revoked_sessions
     person = await _member(db_session, org_and_owner)
     now = datetime.now(timezone.utc)
     db_session.add_all(
         [
-            RevokedSession(token_hash="a" * 64, user_id=person.id, expires_at=now - timedelta(hours=1)),
-            RevokedSession(token_hash="b" * 64, user_id=person.id, expires_at=now + timedelta(days=1)),
+            RevokedSession(
+                token_hash="a" * 64, user_id=person.id, expires_at=now - timedelta(hours=1)
+            ),
+            RevokedSession(
+                token_hash="b" * 64, user_id=person.id, expires_at=now + timedelta(days=1)
+            ),
         ]
     )
     await db_session.commit()

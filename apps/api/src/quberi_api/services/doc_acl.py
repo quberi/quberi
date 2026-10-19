@@ -36,6 +36,7 @@ from quberi_api.services.authz import (
     UserPrincipals,
     list_accessible_space_ids,
     principals_for_user,
+    user_is_blocked,
 )
 
 
@@ -122,8 +123,15 @@ async def load_doc_access(
     organization_id: uuid.UUID,
     principals: UserPrincipals | None = None,
 ) -> DocAccess:
-    """Resolve, right now, which documents are shared with / hidden from this person."""
+    """Resolve, right now, which documents are shared with / hidden from this person.
 
+    A suspended or archived person has no document access at all: nothing is shared with
+    them, whatever the rules say, so this does not depend on the caller having been turned
+    away at the door first.
+    """
+
+    if await user_is_blocked(session, user_id=user_id):
+        return NO_DOC_ACCESS
     principals = principals or await principals_for_user(
         session, user_id=user_id, organization_id=organization_id
     )

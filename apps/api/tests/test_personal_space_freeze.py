@@ -41,7 +41,7 @@ from quberi_api.services.documents.errors import DocumentPermissionError
 from quberi_api.services.errors import NotFoundError
 from quberi_api.services.rag import image_search, retrieve
 from quberi_api.services.space_freeze import freeze_personal_spaces, unfreeze_personal_spaces
-from tests.test_document_acl import TEXT_DIM, TEXT_MODEL, _text_doc
+from tests.test_document_acl import TEXT_DIM, TEXT_MODEL, _can, _rule, _text_doc
 from tests.test_external_image_search import _path, _read, _stored, signing_key  # noqa: F401
 from tests.test_external_save import _auth, _org, redis_client  # noqa: F401
 from tests.test_image_indexing import _space as _make_space
@@ -240,12 +240,18 @@ def _strict(monkeypatch):
     monkeypatch.setattr(access_guard, "is_restricted_org", _REAL_IS_RESTRICTED_ORG)
 
 
+# The person whose space is frozen but who is not suspended: only the owner shortcut is left to close.
+STILL_ACTIVE = "the person, still active"
+EVERY_CALLER = ["organization owner", "admin", "colleague", "the person", STILL_ACTIVE]
+
+
 def _callers(w):
     return {
         "organization owner": w.boot.user_id,
         "admin": w.admin.id,
         "colleague": w.colleague.id,
         "the person": w.leaver.id,
+        STILL_ACTIVE: w.leaver.id,
     }
 
 
@@ -459,7 +465,7 @@ async def test_a_frozen_space_that_was_not_frozen_by_a_deactivation_is_left_alon
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("who", ["organization owner", "admin", "colleague", "the person"])
+@pytest.mark.parametrize("who", EVERY_CALLER)
 async def test_every_web_door_answers_404_for_every_kind_of_caller(
     web, db_session, qdrant, blobs, monkeypatch, who
 ):
@@ -475,7 +481,7 @@ async def test_every_web_door_answers_404_for_every_kind_of_caller(
         )
     ).conversation.id
     await db_session.commit()
-    await _freeze(db_session, w.boot, w.leaver.id)
+    await _freeze(db_session, w.boot, w.leaver.id, suspend=who != STILL_ACTIVE)
     await _as(web, db_session, w.boot, _callers(w)[who])
 
     sid, doc = w.private.id, w.private_note.id
@@ -494,13 +500,13 @@ async def test_every_web_door_answers_404_for_every_kind_of_caller(
     assert "event: user_message" not in sent.text
 
 
-@pytest.mark.parametrize("who", ["organization owner", "admin", "colleague", "the person"])
+@pytest.mark.parametrize("who", EVERY_CALLER)
 async def test_every_web_write_is_refused_on_a_frozen_space(
     web, db_session, qdrant, blobs, monkeypatch, who
 ):
     w = await _world(db_session, qdrant, blobs)
     _strict(monkeypatch)
-    await _freeze(db_session, w.boot, w.leaver.id)
+    await _freeze(db_session, w.boot, w.leaver.id, suspend=who != STILL_ACTIVE)
     await _as(web, db_session, w.boot, _callers(w)[who])
     sid = w.private.id
 
@@ -770,6 +776,69 @@ async def test_restoring_opens_the_space_again_to_its_owner_only(
     for who in ("organization owner", "admin", "colleague"):
         await _as(web, db_session, w.boot, _callers(w)[who])
         assert (await web.get(f"/api/v1/spaces/{sid}")).status_code == 404, who
+
+
+@pytest.mark.parametrize("suspend", [True, False])
+async def test_a_document_shared_one_by_one_closes_with_its_frozen_space(
+    web, http, db_session, redis_client, qdrant, blobs, suspend
+):
+    """The owner shared one private document with a colleague, then left."""
+    w = await _world(db_session, qdrant, blobs)
+    org, sid, doc = w.boot.organization_id, w.private.id, w.private_note
+    await _rule(db_session, w.boot, w.private, doc, "allow", "user", w.colleague.id, actor=w.leaver.id)
+    tokens = await _read(db_session, redis_client, w.boot, user_id=w.colleague.id)
+    await db_session.commit()
+
+    async def doors():
+        await _as(web, db_session, w.boot, w.colleague.id)
+        listed = (await web.get("/api/v1/spaces")).json()["items"]
+        opened = (await web.get(f"/api/v1/spaces/{sid}/documents/{doc.id}")).status_code
+        await db_session.commit()
+        found = (await http.post(SEARCH, headers=_auth(tokens), json={"query": "passage"})).json()
+        await db_session.commit()
+        names = {p["document_name"] for p in found["passages"]}
+        return {
+            "listed": str(sid) in {s["id"] for s in listed},
+            "opened": opened == 200,
+            "searched": "private-notes.pdf" in names,
+            "allowed": await _can(db_session, w.boot, w.colleague, doc),
+            "in_app": "private-notes.pdf"
+            in _names(
+                await retrieve.retrieve_for_user(
+                    db_session, qdrant=qdrant, organization_id=org,
+                    caller_user_id=w.colleague.id, query="passage", top_k=8,
+                )
+            ),
+        }
+
+    assert await doors() == dict.fromkeys(("listed", "opened", "searched", "allowed", "in_app"), True)
+    await _freeze(db_session, w.boot, w.leaver.id, suspend=suspend)
+    assert await doors() == dict.fromkeys(("listed", "opened", "searched", "allowed", "in_app"), False)
+    await _unfreeze(db_session, w.boot, w.leaver.id, restore=suspend)
+    assert await doors() == dict.fromkeys(("listed", "opened", "searched", "allowed", "in_app"), True)
+
+
+async def test_a_suspended_person_is_shared_nothing_even_in_an_active_space(db_session, qdrant, blobs):
+    """The share rules do not depend on the door having turned the person away first."""
+    from quberi_api.services import doc_acl
+
+    w = await _world(db_session, qdrant, blobs)
+    org = w.boot.organization_id
+    other = await _text_doc(db_session, w.boot, qdrant, w.shared, "memo.pdf")
+    await _rule(db_session, w.boot, w.shared, other, "allow", "user", w.leaver.id)
+    access = await doc_acl.load_doc_access(db_session, user_id=w.leaver.id, organization_id=org)
+    assert other.id in access.granted
+    assert await _can(db_session, w.boot, w.leaver, other)
+
+    await db_session.commit()
+    await db_session.execute(update(User).where(User.id == w.leaver.id).values(status="suspended"))
+    await db_session.commit()
+    access = await doc_acl.load_doc_access(db_session, user_id=w.leaver.id, organization_id=org)
+    assert access.is_empty
+    assert not await _can(db_session, w.boot, w.leaver, other)
+    # The same rule still serves everyone else it names.
+    await _rule(db_session, w.boot, w.shared, other, "allow", "user", w.colleague.id)
+    assert await _can(db_session, w.boot, w.colleague, other)
 
 
 # ---------------------------------------------------------------------------
