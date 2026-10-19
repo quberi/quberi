@@ -6,6 +6,7 @@ owner, one space at a time: each space is its own transaction, a failure on one 
 and does not undo the others, and repeating a finished request changes nothing.
 
 Personal spaces are never listed and never handed over (they are frozen with the member).
+Archived collaboration spaces are listed and handed over like active ones (they stay archived).
 Agents are not covered.
 """
 
@@ -50,6 +51,7 @@ MAX_REVIEWER_SPACES = 100
 MAX_UPLOADS = 200
 MAX_BATCH_TRANSFER = 100  # same as the document review batch limit
 _REVIEWER_ROLES = ("owner", "admin")
+HANDOVER_SPACE_STATUSES = ("active", "archived")
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +79,7 @@ class OwnedSpaceItem:
     space_id: uuid.UUID
     name: str
     owner_type: str
+    status: str  # active | archived
     other_owners: list[PersonRef]
     needs_transfer: bool
     pending_review_count: int
@@ -198,7 +201,8 @@ async def _owned_space_rows(
                 select(Space).where(
                     Space.organization_id == organization_id,
                     Space.preset != "personal",
-                    Space.status == "active",
+                    # An archived space is still readable and needs an owner too.
+                    Space.status.in_(HANDOVER_SPACE_STATUSES),
                     (Space.id.in_(bound))
                     | ((Space.owner_type == "user") & (Space.owner_id == member_id)),
                 )
@@ -439,6 +443,7 @@ async def build_checklist(
                 space_id=s.id,
                 name=s.name,
                 owner_type=s.owner_type,
+                status=s.status,
                 other_owners=[
                     PersonRef(user_id=uid, display_name=names.get(uid, ""))
                     for uid in sorted(pools[s.id], key=str)
@@ -677,6 +682,7 @@ async def _transfer_one(
             actor_user_id=actor_user_id,
             new_owner_user_id=new_owner_user_id,
             offboarded_user_id=member_id,
+            allow_archived=True,
         )
         return TransferItem(space_id, "transferred", None, decision)
     except ForbiddenError:
@@ -725,7 +731,7 @@ async def _decide(
         ):
             return TransferItem(space_id, "already_done")
         return TransferItem(space_id, "skipped", "not_owned_by_member")
-    if space.status != "active":
+    if space.status not in HANDOVER_SPACE_STATUSES:
         return TransferItem(space_id, "skipped", "space_not_active")
     if await owner_pool(
         session, organization_id=organization_id, space_id=space_id, member_id=member_id

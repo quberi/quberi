@@ -1673,6 +1673,7 @@
     "notSuspended": "This member is not deactivated yet. Deactivate them first to hand over their spaces.",
     "ownedTitle": "Collaboration spaces they own ({{count}})",
     "ownedEmpty": "No collaboration spaces to deal with.",
+    "archivedTag": "Archived",
     "needsOwner": "No other owner: needs a handover",
     "hasOtherOwner": "Also owned by: {{names}} (no handover needed)",
     "pendingGoesAlong": "{{count}} pending files go along",
@@ -1691,7 +1692,7 @@
     "code": {
       "personal_space": "Personal spaces are not handed over",
       "not_owned_by_member": "This member does not own the space",
-      "space_not_active": "The space is archived; restore it first",
+      "space_not_active": "The space is in a state that cannot be handed over",
       "has_other_owner": "Another owner exists; the old owner role stays but has no effect while deactivated",
       "space_not_found": "Space not found",
       "not_allowed": "Not allowed",

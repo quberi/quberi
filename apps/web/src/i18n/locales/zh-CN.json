@@ -1673,6 +1673,7 @@
     "notSuspended": "该成员尚未停用。请先停用,才能移交其名下的空间。",
     "ownedTitle": "名下的协作空间({{count}})",
     "ownedEmpty": "没有需要处理的协作空间。",
+    "archivedTag": "已归档",
     "needsOwner": "没有其他所有者,需要移交",
     "hasOtherOwner": "另有所有者:{{names}}(无需移交)",
     "pendingGoesAlong": "{{count}} 个待审批文件会一并移交",
@@ -1691,7 +1692,7 @@
     "code": {
       "personal_space": "个人空间不移交",
       "not_owned_by_member": "该成员不是此空间的所有者",
-      "space_not_active": "空间已归档,恢复后再处理",
+      "space_not_active": "空间当前状态不允许移交",
       "has_other_owner": "另有所有者;他的旧所有者绑定仍在,但停用后不生效",
       "space_not_found": "找不到该空间",
       "not_allowed": "没有权限执行",

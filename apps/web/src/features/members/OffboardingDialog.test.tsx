@@ -46,8 +46,8 @@ function checklist(status: 'active' | 'suspended' = 'suspended'): OffboardingChe
     member: { id: 'u1', display_name: 'ada', email: 'ada@example.com', status, role_code: 'member' },
     personal_space_status: 'frozen',
     owned_spaces: [
-      { space_id: 's1', name: 'Alpha', owner_type: 'user', other_owners: [], needs_transfer: true, pending_review_count: 2 },
-      { space_id: 's2', name: 'Beta', owner_type: 'user', other_owners: [{ user_id: 'u9', display_name: 'Zed' }], needs_transfer: false, pending_review_count: 0 },
+      { space_id: 's1', name: 'Alpha', owner_type: 'user', status: 'active', other_owners: [], needs_transfer: true, pending_review_count: 2 },
+      { space_id: 's2', name: 'Beta', owner_type: 'user', status: 'archived', other_owners: [{ user_id: 'u9', display_name: 'Zed' }], needs_transfer: false, pending_review_count: 0 },
     ],
     owned_spaces_total: 5,
     needs_transfer_total: 1,
@@ -81,6 +81,16 @@ describe('OffboardingDialog', () => {
     expect(screen.getAllByText('offboarding.noReviewer').length).toBe(2)
   })
 
+  it('marks an archived space with a label and leaves active ones unlabeled', async () => {
+    mocks.getChecklist.mockResolvedValue(checklist())
+    render(<OffboardingDialog member={member} onClose={vi.fn()} />)
+    const beta = (await screen.findByText('Beta')).closest('li') as HTMLElement
+    const alpha = screen.getByText('Alpha').closest('li') as HTMLElement
+    expect(within(beta).getByText('offboarding.archivedTag')).toBeInTheDocument()
+    expect(within(alpha).queryByText('offboarding.archivedTag')).toBeNull()
+    // An archived space can be chosen for the handover like any other.
+    expect(within(beta).getByRole('checkbox')).toBeEnabled()
+  })
   it('offers only active members who are not the organisation owner as the new owner', async () => {
     mocks.getChecklist.mockResolvedValue(checklist())
     render(<OffboardingDialog member={member} onClose={vi.fn()} />)

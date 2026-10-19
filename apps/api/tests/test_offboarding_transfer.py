@@ -187,6 +187,67 @@ async def test_the_checklist_lists_what_is_theirs_and_never_the_personal_space(c
     assert not any("agent" in key for key in body)
 
 
+async def test_the_checklist_lists_archived_spaces_with_their_status_and_not_frozen_ones(
+    client, db_session
+):
+    boot, leaver, heir, colleague = await _world(db_session)
+    live = await _space(db_session, boot, leaver.id, "Live")
+    shelved = await _space(db_session, boot, leaver.id, "Shelved")
+    frozen = await _space(db_session, boot, leaver.id, "Frozen")
+    not_his = await _space(db_session, boot, colleague.id, "Not his")
+    await db_session.execute(update(Space).where(Space.id == shelved.id).values(status="archived"))
+    await db_session.execute(update(Space).where(Space.id == frozen.id).values(status="frozen"))
+    await db_session.execute(update(Space).where(Space.id == not_his.id).values(status="archived"))
+    await db_session.commit()
+
+    body = (
+        await client.get(_base(leaver.id), headers=await _owner_headers(db_session, boot))
+    ).json()
+
+    owned = {s["name"]: s for s in body["owned_spaces"]}
+    assert set(owned) == {"Live", "Shelved"}
+    assert (owned["Live"]["status"], owned["Shelved"]["status"]) == ("active", "archived")
+    assert owned["Shelved"]["needs_transfer"] is True
+    assert body["owned_spaces_total"] == 2 and body["needs_transfer_total"] == 2
+
+
+async def test_an_archived_space_can_be_handed_over_by_owner_service_only_when_allowed(
+    db_session,
+):
+    from quberi_api.services import space_owners
+    from quberi_api.services.errors import InvalidInputError
+
+    boot, leaver, heir, colleague = await _world(db_session)
+    shelved = await _space(db_session, boot, leaver.id, "Shelved")
+    await db_session.execute(update(Space).where(Space.id == shelved.id).values(status="archived"))
+    await db_session.commit()
+    args = dict(
+        space_id=shelved.id,
+        organization_id=boot.organization_id,
+        actor_user_id=boot.user_id,
+        new_owner_user_id=heir.id,
+    )
+    await _suspend(db_session, leaver.id)
+
+    # Other callers keep the old rule: an archived space does not change owner.
+    with pytest.raises(InvalidInputError):
+        await space_owners.transfer_owner(db_session, **args)
+    await db_session.rollback()
+    assert (await _owner_of(db_session, shelved.id))[0] == leaver.id
+
+    # A frozen space is refused even when archived ones are allowed.
+    await db_session.execute(update(Space).where(Space.id == shelved.id).values(status="frozen"))
+    await db_session.commit()
+    with pytest.raises(InvalidInputError):
+        await space_owners.transfer_owner(db_session, allow_archived=True, **args)
+    await db_session.rollback()
+
+    await db_session.execute(update(Space).where(Space.id == shelved.id).values(status="archived"))
+    await db_session.commit()
+    await space_owners.transfer_owner(db_session, allow_archived=True, **args)
+    assert (await _owner_of(db_session, shelved.id))[0] == heir.id
+
+
 async def test_a_group_that_holds_the_admin_role_counts_as_a_reviewer(client, db_session):
     boot, leaver, heir, colleague = await _world(db_session)
     lone = await _space(db_session, boot, leaver.id, "Lone")
@@ -318,6 +379,9 @@ async def test_a_batch_reports_every_space_and_hands_over_the_ones_that_can_go(c
     not_his = await _space(db_session, boot, colleague.id, "Not his")
     archived = await _space(db_session, boot, leaver.id, "Archived")
     await db_session.execute(update(Space).where(Space.id == archived.id).values(status="archived"))
+    # A collaboration space in a state that is not readable (frozen) is not handed over.
+    frozen = await _space(db_session, boot, leaver.id, "Frozen")
+    await db_session.execute(update(Space).where(Space.id == frozen.id).values(status="frozen"))
     personal = (
         await db_session.execute(
             select(Space.id).where(Space.owner_id == leaver.id, Space.preset == "personal")
@@ -333,14 +397,15 @@ async def test_a_batch_reports_every_space_and_hands_over_the_ones_that_can_go(c
         boot,
         leaver,
         heir.id,
-        [first.id, second.id, with_other.id, not_his.id, archived.id, personal, ghost],
+        [first.id, second.id, with_other.id, not_his.id, archived.id, frozen.id, personal, ghost],
     )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
     by_space = {r["space_id"]: r for r in body["results"]}
     assert [r["space_id"] for r in body["results"]] == [
-        str(s) for s in [first.id, second.id, with_other.id, not_his.id, archived.id, personal, ghost]
+        str(s)
+        for s in [first.id, second.id, with_other.id, not_his.id, archived.id, frozen.id, personal, ghost]
     ]
     assert by_space[str(first.id)] == {
         "space_id": str(first.id),
@@ -354,17 +419,33 @@ async def test_a_batch_reports_every_space_and_hands_over_the_ones_that_can_go(c
         "has_other_owner",
     )
     assert by_space[str(not_his.id)]["code"] == "not_owned_by_member"
-    assert by_space[str(archived.id)]["code"] == "space_not_active"
+    assert by_space[str(archived.id)]["status"] == "transferred"
+    assert (by_space[str(frozen.id)]["status"], by_space[str(frozen.id)]["code"]) == (
+        "skipped",
+        "space_not_active",
+    )
     assert by_space[str(personal)]["code"] == "personal_space"
     assert (by_space[str(ghost)]["status"], by_space[str(ghost)]["code"]) == (
         "failed",
         "space_not_found",
     )
-    assert (body["transferred"], body["already_done"], body["skipped"], body["failed"]) == (2, 0, 4, 1)
+    assert (body["transferred"], body["already_done"], body["skipped"], body["failed"]) == (3, 0, 4, 1)
 
-    for space in (first, second):
+    for space in (first, second, archived):
         owner_id, bound = await _owner_of(db_session, space.id)
         assert owner_id == heir.id and bound == {heir.id}
+
+    # The archived space is handed over and stays archived; the frozen one is untouched.
+    await db_session.commit()
+    statuses = dict(
+        (
+            await db_session.execute(
+                select(Space.id, Space.status).where(Space.id.in_([archived.id, frozen.id]))
+            )
+        ).all()
+    )
+    assert statuses == {archived.id: "archived", frozen.id: "frozen"}
+    assert (await _owner_of(db_session, frozen.id))[0] == leaver.id
     # The ones that were skipped are untouched, the personal space included.
     assert (await _owner_of(db_session, personal))[0] == leaver.id
     assert leaver.id in (await _owner_of(db_session, with_other.id))[1]
@@ -377,8 +458,8 @@ async def test_a_batch_reports_every_space_and_hands_over_the_ones_that_can_go(c
     # Audit: one event per handed-over space, plus the summary.
     assert await _audit_count(
         db_session, "space.owner_transferred", offboarded_user_id=leaver.id
-    ) == 2
-    assert await _audit_count(db_session, "member.spaces_transferred", transferred=2) == 1
+    ) == 3
+    assert await _audit_count(db_session, "member.spaces_transferred", transferred=3) == 1
 
 
 async def test_repeating_a_finished_request_changes_nothing_and_adds_no_audit(client, db_session):

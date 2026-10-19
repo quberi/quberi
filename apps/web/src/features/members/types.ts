@@ -66,6 +66,7 @@ export interface OwnedSpaceItem {
   space_id: string
   name: string
   owner_type: string
+  status: 'active' | 'archived'
   other_owners: { user_id: string; display_name: string }[]
   needs_transfer: boolean
   pending_review_count: number

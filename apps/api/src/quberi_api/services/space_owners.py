@@ -126,8 +126,13 @@ async def transfer_owner(
     actor_user_id: uuid.UUID,
     new_owner_user_id: uuid.UUID,
     offboarded_user_id: uuid.UUID | None = None,
+    allow_archived: bool = False,
 ) -> OwnerTransfer:
     """Hand the space to ``new_owner_user_id``.
+
+    Only an active space can change hands, unless ``allow_archived`` is set: the offboarding
+    handover passes it so a departed member's archived space is not left without an owner.
+    A frozen (or any other unreadable) space never changes owner.
 
     ``offboarded_user_id`` is set when the handover is part of a member's departure; it is
     written to the audit event so a repeated request can tell the work was already done.
@@ -147,7 +152,7 @@ async def transfer_owner(
             raise NotFoundError(f"space not found: {space_id}")
         if space.preset == "personal":
             raise InvalidInputError("a personal space cannot change owner")
-        if space.status != "active":
+        if space.status != "active" and not (allow_archived and space.status == "archived"):
             raise InvalidInputError("an archived space cannot change owner")
 
         available = await available_owner_ids(

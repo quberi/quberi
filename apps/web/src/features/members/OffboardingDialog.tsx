@@ -168,6 +168,9 @@ export function OffboardingDialog({ member, onClose }: Props) {
                           type="checkbox"
                         />
                         <span className="offboarding-item-name">{s.name}</span>
+                        {s.status === 'archived' && (
+                          <span className="badge badge-archived">{t('offboarding.archivedTag')}</span>
+                        )}
                       </label>
                       <small>
                         {s.needs_transfer

@@ -41,6 +41,7 @@ class OwnedSpaceItem(BaseModel):
     space_id: uuid.UUID
     name: str
     owner_type: str
+    status: str
     other_owners: list[PersonRef]
     needs_transfer: bool
     pending_review_count: int
