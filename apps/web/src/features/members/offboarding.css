@@ -40,3 +40,9 @@
 .member-row.is-suspended .member-avatar { opacity: .55; }
 .badge-suspended { background: #fdecec; color: #8a1c1c; border: 1px solid #f0a8a8; }
 .member-owner-actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+/* A suspended row carries an extra badge and two buttons; keep the name column readable. */
+@media (min-width: 961px) {
+  .panel.members-panel .member-row {
+    grid-template-columns: 40px minmax(150px, 1.4fr) minmax(0, 140px) minmax(0, 150px) minmax(0, 150px) auto;
+  }
+}
