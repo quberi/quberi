@@ -4,6 +4,11 @@ Quberi is a multi-tenant AI knowledge base for teams. You upload documents,
 members ask questions in chat, and answers come from retrieved passages.
 Retrieval is filtered by what the asking user is allowed to see.
 
+**Permissions are per-document, not per-space.** Within one space, two users can
+see different documents. A deny rule on a document wins over any allow rule or
+space role, retrieval is filtered inside the vector index, and rules are
+evaluated on every request, so a change applies to the next one.
+
 Licensed under [AGPL-3.0](LICENSE).
 
 > Status: early. Expect rough edges. There are no prebuilt images or releases
@@ -11,9 +16,11 @@ Licensed under [AGPL-3.0](LICENSE).
 
 ## What it does
 
-- **Permission-aware retrieval.** Documents live in spaces. Access is granted by
-  organization, unit, position, group or individual member, each with a role.
-  Every question is checked against it.
+- **Permission-aware retrieval, per document.** Documents live in spaces, and a
+  space grants access by organization, unit, position, group or individual
+  member, each with a role. On top of that, any single document can be shared
+  with someone who cannot read its space, or hidden from someone who can.
+  Every question is checked against both.
 - **Audit log.** Sensitive actions are recorded, including searches made by
   connected outside tools.
 - **Send review.** Before a question and the retrieved passages go to the chat

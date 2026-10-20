@@ -78,6 +78,17 @@
       <main class="static-intro">
         <h1>企业 AI 知识库，权限做到单份文档</h1>
         <p>
+          Quberi 的权限粒度是<b>单份文档（document-level）</b>，不是空间（space）。
+          同一个空间里，不同的人能看到不同的文档。拒绝优先于允许，检索时在向量索引内部过滤，
+          权限规则在每一次请求时实时判断。
+        </p>
+        <p lang="en">
+          <b>Permissions in Quberi are per-document, not per-space.</b>
+          Within one space, two users can see different documents. A deny rule wins over
+          any allow rule or space role, retrieval is filtered inside the vector index, and
+          rules are evaluated on every request.
+        </p>
+        <p>
           Quberi 是一个可以接给 AI Agent 使用的企业知识库。和常见做法不同的是，
           权限不是“能不能进这个空间”，而是<b>单份文档</b>：能读空间的人，
           加上被单独授权的人，减去被单独拒绝的人，<b>拒绝优先于一切</b>。
