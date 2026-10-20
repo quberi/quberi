@@ -53,6 +53,18 @@
         color: #222;
         line-height: 1.75;
       }
+      /* The text is in the HTML for crawlers, but real users should not see a
+         marketing page flash before the app mounts. It starts invisible and
+         only fades in if the app has not replaced it after 1.2s (slow network,
+         cold CDN, or JavaScript disabled). Pure CSS, so it still appears
+         without JS. React removes the element on mount, which cancels it. */
+      #root > main.static-intro {
+        opacity: 0;
+        animation: static-intro-in 200ms ease-out 1200ms forwards;
+      }
+      @keyframes static-intro-in {
+        to { opacity: 1; }
+      }
       #root > main.static-intro h1 { font-size: 28px; letter-spacing: -0.02em; }
       #root > main.static-intro h2 { font-size: 18px; margin-top: 28px; }
       #root > main.static-intro nav a { margin-right: 16px; }
