@@ -44,6 +44,25 @@ mcp.quberi.com {
 	}
 }
 
+# Bare domain. Only used to prove domain ownership to the official MCP
+# Registry (registry.modelcontextprotocol.io) via its HTTP verification
+# method — the file's content is a public key, not a secret, and the
+# registry's CLI (mcp-publisher) fetches it over plain HTTPS to match it
+# against a signed challenge. Not used for anything else: there is no
+# first-party product served at quberi.com itself.
+quberi.com {
+	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+
+	handle /.well-known/mcp-registry-auth {
+		header Content-Type text/plain
+		respond `v=MCPv1; k=ed25519; p=psV8Yyd01Xtt/xFm+d1p9h1b4IadcPfXMVvcS4eQBfw=` 200
+	}
+
+	handle {
+		respond 404
+	}
+}
+
 # Any other host that reaches this server gets a 404. Without this block Caddy
 # answers an unconfigured host with an empty 200, which a client reads as
 # success and then fails on the empty body.
