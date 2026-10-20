@@ -65,20 +65,22 @@ from quberi_api.api.v1.external_schemas import (
     UploadResponse,
 )
 from quberi_api.core.config import get_settings
+from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.oauth.models import OAuthGrant
-from quberi_api.domain.documents.models import Document
 from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
+from quberi_api.services import external_image_links
 from quberi_api.services.documents import core as documents_core
 from quberi_api.services.documents.errors import DocumentPermissionError
 from quberi_api.services.documents.thumbnail import ThumbnailError, render_thumbnail
 from quberi_api.services.errors import NotFoundError
 from quberi_api.services.mcp import adapters
 from quberi_api.services.oauth import clients, core
-from quberi_api.services import external_image_links
 from quberi_api.services.rag.indexer import is_picture
-from quberi_api.services.rag.retrieve import retrieve_for_user  # noqa: F401 - re-exported, see module docstring
+from quberi_api.services.rag.retrieve import (
+    retrieve_for_user,  # noqa: F401 - re-exported, see module docstring
+)
 
 router = APIRouter(prefix="/external", tags=["external"])
 
@@ -122,7 +124,9 @@ async def require_external_caller(
 
 
 def _raise(exc: adapters.AdapterHTTPError) -> None:
-    raise HTTPException(status_code=exc.status_code, detail=exc.detail, headers=exc.headers) from exc
+    raise HTTPException(
+        status_code=exc.status_code, detail=exc.detail, headers=exc.headers
+    ) from exc
 
 
 @router.post("/search", response_model=SearchResponse, summary="Search readable knowledge")
@@ -239,7 +243,8 @@ async def preview_by_link(
     if doc is None:
         raise _gone()
     document, space_status = doc
-    if document.status == "archived" or space_status != "active" or not is_picture(document.mime_type):
+    is_archived = document.status == "archived"
+    if is_archived or space_status != "active" or not is_picture(document.mime_type):
         raise _gone()
     try:
         # The same permission check as a signed-in download of this document.

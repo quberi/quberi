@@ -203,3 +203,52 @@ async def test_an_old_preview_link_stops_working_when_the_member_is_deactivated(
     await db_session.commit()
     after = await http.post(SEARCH, headers=_auth(tokens), json={"query": "passage"})
     assert after.status_code == 401
+
+
+async def test_an_mcp_grant_is_revoked_the_same_as_a_harness_grant(db_session, redis_client):
+    """design.md §2.12: revoke_all_for_user filters by user_id only, never by client_id.
+
+    This is a deliberate regression lock, not new logic: the MCP client is just
+    another row in the same OAuthGrant table, and this pins that fact so nobody
+    can accidentally add a client_id filter to revoke_all_for_user without this
+    test catching it.
+    """
+    boot = await _org(db_session)
+    member = await _invite(db_session, boot, "member")
+    mcp_grant = await _tokens(
+        db_session,
+        redis_client,
+        boot,
+        scope="knowledge:read",
+        user_id=member.id,
+        client_id="quberi-mcp",
+    )
+    harness_grant = await _tokens(
+        db_session,
+        redis_client,
+        boot,
+        scope="knowledge:read",
+        user_id=member.id,
+        client_id="quberi-harness",
+    )
+    await db_session.commit()
+
+    assert await _revoke(db_session, boot, member.id) == 2
+
+    grants = {g.client_id: g for g in await _grants(db_session, member.id)}
+    assert set(grants) == {"quberi-mcp", "quberi-harness"}
+    assert all(
+        g.revoked_at is not None and g.revoke_reason == "member_deactivated"
+        for g in grants.values()
+    )
+    # _grants' SELECT left an implicit transaction open; close it before
+    # authenticate_access_token opens its own explicit one.
+    await db_session.commit()
+
+    with pytest.raises(core.ExternalAuthError) as exc:
+        await core.authenticate_access_token(db_session, mcp_grant.access_token)
+    assert exc.value.code == "invalid_token"
+    await db_session.commit()
+    with pytest.raises(core.ExternalAuthError):
+        await core.authenticate_access_token(db_session, harness_grant.access_token)
+    await db_session.commit()

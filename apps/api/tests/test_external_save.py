@@ -93,11 +93,15 @@ async def _org(db, *, enabled: bool = True):
     return boot
 
 
-async def _tokens(db, redis, boot, *, scope, user_id=None):
+async def _tokens(db, redis, boot, *, scope, user_id=None, client_id=CLIENT):
+    # client_id defaults to CLIENT ("quberi-harness") so every existing call
+    # site is unaffected; a few MCP-specific tests (e.g.
+    # test_oauth_member_revocation.py's quberi-mcp regression) pass "quberi-mcp".
+    client_name = "MCP client" if client_id == "quberi-mcp" else "DeepSeek Harness"
     verifier, challenge = _pkce()
     code = await core.create_authorization_code(
         redis,
-        client_id=CLIENT,
+        client_id=client_id,
         redirect_uri=REDIRECT,
         code_challenge=challenge,
         user_id=user_id or boot.user_id,
@@ -111,8 +115,8 @@ async def _tokens(db, redis, boot, *, scope, user_id=None):
         code=code,
         code_verifier=verifier,
         redirect_uri=REDIRECT,
-        client_id=CLIENT,
-        client_name="DeepSeek Harness",
+        client_id=client_id,
+        client_name=client_name,
     )
 
 

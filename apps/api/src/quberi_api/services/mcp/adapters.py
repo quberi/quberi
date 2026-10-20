@@ -57,6 +57,7 @@ from quberi_api.domain.documents.models import Document
 from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import documents as documents_service
+from quberi_api.services import external_image_links
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access, visibility_clause
 from quberi_api.services.documents import core as documents_core
@@ -68,7 +69,6 @@ from quberi_api.services.documents.errors import (
 )
 from quberi_api.services.errors import NotFoundError
 from quberi_api.services.oauth import clients, core
-from quberi_api.services import external_image_links
 from quberi_api.services.rag import image_search
 from quberi_api.services.rag.retrieve import retrieve_for_user
 from quberi_api.services.retrieval_audit import document_ids_from_chunks
@@ -200,7 +200,9 @@ def public_origin(request: Request) -> str:
     return (configured or str(request.base_url)).rstrip("/")
 
 
-def preview_link(request: Request, ext: core.ExternalCaller, document_id: uuid.UUID) -> Optional[str]:
+def preview_link(
+    request: Request, ext: core.ExternalCaller, document_id: uuid.UUID
+) -> Optional[str]:
     settings = get_settings()
     if not external_image_links.links_available(settings):
         return None
@@ -210,7 +212,9 @@ def preview_link(request: Request, ext: core.ExternalCaller, document_id: uuid.U
     return f"{public_origin(request)}/api/v1/external/preview/{token}.jpg"
 
 
-def image_result(request: Request, ext: core.ExternalCaller, m: image_search.ImageMatch) -> ImageResult:
+def image_result(
+    request: Request, ext: core.ExternalCaller, m: image_search.ImageMatch
+) -> ImageResult:
     return ImageResult(
         name=m.document_name,
         space_name=m.space_name,
@@ -444,7 +448,10 @@ async def do_search(
                 400,
                 {
                     "code": "bad_query",
-                    "message": f"describe the picture in at most {image_search.MAX_QUERY_TEXT_CHARS} characters",
+                    "message": (
+                        f"describe the picture in at most "
+                        f"{image_search.MAX_QUERY_TEXT_CHARS} characters"
+                    ),
                 },
             )
         pictures = await do_search_images(
@@ -498,7 +505,9 @@ async def do_search(
         names = {sid: name for sid, name in rows.all()}
     # Pictures that might be what was asked for (the text above cannot see pictures).
     related = (
-        await related_pictures(request, session, infra, ext, query=payload.query, requested=requested)
+        await related_pictures(
+            request, session, infra, ext, query=payload.query, requested=requested
+        )
         if payload.kind == "both"
         else []
     )
