@@ -1,8 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://ai.quberi.com/</loc><changefreq>weekly</changefreq></url>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://ai.quberi.com/</loc>
+    <changefreq>weekly</changefreq>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/en" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ai.quberi.com/en" />
+  </url>
+  <url>
+    <loc>https://ai.quberi.com/en</loc>
+    <changefreq>weekly</changefreq>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/en" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ai.quberi.com/en" />
+  </url>
   <url><loc>https://ai.quberi.com/permissions</loc></url>
   <url><loc>https://ai.quberi.com/manufacturing</loc></url>
-  <url><loc>https://ai.quberi.com/privacy</loc></url>
-  <url><loc>https://ai.quberi.com/terms</loc></url>
+  <url>
+    <loc>https://ai.quberi.com/privacy</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/privacy" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/privacy-en" />
+  </url>
+  <url>
+    <loc>https://ai.quberi.com/privacy-en</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/privacy" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/privacy-en" />
+  </url>
+  <url>
+    <loc>https://ai.quberi.com/terms</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/terms" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/terms-en" />
+  </url>
+  <url>
+    <loc>https://ai.quberi.com/terms-en</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/terms" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/terms-en" />
+  </url>
 </urlset>

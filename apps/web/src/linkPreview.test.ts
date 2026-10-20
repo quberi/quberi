@@ -29,6 +29,12 @@ describe('index.html link preview tags', () => {
     expect(html).toContain('<html lang="zh-CN">')
   })
 
+  it('points search engines at the English version and back (hreflang)', () => {
+    expect(html).toContain('hreflang="zh-CN" href="https://ai.quberi.com/"')
+    expect(html).toContain('hreflang="en" href="https://ai.quberi.com/en"')
+    expect(html).toContain('hreflang="x-default" href="https://ai.quberi.com/en"')
+  })
+
   it('has a description of a length search and social previews will show', () => {
     const d = meta('name', 'description')
     expect(d).not.toBeNull()

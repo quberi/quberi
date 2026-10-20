@@ -34,7 +34,30 @@ if (!/<meta\s+name="description"\s+content="[^"]*[\u4e00-\u9fff]/.test(html)) {
 }
 if (!html.includes('og:image')) errors.push('index.html lost its og:image tag')
 
-if (!read('sitemap.xml').startsWith('<?xml')) errors.push('sitemap.xml is not XML')
+// Two language versions on separate URLs, each pointing at the other.
+const alternates = (page) =>
+  ['hreflang="zh-CN" href="https://ai.quberi.com/"', 'hreflang="en" href="https://ai.quberi.com/en"'].filter(
+    (a) => !page.includes(a),
+  )
+for (const miss of alternates(html)) errors.push(`index.html is missing alternate ${miss}`)
+
+const en = read('en.html')
+for (const miss of alternates(en)) errors.push(`en.html is missing alternate ${miss}`)
+if (!/<html lang="en">/.test(en)) errors.push('en.html is not lang="en"')
+if (/[\u4e00-\u9fff]/.test(en.replace(/<a class="lang"[^>]*>[^<]*<\/a>/, ''))) {
+  errors.push('en.html contains Chinese text outside the language link (one language per page)')
+}
+const enText = en
+  .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+if (enText.length < 800) errors.push(`en.html visible text is ${enText.length} chars, need >= 800`)
+if (!/per document, not per space/i.test(enText)) errors.push('en.html lacks the per-document definition')
+
+const sitemap = read('sitemap.xml')
+if (!sitemap.startsWith('<?xml')) errors.push('sitemap.xml is not XML')
+if (!sitemap.includes('<loc>https://ai.quberi.com/en</loc>')) errors.push('sitemap.xml does not list /en')
 if (!/^Sitemap:/m.test(read('robots.txt'))) errors.push('robots.txt has no Sitemap line')
 
 if (errors.length > 0) {

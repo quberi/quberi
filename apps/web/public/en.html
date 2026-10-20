@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7fa" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/logo-16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/logo-180.png" />
+    <title>Quberi: AI knowledge base with document-level permissions</title>
+    <meta name="description" content="Quberi is an AI knowledge base for teams where permissions are per document, not per space. Deny wins over allow, retrieval is filtered inside the vector index, and a revoked link stops working on the next request." />
+    <link rel="canonical" href="https://ai.quberi.com/en" />
+    <link rel="alternate" hreflang="en" href="https://ai.quberi.com/en" />
+    <link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/" />
+    <link rel="alternate" hreflang="x-default" href="https://ai.quberi.com/en" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Quberi" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:url" content="https://ai.quberi.com/en" />
+    <meta property="og:title" content="Quberi: AI knowledge base with document-level permissions" />
+    <meta property="og:description" content="Permissions are per document, not per space. Deny wins, retrieval is filtered inside the vector index, answers carry citations, and admins get an audit log." />
+    <meta property="og:image" content="https://ai.quberi.com/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Quberi: AI knowledge base with document-level permissions" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Quberi: AI knowledge base with document-level permissions" />
+    <meta name="twitter:description" content="Permissions are per document, not per space. Deny wins, retrieval is filtered inside the vector index, answers carry citations, and admins get an audit log." />
+    <meta name="twitter:image" content="https://ai.quberi.com/og-image.png" />
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", Helvetica, Arial, sans-serif;
+        color: #222;
+        background: #f7f7fa;
+        line-height: 1.7;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 96px; }
+      .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+      .brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+      .brand img { width: 32px; height: 32px; border-radius: 9px; }
+      .brand span { font-weight: 700; font-size: 17px; }
+      .top a.lang { font-size: 13px; }
+      h1 { font-size: 28px; letter-spacing: -0.02em; }
+      h2 { font-size: 18px; margin-top: 28px; color: #6544d8; }
+      p, li { font-size: 15px; color: #3d3545; }
+      a { color: #6544d8; }
+      .cta { display: inline-block; margin-top: 8px; padding: 10px 18px; border-radius: 10px; background: #6544d8; color: #fff; text-decoration: none; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <a class="brand" href="https://ai.quberi.com/en">
+          <img src="/logo-64.png" alt="Quberi" />
+          <span>Quberi</span>
+        </a>
+        <a class="lang" href="/" hreflang="zh-CN" lang="zh-CN">中文</a>
+      </div>
+      <main>
+        <h1>An AI knowledge base where permissions are per document</h1>
+        <p>
+          <b>Permissions in Quberi are per document, not per space.</b>
+          Within one space, two users can see different documents. A deny rule wins over any
+          allow rule or space role, retrieval is filtered inside the vector index, and rules are
+          evaluated on every request, so a change applies to the next one.
+        </p>
+        <p>
+          Quberi is an AI knowledge base for teams that can also be used by AI agents. Most tools
+          stop at "can this person enter this space". In Quberi the question is asked of each
+          document: people who can read the space, plus people who were given access to one
+          document, minus people who were denied that document. Denied wins over everything.
+          Two people can ask the same question in the same space and get different answers,
+          because they are allowed to see different documents.
+        </p>
+
+        <h2>Filtered inside retrieval, not after it</h2>
+        <p>
+          Permission filtering happens inside the vector index. A denied document is never a
+          candidate, so you do not get the top ten results with three holes cut out of them. The
+          result is checked again before it is returned. Rules live in the database and are read on
+          every request, so nothing is cached per person, and a preview link issued before access
+          was removed stops working on the next request.
+        </p>
+
+        <h2>Answers with citations, and a check before sending</h2>
+        <p>
+          Answers carry citations that show which documents they came from. Before a question and
+          the retrieved passages go to the chat model, you can preview them, edit them, or drop
+          individual passages. Admins get an audit log of sensitive actions, including searches
+          made by connected outside tools, so the question "what could the model see?" has an
+          answer.
+        </p>
+
+        <h2>Use it from an AI agent</h2>
+        <p>
+          Quberi can be a knowledge source for outside tools. An organization admin can allow
+          read-only search through OAuth, which is off by default. A plugin for DeepSeek Harness
+          is published as <a href="https://github.com/quberi/dsh-quberi">dsh-quberi</a>. The agent
+          acts as the person who approved it, so it finds exactly the documents that person can
+          read. Changing tools does not widen access.
+        </p>
+
+        <h2>Who it is for</h2>
+        <p>
+          Teams whose documents share a space but not an audience: customer drawings, technical
+          agreements, quotations and employee handbooks. Space-level permissions cannot tell them
+          apart. Document-level permissions can.
+        </p>
+
+        <h2>Known limits</h2>
+        <p>
+          There is no single sign-on other than Feishu, image search is not tuned for engineering
+          drawings, and sharing across organizations has not been tested. We write these down
+          instead of hiding them.
+        </p>
+
+        <p><a class="cta" href="/">Open Quberi</a></p>
+        <p>
+          <a href="https://github.com/quberi/quberi">Source code (AGPL-3.0)</a> ·
+          <a href="/privacy-en">Privacy</a> ·
+          <a href="/terms-en">Terms</a>
+        </p>
+      </main>
+    </div>
+  </body>
+</html>
