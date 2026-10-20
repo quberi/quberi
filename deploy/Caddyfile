@@ -14,10 +14,10 @@ api.quberi.com {
 	reverse_proxy api:8000
 }
 
-# MCP endpoint. The discovery chain is served here before the MCP service
-# exists: a client that gets a 401 reads the protected resource metadata
-# (RFC 9728), finds the authorization server, and reads that server's own
-# metadata on api.quberi.com.
+# MCP endpoint. A client that gets a 401 from the handler below reads the
+# protected resource metadata (RFC 9728) served here, finds the
+# authorization server, and reads that server's own metadata on
+# api.quberi.com.
 #
 # `resource` must equal the audience of the tokens issued for this endpoint,
 # character for character (no trailing slash), and `authorization_servers`
@@ -35,12 +35,12 @@ mcp.quberi.com {
 		respond 404
 	}
 
-	# Not implemented yet. 503 rather than 404: a 404 makes a client think
-	# the address is wrong. Replace with `reverse_proxy <mcp service>` when
-	# the service exists.
+	# The MCP Streamable HTTP endpoint itself, mounted at the application
+	# root inside the api container (api/v1/mcp/router.py). No path prefix:
+	# `resource` above is the bare domain, so RFC 9728 requires this
+	# endpoint's own URI to match it exactly.
 	handle {
-		header Content-Type application/json
-		respond `{"error":"mcp_not_ready"}` 503
+		reverse_proxy api:8000
 	}
 }
 
