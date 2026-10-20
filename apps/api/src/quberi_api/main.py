@@ -11,6 +11,7 @@ from quberi_api.services.auth.session import read_session
 
 from quberi_api.api.errors import register_exception_handlers
 from quberi_api.api.router import router as api_router
+from quberi_api.api.v1.mcp.router import mcp_router
 from quberi_api.api.v1.oauth import well_known_router
 from quberi_api.core.config import get_settings
 from quberi_api.core.logging import configure_logging
@@ -103,6 +104,15 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(well_known_router)
     app.include_router(api_router)
+    # Mounted at the application root, not under /api/v1: production puts this
+    # behind the independent mcp.quberi.com domain, proxied straight into this
+    # container with no path prefix (design.md §2.2/§2.11). The guest
+    # read-only middleware's path check below only matches /api/v1/*, so it
+    # does not apply here — the MCP endpoint's own auth (require_mcp_caller)
+    # is the only gate on it, which is correct: a guest session token is a web
+    # session JWT, not an OAuth access token, so it was never going to satisfy
+    # require_mcp_caller's bearer-token check anyway.
+    app.include_router(mcp_router)
     return app
 
 
