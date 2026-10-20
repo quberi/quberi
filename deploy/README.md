@@ -116,6 +116,24 @@ curl -I https://ai.quberi.com
 curl -I https://api.quberi.com/health/live
 ```
 
+### 5. 更新已部署的服务器
+
+上面的"启动"适用于第一次部署。已经在跑的服务器通常不是 git 仓库,更新的做法是:同步源码,再在服务器上构建并只替换应用容器。
+
+1. **留回滚点**:给当前镜像打标签(`docker tag quberi-api:latest quberi-api:pre-<名称>-<时间戳>`,web 同理),并对数据库做一次 `pg_dump`。迁移的降级往往不安全,回滚靠"数据库备份 + 旧镜像"。
+2. **同步源码**:把要发布的版本(例如 `git archive HEAD` 的结果)用 `rsync -rlpt` 同步到服务器的仓库目录。排除 `.env`、`.env.example`、`deploy/certs`、`node_modules`、`.venv`;不要加 `--delete`。发布前比对服务器上的文件和要发布的版本,避免把服务器上已有、但还没提交的改动覆盖掉。
+3. **在服务器上构建**(服务器是 x86_64,不要在 arm64 的开发机上交叉构建 torch 镜像;服务器上有构建缓存,通常几分钟):
+   ```bash
+   docker compose --env-file .env -f compose.yaml -f deploy/compose.prod.yaml --profile app build api web
+   ```
+   构建期间旧服务不受影响。建议用 `nohup ... &` 放后台,再轮询日志。
+4. **只替换应用容器**,不动数据库、Redis、Qdrant、MinIO、Caddy:
+   ```bash
+   docker compose --env-file .env -f compose.yaml -f deploy/compose.prod.yaml --profile app up -d --no-build --no-deps api worker web
+   ```
+5. **迁移是自动的**:`api` 容器启动时,`apps/api/docker/entrypoint.sh` 会执行 `alembic upgrade head`,不需要另外跑。用 `docker logs <api 容器>` 确认出现 `Running upgrade` 且没有报错。
+6. **验证**:按上面第 4 步检查健康接口,并确认 `api`、`worker` 日志没有 Traceback。
+
 ---
 
 ## 四、已知坑 & 排错记录
