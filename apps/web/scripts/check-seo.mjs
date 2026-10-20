@@ -58,6 +58,41 @@ if (!/per document, not per space/i.test(enText)) errors.push('en.html lacks the
 const sitemap = read('sitemap.xml')
 if (!sitemap.startsWith('<?xml')) errors.push('sitemap.xml is not XML')
 if (!sitemap.includes('<loc>https://ai.quberi.com/en</loc>')) errors.push('sitemap.xml does not list /en')
+
+// Every page in the sitemap must be canonical to itself. A language version that
+// points its canonical at another language ("/en" -> "/") is treated as a
+// duplicate and left out of the index, so this is checked for every URL.
+const ORIGIN = 'https://ai.quberi.com'
+const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].trim())
+if (locs.length === 0) errors.push('sitemap.xml lists no pages')
+for (const loc of locs) {
+  if (!loc.startsWith(ORIGIN)) {
+    errors.push(`sitemap.xml lists ${loc}, which is not on ${ORIGIN}`)
+    continue
+  }
+  const path = loc.slice(ORIGIN.length) || '/'
+  const file = path === '/' ? 'index.html' : `${path.replace(/^\//, '')}.html`
+  let page
+  try {
+    page = read(file)
+  } catch {
+    errors.push(`sitemap.xml lists ${loc} but dist/${file} does not exist`)
+    continue
+  }
+  const canonicals = [...page.matchAll(/<link\s+rel="canonical"\s+href="([^"]*)"/g)].map((m) => m[1])
+  if (canonicals.length !== 1) {
+    errors.push(`${file} has ${canonicals.length} canonical links, need exactly 1`)
+  } else if (canonicals[0] !== loc) {
+    errors.push(`${file} canonical is ${canonicals[0]}, expected itself (${loc})`)
+  }
+  // A page that declares language alternates must list itself among them.
+  const alternateHrefs = [...page.matchAll(/<link\s+rel="alternate"\s+hreflang="[^"]*"\s+href="([^"]*)"/g)].map(
+    (m) => m[1],
+  )
+  if (alternateHrefs.length > 0 && !alternateHrefs.includes(loc)) {
+    errors.push(`${file} declares hreflang alternates but not one for itself (${loc})`)
+  }
+}
 if (!/^Sitemap:/m.test(read('robots.txt'))) errors.push('robots.txt has no Sitemap line')
 
 if (errors.length > 0) {
