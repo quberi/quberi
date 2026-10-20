@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,11 +9,8 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/logo-16.png" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/logo-180.png" />
-    <title>Quberi: an AI knowledge base for teams</title>
-    <meta
-      name="description"
-      content="Quberi is an AI knowledge base for teams: answers with citations that respect who is asking, a check-before-sending step to review what goes to the LLM, and an admin audit log."
-    />
+    <title>Quberi｜企业 AI 知识库，文档级权限，可接入 AI Agent</title>
+    <meta name="description" content="Quberi 是一个企业 AI 知识库：权限做到单份文档，拒绝优先于允许，过滤发生在检索内部，权限变更后旧链接立即失效。支持 DeepSeek Harness 插件与 MCP 接入。" />
     <link rel="canonical" href="https://ai.quberi.com/" />
 
     <!-- Link previews (Reddit, X, Slack, Discord, LinkedIn ...). Crawlers read
@@ -21,11 +18,12 @@
          and live here, not be added by React. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Quberi" />
+    <meta property="og:locale" content="zh_CN" />
     <meta property="og:url" content="https://ai.quberi.com/" />
-    <meta property="og:title" content="Quberi: an AI knowledge base for teams" />
+    <meta property="og:title" content="Quberi｜企业 AI 知识库，文档级权限，可接入 AI Agent" />
     <meta
       property="og:description"
-      content="Answers with citations that respect who is asking. Review and edit what goes to the LLM before it is sent. An admin audit log of what the model could see."
+      content="权限做到单份文档，拒绝优先于允许，过滤发生在检索内部。回答带引用，发送给大模型之前可以检查，管理员有审计日志。"
     />
     <meta property="og:image" content="https://ai.quberi.com/og-image.png" />
     <meta property="og:image:type" content="image/png" />
@@ -33,18 +31,98 @@
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="Quberi: an AI knowledge base for teams"
+      content="Quberi：企业 AI 知识库，文档级权限"
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Quberi: an AI knowledge base for teams" />
+    <meta name="twitter:title" content="Quberi｜企业 AI 知识库，文档级权限，可接入 AI Agent" />
     <meta
       name="twitter:description"
-      content="Answers with citations that respect who is asking. Review and edit what goes to the LLM before it is sent. An admin audit log of what the model could see."
+      content="权限做到单份文档，拒绝优先于允许，过滤发生在检索内部。回答带引用，发送给大模型之前可以检查，管理员有审计日志。"
     />
     <meta name="twitter:image" content="https://ai.quberi.com/og-image.png" />
+
+    <!-- Only affects the static content inside #root, which is what crawlers
+         and no-JS clients see. React replaces it on mount. -->
+    <style>
+      #root > main.static-intro {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 24px 72px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", Helvetica, Arial, sans-serif;
+        color: #222;
+        line-height: 1.75;
+      }
+      #root > main.static-intro h1 { font-size: 28px; letter-spacing: -0.02em; }
+      #root > main.static-intro h2 { font-size: 18px; margin-top: 28px; }
+      #root > main.static-intro nav a { margin-right: 16px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static, crawler-readable introduction. This is real HTML on purpose
+         (not injected by JS): search and AI crawlers that do not run scripts
+         read this copy. React's createRoot() replaces it when the app mounts. -->
+    <div id="root">
+      <main class="static-intro">
+        <h1>企业 AI 知识库，权限做到单份文档</h1>
+        <p>
+          Quberi 是一个可以接给 AI Agent 使用的企业知识库。和常见做法不同的是，
+          权限不是“能不能进这个空间”，而是<b>单份文档</b>：能读空间的人，
+          加上被单独授权的人，减去被单独拒绝的人，<b>拒绝优先于一切</b>。
+          同一个知识库里，不同的人看到的文档、搜到的结果、得到的 AI 回答都可以不一样。
+        </p>
+        <p>
+          检索时会在向量索引内部完成权限过滤，所以你不会拿到“十条里挖掉三个洞”
+          的结果；已经发出去的预览链接，在权限撤销后下一次请求就会失效。
+        </p>
+
+        <p>
+          对管理者来说，这意味着可以放心地把一个人加进空间，再把其中几份文档单独对他关上；
+          对使用者来说，AI 给出的每一个回答，都只建立在他本人有权阅读的资料之上。
+          权限规则只有一套，网页对话、预览链接和外部 Agent 都遵守同一套。
+        </p>
+
+        <h2>回答有出处，发送前可检查</h2>
+        <p>
+          Quberi 的 AI 回答会附带引用，告诉你答案来自哪几份文档。在内容发送给大模型之前，
+          用户可以检查并修改将要发送的文档片段，不想让模型看到的内容可以先拿掉。
+          管理员可以在审计日志里看到每一次提问、模型能够看到哪些文档，以及空间、成员和文档权限的变更记录，
+          出了问题能追溯，而不是只能相信“应该没问题”。
+        </p>
+
+        <h2>接入 AI Agent</h2>
+        <p>
+          除了网页端的对话，Quberi 也可以作为外部 AI Agent 的知识来源：
+          支持 DeepSeek Harness 插件，也支持通过 MCP 接入其他 Agent。
+          Agent 以用户的身份、经过用户授权后检索知识库，
+          因此它能查到的文档，和这位用户本人能查到的完全一致，不会因为换了入口而放宽权限。
+        </p>
+
+        <h2>适合什么场景</h2>
+        <p>
+          制造业、能源、合规密集型企业：客户图纸、技术协议、报价单和员工手册
+          往往在同一个知识库里，但受众完全不同。空间级权限做不到区分，
+          文档级权限可以。销售能看到报价单但看不到客户的技术协议，
+          工程师能查到图纸但看不到价格。
+        </p>
+
+        <h2>已知限制</h2>
+        <p>
+          目前没有飞书之外的 SSO；图片检索对工程图纸不敏感；跨组织共享未验证。
+          我们把这些写在文档里，而不是藏起来。
+        </p>
+
+        <nav aria-label="更多内容">
+          <a href="/permissions">文档级权限说明</a>
+          <a href="/manufacturing">制造业知识库场景</a>
+          <a href="/privacy">隐私政策</a>
+          <a href="/terms">服务条款</a>
+        </nav>
+      </main>
+      <noscript>
+        <p>你的浏览器禁用了 JavaScript。Quberi 需要 JavaScript 才能运行完整应用。</p>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

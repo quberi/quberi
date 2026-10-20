@@ -15,8 +15,18 @@ function meta(attr: 'property' | 'name', key: string): string | null {
 describe('index.html link preview tags', () => {
   it('has a descriptive title rather than the generic workspace name', () => {
     expect(/<title>([^<]*)<\/title>/.exec(html)?.[1]).toBe(
-      'Quberi: an AI knowledge base for teams',
+      'Quberi｜企业 AI 知识库，文档级权限，可接入 AI Agent',
     )
+  })
+
+  it('ships crawler-readable Chinese content inside #root (no JS needed)', () => {
+    const root = /<div id="root">([\s\S]*?)<\/div>\s*<script/.exec(html)?.[1] ?? ''
+    const text = root.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    expect(text.length).toBeGreaterThanOrEqual(800)
+    for (const kw of ['知识库', '权限', '文档', 'AI', 'Agent']) {
+      expect(text, kw).toContain(kw)
+    }
+    expect(html).toContain('<html lang="zh-CN">')
   })
 
   it('has a description of a length search and social previews will show', () => {

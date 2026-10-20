@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7fa" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo-32.png" />
+    <title>企业知识库文档级权限怎么做：拒绝优先于允许 - Quberi</title>
+    <meta
+      name="description"
+      content="企业知识库的权限为什么要做到单份文档：Quberi 的规则是“能读空间的人，加上被单独授权的人，减去被单独拒绝的人”，拒绝优先，并且在检索内部完成过滤。"
+    />
+    <link rel="canonical" href="https://ai.quberi.com/permissions" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Quberi" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:url" content="https://ai.quberi.com/permissions" />
+    <meta property="og:title" content="企业知识库文档级权限怎么做：拒绝优先于允许" />
+    <meta
+      property="og:description"
+      content="权限做到单份文档，拒绝优先于允许，过滤发生在检索内部。"
+    />
+    <meta property="og:image" content="https://ai.quberi.com/og-image.png" />
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", Helvetica, Arial, sans-serif;
+        color: #1d1d1f;
+        background: #f7f7fa;
+        line-height: 1.75;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 96px; }
+      .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; color: inherit; text-decoration: none; }
+      .brand img { width: 32px; height: 32px; border-radius: 9px; }
+      .brand span { font-weight: 700; font-size: 17px; }
+      h1 { font-size: 26px; letter-spacing: -0.02em; }
+      h2 { font-size: 17px; margin-top: 28px; color: #6544d8; }
+      p { font-size: 15px; color: #3d3545; }
+      a { color: #6544d8; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="brand" href="https://ai.quberi.com/">
+        <img src="/logo-64.png" alt="Quberi" />
+        <span>Quberi</span>
+      </a>
+      <main>
+        <h1>企业知识库的文档级权限怎么做</h1>
+        <p>
+          很多知识库的权限只做到“空间”这一层：你在这个空间里，就能看到空间里的所有文档。
+          但企业里真正敏感的内容，往往和普通资料放在同一个空间：同一个项目下，既有对外的产品说明，
+          也有只给少数人看的报价单和技术协议。空间级权限在这里不够用，要么把空间拆得很碎，要么把敏感文档放到“所有人都能看”的地方。
+        </p>
+
+        <h2>规则：加上被授权的，减去被拒绝的，拒绝优先</h2>
+        <p>
+          Quberi 把权限做到单份文档。一个人能不能读某份文档，由三部分决定：能读这个空间的人，
+          加上被单独授权读这份文档的人，减去被单独拒绝的人。当允许和拒绝同时存在时，<b>拒绝优先于一切</b>。
+          这样，管理者可以放心地把一个人加进空间，再把其中几份文档对他单独关上。
+        </p>
+
+        <h2>过滤发生在检索内部</h2>
+        <p>
+          AI 知识库的权限还有一个容易被忽略的地方：检索。如果先在向量库里取出最相似的十条，再把没有权限的剔除，
+          用户拿到的就是“十条里挖掉三个洞”的残缺结果，答案质量会明显下降。
+          Quberi 在向量索引内部完成权限过滤，检索得到的每一条结果，用户本人都有权阅读。
+        </p>
+
+        <h2>权限变更立即生效</h2>
+        <p>
+          文档的预览链接发出去之后，权限可能会变。Quberi 的做法是每一次请求都重新判断权限：
+          权限被撤销后，已经发出去的旧链接在下一次请求时就会失效，而不是等到链接自然过期。
+        </p>
+
+        <h2>AI Agent 同样受权限约束</h2>
+        <p>
+          通过 DeepSeek Harness 插件或 MCP 接入的 Agent，以用户的身份检索知识库，
+          它能看到的文档和这位用户本人完全一致。更换入口不会放宽权限。
+        </p>
+
+        <p>
+          <a href="/">回到 Quberi 首页</a> ·
+          <a href="/manufacturing">制造业知识库场景</a>
+        </p>
+      </main>
+    </div>
+  </body>
+</html>
