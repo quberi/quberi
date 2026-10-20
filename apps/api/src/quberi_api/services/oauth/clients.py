@@ -49,6 +49,11 @@ CLIENTS: dict[str, OAuthClient] = {
     "quberi-harness": OAuthClient(
         client_id="quberi-harness", name="DeepSeek Harness"
     ),
+    # A protocol-generic client: any tool that speaks MCP (Model Context
+    # Protocol), not a particular one. Codex is the first to connect, but
+    # this row is not named after it, so a second MCP client does not need
+    # to be squeezed into the same registration.
+    "quberi-mcp": OAuthClient(client_id="quberi-mcp", name="MCP client"),
 }
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})
