@@ -62,15 +62,17 @@ export function ConnectedTools() {
       {error && <div className="state-panel error-state">{error}</div>}
       <ul className="integration-source-list">
         {(items ?? []).map((g) => (
-          <li key={g.id} className="integration-source-row">
+          <li key={g.id} className="integration-source-row integration-source-row-no-mark">
             <div className="integration-source-body">
-              <strong>{g.client_name}</strong>
-              {g.scope.split(/\s+/).includes('knowledge:write') && (
-                <span className="oauth-write-badge">{t('oauth.writeBadge')}</span>
-              )}
-              {g.scope.split(/\s+/).includes('knowledge:upload') && (
-                <span className="oauth-write-badge">{t('oauth.uploadBadge')}</span>
-              )}
+              <div className="connected-tool-title">
+                <strong>{g.client_name}</strong>
+                {g.scope.split(/\s+/).includes('knowledge:write') && (
+                  <span className="oauth-write-badge">{t('oauth.writeBadge')}</span>
+                )}
+                {g.scope.split(/\s+/).includes('knowledge:upload') && (
+                  <span className="oauth-write-badge">{t('oauth.uploadBadge')}</span>
+                )}
+              </div>
               <small className="integration-source-meta">
                 <span>{g.organization_name}</span>
                 <span className="dot-sep">·</span>

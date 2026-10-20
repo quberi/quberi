@@ -3893,6 +3893,20 @@ input[type="radio"] {
   gap: 8px;
 }
 
+/* A row with no icon column (the outside tools a person has connected): the text takes
+ * the first column and the button the last. Without this the text lands in the 40px icon
+ * column and wraps one word per line. */
+.integration-source-row.integration-source-row-no-mark {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.connected-tool-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.connected-tool-title .oauth-write-badge { margin-left: 0; white-space: nowrap; }
+
 .chip-cache-mirror { background: rgba(139, 108, 243, .1); color: var(--purple-700); border-color: rgba(139, 108, 243, .22); }
 .chip-cache-reference_only { background: rgba(53, 198, 143, .14); color: #1e8a5f; border-color: rgba(53, 198, 143, .28); }
 
@@ -3908,6 +3922,8 @@ input[type="radio"] {
   .integrations-header-lockup > button { grid-column: 1 / -1; justify-self: start; }
   .integration-source-row { grid-template-columns: 40px minmax(0, 1fr); }
   .integration-source-actions { grid-column: 1 / -1; padding-left: 54px; }
+  .integration-source-row.integration-source-row-no-mark { grid-template-columns: minmax(0, 1fr); }
+  .integration-source-row-no-mark .integration-source-actions { padding-left: 0; }
 }
 
 /* ==========================================================================
