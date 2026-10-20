@@ -16,9 +16,9 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from quberi_api.api.v1 import external as external_api
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.services.doc_acl import NO_DOC_ACCESS
+from quberi_api.services.mcp import adapters
 from quberi_api.services.rag import image_search
 from quberi_api.services.rag.vector_store import RetrievedChunk
 from tests.test_external_image_search import (  # noqa: F401
@@ -54,7 +54,7 @@ def text_side(monkeypatch):
             chunks=state.chunks, space_ids=state.spaces, doc_access=NO_DOC_ACCESS
         )
 
-    monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
+    monkeypatch.setattr(adapters, "retrieve_for_user", fake_retrieve)
     return state
 
 
@@ -233,7 +233,7 @@ async def test_the_picture_limit_degrades_a_text_search_but_blocks_a_picture_sea
     space = await _make_space(db_session, boot, "Animals")
     await _stored(db_session, boot, qdrant, space, BLUE, blobs, "lioness.png")
     text_side.spaces = [space.id]
-    monkeypatch.setattr(external_api, "_IMAGE_SEARCH_RATE_LIMIT", 1)
+    monkeypatch.setattr(adapters, "IMAGE_SEARCH_RATE_LIMIT", 1)
     tokens = await _read(db_session, redis_client, boot)
     headers = _auth(tokens)
 

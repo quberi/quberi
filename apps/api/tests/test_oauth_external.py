@@ -31,6 +31,7 @@ from sqlalchemy import select, text
 from quberi_api.services.doc_acl import NO_DOC_ACCESS
 from quberi_api.api import dependencies
 from quberi_api.api.v1 import external as external_api
+from quberi_api.services.mcp import adapters
 from quberi_api.api.v1.external import external_router
 from quberi_api.api.v1.me_external_access import me_external_access_router
 from quberi_api.api.v1.oauth import oauth_router, well_known_router
@@ -616,7 +617,7 @@ async def test_full_login_over_http_then_search_as_the_granting_person(
         )
         return SimpleNamespace(chunks=[chunk], space_ids=[space], doc_access=NO_DOC_ACCESS)
 
-    monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
+    monkeypatch.setattr(adapters, "retrieve_for_user", fake_retrieve)
     other_org = uuid.uuid4()
     search = await http.post(
         "/api/v1/external/search",
@@ -695,8 +696,8 @@ async def test_search_is_rate_limited_per_grant(http, db_session, redis_client, 
     async def fake_retrieve(session, **kwargs):
         return SimpleNamespace(chunks=[], space_ids=[], doc_access=NO_DOC_ACCESS)
 
-    monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
-    monkeypatch.setattr(external_api, "_SEARCH_RATE_LIMIT", 2)
+    monkeypatch.setattr(adapters, "retrieve_for_user", fake_retrieve)
+    monkeypatch.setattr(adapters, "SEARCH_RATE_LIMIT", 2)
     headers = {"Authorization": f"Bearer {issued.access_token}"}
     codes = []
     for _ in range(3):

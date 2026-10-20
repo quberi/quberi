@@ -268,8 +268,8 @@ async def test_denied_documents_leave_the_list_and_the_counts_for_that_person_on
 async def test_a_text_search_may_name_a_shared_only_space(
     http, db_session, redis_client, qdrant, blobs, monkeypatch
 ):
-    from quberi_api.api.v1 import external as external_api
     from quberi_api.services.doc_acl import NO_DOC_ACCESS
+    from quberi_api.services.mcp import adapters
 
     boot, space, pics, outsider = await _team(db_session, redis_client, qdrant, blobs)
     await _rule(db_session, boot, space, pics.shared, "allow", outsider.id)
@@ -279,7 +279,7 @@ async def test_a_text_search_may_name_a_shared_only_space(
         seen.append(space_ids)
         return SimpleNamespace(chunks=[], space_ids=[], doc_access=NO_DOC_ACCESS)
 
-    monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
+    monkeypatch.setattr(adapters, "retrieve_for_user", fake_retrieve)
     tokens = await _read(db_session, redis_client, boot, user_id=outsider.id)
 
     ok = await http.post(SEARCH.replace("images/", ""), headers=_auth(tokens), json={"query": "q", "space": "Parts"})
@@ -294,7 +294,7 @@ async def test_a_text_search_may_name_a_shared_only_space(
 async def test_the_pending_list_never_names_a_hidden_document(
     http, db_session, redis_client, qdrant, blobs
 ):
-    from quberi_api.api.v1.external import _pending_documents
+    from quberi_api.services.mcp.adapters import pending_documents as _pending_documents
     from quberi_api.domain.documents.models import Document
     from quberi_api.services.doc_acl import DocAccess
     from sqlalchemy import update

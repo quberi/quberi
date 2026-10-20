@@ -150,8 +150,8 @@ async def test_a_search_names_the_waiting_file_as_awaiting_approval_for_its_uplo
 ):
     from types import SimpleNamespace
 
-    from quberi_api.api.v1 import external as external_api
     from quberi_api.services.doc_acl import NO_DOC_ACCESS
+    from quberi_api.services.mcp import adapters
 
     boot, tokens = await _setup(db_session, redis_client)
     await _upload(http, tokens["editor"], "mine.pdf")
@@ -166,7 +166,7 @@ async def test_a_search_names_the_waiting_file_as_awaiting_approval_for_its_uplo
         ids = list((await session.execute(select(Space.id).where(Space.name == "Wiki"))).scalars())
         return SimpleNamespace(chunks=[], space_ids=ids, doc_access=NO_DOC_ACCESS)
 
-    monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
+    monkeypatch.setattr(adapters, "retrieve_for_user", fake_retrieve)
     _ = space_ids, boot
 
     mine = (await http.post(SEARCH, headers=_auth(tokens["editor"]), json={"query": "plan"})).json()

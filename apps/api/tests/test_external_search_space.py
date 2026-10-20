@@ -7,7 +7,7 @@ import uuid
 from types import SimpleNamespace
 
 from quberi_api.services.doc_acl import NO_DOC_ACCESS
-from quberi_api.api.v1 import external as external_api
+from quberi_api.services.mcp import adapters
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.rag import retrieve
 from tests.test_external_save import (  # noqa: F401
@@ -44,7 +44,7 @@ def _spy(monkeypatch):
         seen.append(space_ids)
         return SimpleNamespace(chunks=[], space_ids=list(space_ids or []), doc_access=NO_DOC_ACCESS)
 
-    monkeypatch.setattr(external_api, "retrieve_for_user", fake_retrieve)
+    monkeypatch.setattr(adapters, "retrieve_for_user", fake_retrieve)
     return seen
 
 

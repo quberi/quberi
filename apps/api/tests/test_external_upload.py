@@ -28,11 +28,11 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from quberi_api.api.v1 import external as external_api
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.identity.models import Organization
 from quberi_api.domain.oauth.models import OAuthGrant
 from quberi_api.services import documents as documents_service
+from quberi_api.services.mcp import adapters
 from tests.test_external_save import (  # noqa: F401
     _auth,
     _no_infra,
@@ -91,7 +91,7 @@ async def test_the_scope_is_checked_before_the_body_is_read(
     async def boom(*a, **k):
         raise AssertionError("the body must not be read for a grant without the scope")
 
-    monkeypatch.setattr(external_api, "_read_capped", boom)
+    monkeypatch.setattr(adapters, "read_capped", boom)
     resp = await http.post(UPLOAD, headers=_auth(tokens), files=_files())
     assert resp.status_code == 403
 
@@ -231,7 +231,7 @@ async def test_the_limit_is_enforced_while_reading_not_only_from_the_header(
     """A request whose declared length is honest-looking but whose body is not."""
     monkeypatch.setattr(documents_service, "MAX_UPLOAD_BYTES", 1024 * 1024)
     seen = {"read": 0}
-    real = external_api._read_capped
+    real = adapters.read_capped
 
     async def counting(upload, limit):
         original = upload.read
@@ -244,7 +244,7 @@ async def test_the_limit_is_enforced_while_reading_not_only_from_the_header(
         upload.read = tracked
         return await real(upload, limit)
 
-    monkeypatch.setattr(external_api, "_read_capped", counting)
+    monkeypatch.setattr(adapters, "read_capped", counting)
     boot = await _org(db_session)
     tokens = await _grant(db_session, redis_client, boot, ALL)
     big = PNG + b"\x00" * (4 * 1024 * 1024)

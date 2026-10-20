@@ -15,9 +15,9 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
 
-from quberi_api.api.v1 import external as external_api
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document
+from quberi_api.services.mcp import adapters
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services import members as members_service
@@ -158,7 +158,7 @@ async def test_the_space_list_is_capped_but_the_total_is_honest(
     boot = await _org(db_session)
     for i in range(4):
         await _space(db_session, boot, f"s{i}")
-    monkeypatch.setattr(external_api, "_MAX_SPACES_LISTED", 3)
+    monkeypatch.setattr(adapters, "MAX_SPACES_LISTED", 3)
 
     body = (await http.get(SPACES, headers=await _read(db_session, redis_client, boot))).json()
 
@@ -409,7 +409,7 @@ async def test_a_cursor_only_marks_a_position_it_cannot_reach_another_space(
     await _many(db_session, boot, first, 3, same_time=False)
     await _doc(db_session, boot, second, "only-in-yi.pdf", state="indexed")
     headers = await _read(db_session, redis_client, boot)
-    cursor = external_api._encode_cursor(datetime.now(timezone.utc), uuid.uuid4())
+    cursor = adapters.encode_cursor(datetime.now(timezone.utc), uuid.uuid4())
 
     body = (
         await http.get(DOCUMENTS, headers=headers, params={"space": "乙", "cursor": cursor})
@@ -430,7 +430,7 @@ async def test_both_listings_share_one_rate_limit(
     boot = await _org(db_session)
     await _space(db_session, boot, "甲")
     headers = await _read(db_session, redis_client, boot)
-    monkeypatch.setattr(external_api, "_LIST_RATE_LIMIT", 2)
+    monkeypatch.setattr(adapters, "LIST_RATE_LIMIT", 2)
 
     assert (await http.get(SPACES, headers=headers)).status_code == 200
     assert (await http.get(DOCUMENTS, headers=headers, params={"space": "甲"})).status_code == 200

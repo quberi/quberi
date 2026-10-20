@@ -274,9 +274,9 @@ async def test_bad_requests_and_a_switched_off_server_are_refused_plainly(
 
 
 async def test_searches_are_rate_limited_per_grant(http, db_session, redis_client, qdrant, monkeypatch):
-    from quberi_api.api.v1 import external as external_api
+    from quberi_api.services.mcp import adapters
 
-    monkeypatch.setattr(external_api, "_IMAGE_SEARCH_RATE_LIMIT", 2)
+    monkeypatch.setattr(adapters, "IMAGE_SEARCH_RATE_LIMIT", 2)
     boot = await _org(db_session)
     tokens = await _read(db_session, redis_client, boot)
     codes = [
@@ -468,7 +468,7 @@ async def test_previews_are_rate_limited_per_grant(
 ):
     from quberi_api.api.v1 import external as external_api
 
-    monkeypatch.setattr(external_api, "_PREVIEW_RATE_LIMIT", 2)
+    monkeypatch.setattr(external_api, "_PREVIEW_RATE_LIMIT", 2)  # preview_by_link stays in external.py (not an adapter)
     *_, path = await _found(http, db_session, redis_client, qdrant, blobs)
     codes = [(await http.get(path)).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
