@@ -28,6 +28,10 @@ Licensed under [AGPL-3.0](LICENSE).
   outside tools through OAuth (authorization code with PKCE). It is off by
   default. A plugin for DeepSeek Harness is published separately as
   [`dsh-quberi`](https://github.com/quberi/dsh-quberi).
+- **Member offboarding.** The organization owner can deactivate a departing
+  member: it ends their web sessions, outside-tool access and Feishu sync,
+  removes their private model keys, and freezes their personal space. See
+  [`docs/member-offboarding.md`](docs/member-offboarding.md).
 
 ## Run it locally
 
