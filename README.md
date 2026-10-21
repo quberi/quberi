@@ -34,7 +34,12 @@ Licensed under [AGPL-3.0](LICENSE).
 - **Connected tools.** An organization admin can allow read-only search from
   outside tools through OAuth (authorization code with PKCE). It is off by
   default. A plugin for DeepSeek Harness is published separately as
-  [`dsh-quberi`](https://github.com/quberi/dsh-quberi).
+  [`dsh-quberi`](https://github.com/quberi/dsh-quberi). An
+  [MCP server](https://mcp.quberi.com) (listed in the
+  [official MCP Registry](https://registry.modelcontextprotocol.io) as
+  `com.quberi/mcp`) exposes the same six tools to Codex and other MCP
+  clients — see [`docs/mcp-server.md`](docs/mcp-server.md) for how to
+  connect.
 - **Member offboarding.** The organization owner can deactivate a departing
   member: it ends their web sessions, outside-tool access and Feishu sync,
   removes their private model keys, and freezes their personal space. See

@@ -1,0 +1,70 @@
+# Connecting to Quberi over MCP
+
+Quberi runs a [Model Context Protocol](https://modelcontextprotocol.io)
+server at `https://mcp.quberi.com`. It gives an MCP client (Codex, and any
+other client that speaks Streamable HTTP) the same six tools the DeepSeek
+Harness plugin uses — search, search by image description, list spaces, list
+documents, save a note, and upload a file — scoped to whatever your Quberi
+account can already read or write. It is also listed in the
+[official MCP Registry](https://registry.modelcontextprotocol.io) as
+`com.quberi/mcp`.
+
+## Before you connect
+
+You need a Quberi account whose organization has outside tools turned on
+(an organization owner or admin can enable this from the connected-tools
+page). The first connection opens a normal sign-in-and-consent page in your
+browser — nothing about this requires a separate account or an API key.
+
+## Configuring the MCP client
+
+Quberi's authorization server does not implement automatic client
+registration (neither
+[Dynamic Client Registration](https://www.rfc-editor.org/rfc/rfc7591) nor
+[Client ID Metadata Documents](https://modelcontextprotocol.io/specification/draft/basic/authorization/client-registration)).
+This is deliberate: which tools can start a login is a short, reviewed list
+in the server's own code
+(`apps/api/src/quberi_api/services/oauth/clients.py`), not something a
+client can grant itself by showing up. A client that tries to register
+itself automatically will fail before it ever shows you a sign-in page.
+
+What this means in practice: **pass the pre-registered client ID
+explicitly** when you add the server. For Codex CLI:
+
+```
+codex mcp add quberi --url https://mcp.quberi.com --oauth-client-id quberi-mcp
+codex mcp login quberi
+```
+
+`codex mcp login` opens your browser to Quberi's sign-in and consent page.
+Approve the connection there (choosing which organization's knowledge it can
+reach), and the CLI stores the resulting token itself. From then on, Codex's
+tool list includes `search`, `search_images`, `list_spaces`,
+`list_documents`, `save_note`, and `upload` — filtered to what your account's
+scope allows.
+
+If you add the server **without** `--oauth-client-id`, Codex defaults to
+trying automatic registration first. That fails with an error naming
+"Dynamic client registration" or "Dynamic Client Registration not
+supported" — at that point, remove the server entry and re-add it with the
+flag above rather than retrying:
+
+```
+codex mcp remove quberi
+codex mcp add quberi --url https://mcp.quberi.com --oauth-client-id quberi-mcp
+codex mcp login quberi
+```
+
+Other MCP clients that support pre-registered credentials should have an
+equivalent option (sometimes called a static or manual client ID) — look for
+a way to supply `quberi-mcp` as the client ID before the client's login flow
+starts, rather than letting it attempt registration.
+
+## What a connected client can do
+
+A connection acts as the person who approved it, in the organization they
+chose — exactly the same permission boundary as signing in to the Quberi web
+app. It cannot see or change anything that account could not already see or
+change there. Revoking access works the same way it does for any other
+outside tool: from the connected-tools page, or automatically if the member
+is deactivated (see [member offboarding](./member-offboarding.md)).
