@@ -65,6 +65,26 @@ class Settings(BaseSettings):
     # a per-organisation or per-space option.
     image_search_enabled: bool = True
     default_image_embedding_model: str = "siglip2-base"
+    # Reading text out of pictures (OCR), shared by picture indexing and scanned PDFs.
+    # On by default: the local engine sends nothing off the host. The model runs in a
+    # child process that is started on first use and stopped when idle, so an instance
+    # nobody sends pictures to pays nothing for it. ``ocr_provider`` is a deployment
+    # choice like the chat model; only ``local`` exists today.
+    image_ocr_enabled: bool = True
+    ocr_provider: str = "local"
+    # Longest side the text detector sees. Raised from the model's 960 because small
+    # print is lost on a full page; capped at 2000 in code because memory climbs steeply
+    # past it (see services/ai/ocr/models.py).
+    ocr_det_side: int = 1600
+    ocr_min_confidence: float = 0.5
+    ocr_max_lines: int = 500
+    ocr_threads: int = 2
+    # The child is stopped if it holds more than this; give the container at least this
+    # much plus the models (~0.6 GB).
+    ocr_max_memory_mb: int = 2048
+    ocr_timeout_s: float = 60.0
+    ocr_startup_timeout_s: float = 300.0
+    ocr_idle_unload_s: float = 300.0
 
     # Free monthly chat-message quota when an org uses the platform-shared
     # model (no BYOK key). Counted per org, reset on the 1st of each month.

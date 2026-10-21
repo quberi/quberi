@@ -16,9 +16,11 @@ WORKDIR /app
 ARG PIP_INDEX_URL=https://pypi.org/simple/
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG TORCH_VERSION=2.14.1
+# torchvision is built against one exact torch release; 0.29.x pairs with torch 2.14.x.
+ARG TORCHVISION_VERSION=0.29.1
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
-# --- Layer 1: CPU-only PyTorch (own layer, never invalidated by src) ----
+# --- Layer 1: CPU-only PyTorch + torchvision (own layer, never invalidated by src) ----
 # Pinned ≥2.6 because ``transformers`` refuses earlier versions when
 # loading ``.bin`` weights (CVE-2025-32434). Because this RUN has no
 # dependency on the app source, a code change never re-downloads the
@@ -27,7 +29,7 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 # rebuild only re-downloads what actually changed.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --index-url ${PYTORCH_INDEX_URL} \
-      "torch==${TORCH_VERSION}"
+      "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}"
 
 # --- Layer 2: app + remaining deps --------------------------------------
 # ``pip install .`` sees torch already satisfied and skips it; only the

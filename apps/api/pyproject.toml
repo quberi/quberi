@@ -47,6 +47,12 @@ dependencies = [
   # fast Gemma tokenizer). Pinned to the version the model was evaluated and deployed
   # with, rather than whatever sentence-transformers happens to pull in.
   "transformers==5.20.1",
+  # Text in pictures (OCR) uses PP-OCRv5 through transformers' own classes, so no second
+  # tensor framework is installed. Its detector's image processor is torchvision-only and
+  # its box post-processing needs OpenCV. ``torchvision`` must match ``torch`` (0.29.x is
+  # torch 2.14.x) and come from the same CPU index (see the Dockerfile).
+  "torchvision==0.29.1",
+  "opencv-python-headless==4.13.0.92",
   "sqlalchemy[asyncio]==2.0.36",
   "urllib3==2.6.3",
   "uvicorn[standard]==0.34.2",
