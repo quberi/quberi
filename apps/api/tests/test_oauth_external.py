@@ -176,6 +176,17 @@ def _error_code(exc_info) -> str:
         ("https://127.0.0.1:53682/callback/abc123", False),
         ("http://evil.com:53682/callback/abc123", False),
         ("http://127.0.0.1:53682/callback/abc123?x=1", False),
+        # The hosted Claude apps (claude.ai, Desktop, mobile, Cowork) use a
+        # single fixed, remote callback per Anthropic's own documentation —
+        # not a loopback address, so it is compared as an exact string, not
+        # matched by the loopback rule above.
+        ("https://claude.ai/api/mcp/auth_callback", True),
+        ("http://claude.ai/api/mcp/auth_callback", False),
+        ("https://claude.ai/api/mcp/auth_callback/", False),
+        ("https://claude.ai/api/mcp/auth_callback?x=1", False),
+        ("https://claude.ai.evil.com/api/mcp/auth_callback", False),
+        ("https://evil.com/api/mcp/auth_callback", False),
+        ("https://claude.ai/api/mcp/other_callback", False),
     ],
 )
 def test_redirect_must_be_a_loopback_callback(uri, ok):

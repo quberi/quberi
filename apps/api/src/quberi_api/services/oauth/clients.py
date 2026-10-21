@@ -5,9 +5,13 @@ dynamic client registration: an unknown tool simply cannot start a login.
 Adding a tool is a reviewed code change.
 
 All of them are *public* clients (a desktop tool cannot keep a secret), so the
-protection is PKCE plus a strict redirect rule: the tool must receive the code
-on a loopback address on its own machine (RFC 8252). A code can therefore never
-be sent to a web address someone controls.
+protection is PKCE plus a strict redirect rule: by default, the tool must
+receive the code on a loopback address on its own machine (RFC 8252), so a
+code can never be sent to a web address someone controls. The one exception
+is the hosted Claude apps' own fixed callback (see ``_CLAUDE_HOSTED_CALLBACK``
+below) — there the "someone" receiving the code is Anthropic's own
+infrastructure, which is the documented, intended architecture for those
+clients, not a third party.
 """
 
 from __future__ import annotations
@@ -80,20 +84,39 @@ _CALLBACK_PATH = "/callback"
 # matches "loopback callback plus an opaque id", never an arbitrary path.
 _CALLBACK_ID_RE = re.compile(r"^/callback/[A-Za-z0-9_-]{1,64}$")
 
+# The one non-loopback exception. The hosted Claude apps (claude.ai on the
+# web, Desktop, mobile, Cowork) are not a local process receiving a code on
+# the user's own machine — Anthropic's documented architecture has the
+# user's browser deliver the code to Anthropic's own server at this fixed
+# address, which Anthropic's client then exchanges for tokens (see
+# https://claude.com/docs/connectors/building/authentication, "Callback
+# URLs": "For the hosted Claude apps ... register exactly this redirect
+# URI"). This is a different trust decision from the loopback rule above —
+# it means trusting Anthropic's infrastructure with the authorization code,
+# not just the user's own machine — so it is its own named constant rather
+# than a pattern, and it is the only address ever compared against as an
+# exact string rather than a loopback-shaped host/port/path combination.
+# Claude Code (the CLI) does NOT use this: it is a native client and uses
+# the ordinary loopback redirect above, like every other MCP CLI.
+_CLAUDE_HOSTED_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
+
 
 def get_client(client_id: str) -> OAuthClient | None:
     return CLIENTS.get(client_id)
 
 
 def is_valid_redirect_uri(uri: str) -> bool:
-    """Only a loopback ``/callback`` (optionally ``/callback/<opaque-id>``) is accepted.
+    """A loopback ``/callback`` (optionally ``/callback/<opaque-id>``), or the
+    hosted Claude apps' fixed callback.
 
     The port is chosen by the tool at run time (RFC 8252), so it is not
-    pinned; everything else about the address must match exactly.
+    pinned; everything else about a loopback address must match exactly.
     """
 
     if not uri or len(uri) > 200:
         return False
+    if uri == _CLAUDE_HOSTED_CALLBACK:
+        return True
     try:
         parts = urlsplit(uri)
         port = parts.port
