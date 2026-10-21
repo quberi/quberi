@@ -106,9 +106,25 @@ async def require_mcp_caller(
 
 @router.get("/")
 async def mcp_get() -> Response:
-    """No server-to-client push is offered: a real 405, not a fake SSE stream (design.md §2.1)."""
+    """No server-to-client push is offered: a real 405, not a fake SSE stream (design.md §2.1).
 
-    return Response(status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
+    The status code is the correct answer for an MCP client (it reads 405 and
+    moves on to POST), but a human or a registry crawler who pastes this URL
+    into a browser only sees a 405 with an empty body — nothing to tell them
+    this is a real, intentionally-POST-only service rather than a broken one.
+    A small JSON body costs nothing and removes that ambiguity; it is not
+    read by any MCP client code path.
+    """
+
+    return _json(
+        {
+            "service": "Quberi MCP",
+            "notice": "MCP endpoint (POST JSON-RPC). Configure: url = https://mcp.quberi.com",
+            "authorization": "OAuth 2.0 + PKCE",
+            "metadata": _RESOURCE_METADATA_URL,
+        },
+        status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+    )
 
 
 def _rpc_error(request_id: Any, code: int, message: str) -> Response:

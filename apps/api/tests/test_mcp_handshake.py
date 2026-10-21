@@ -131,6 +131,13 @@ async def _mcp_tokens(db, redis, boot, *, scope="knowledge:read knowledge:write 
 async def test_get_is_405_not_a_fake_stream(http, _no_infra_unused=None):
     resp = await http.get("/")
     assert resp.status_code == 405
+    # The status code is the correct answer for an MCP client, but a human
+    # or a registry crawler pasting the URL into a browser should see
+    # something other than an empty body (see router.py's mcp_get).
+    body = resp.json()
+    assert body["service"] == "Quberi MCP"
+    assert "https://mcp.quberi.com" in body["notice"]
+    assert body["metadata"] == "https://mcp.quberi.com/.well-known/oauth-protected-resource"
 
 
 # ---------------------------------------------------------------------------
