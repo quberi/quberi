@@ -22,6 +22,7 @@ MinIO and the index queue are faked (as in ``test_external_save.py``).
 
 from __future__ import annotations
 
+import hashlib
 import io
 from datetime import datetime, timezone
 
@@ -284,13 +285,17 @@ async def test_upload_is_rate_limited_per_grant(http, db_session, redis_client, 
     b = await _grant(db_session, redis_client, boot, ALL)
     limit = 10  # _UPLOAD_RATE_LIMIT in api/v1/external.py
     for i in range(limit):
-        resp = await http.post(UPLOAD, headers=_auth(a), files=_files(PNG, f"p{i}.png"))
+        resp = await http.post(
+            UPLOAD, headers=_auth(a), files=_files(PNG + str(i).encode(), f"p{i}.png")
+        )
         assert resp.status_code == 201, (i, resp.text)
     over = await http.post(UPLOAD, headers=_auth(a), files=_files())
     assert over.status_code == 429
     assert over.headers.get("retry-after") == "60"
     # Another grant is not affected.
-    assert (await http.post(UPLOAD, headers=_auth(b), files=_files())).status_code == 201
+    assert (
+        await http.post(UPLOAD, headers=_auth(b), files=_files(PNG + b"b", "b.png"))
+    ).status_code == 201
 
 
 async def test_an_upload_is_audited_without_its_content(
@@ -479,7 +484,7 @@ async def test_our_own_size_cap_works_even_if_storage_had_no_limit(
     async def unlimited_store(*, storage_key, source_stream, content_type, max_bytes):
         blob = source_stream.read()  # ignores max_bytes entirely
         _no_infra["blob"] = blob
-        return _StoreResult(storage_key=storage_key, size_bytes=len(blob), checksum_sha256="0" * 64)
+        return _StoreResult(storage_key=storage_key, size_bytes=len(blob), checksum_sha256=hashlib.sha256(blob).hexdigest())
 
     monkeypatch.setattr(documents_core.local_connector, "store", unlimited_store)
     monkeypatch.setattr(documents_service, "MAX_UPLOAD_BYTES", 1024 * 1024)
@@ -503,7 +508,7 @@ async def test_the_capped_read_stops_a_body_whose_declared_length_lies(
     async def unlimited_store(*, storage_key, source_stream, content_type, max_bytes):
         blob = source_stream.read()
         _no_infra["blob"] = blob
-        return _StoreResult(storage_key=storage_key, size_bytes=len(blob), checksum_sha256="0" * 64)
+        return _StoreResult(storage_key=storage_key, size_bytes=len(blob), checksum_sha256=hashlib.sha256(blob).hexdigest())
 
     monkeypatch.setattr(documents_core.local_connector, "store", unlimited_store)
     monkeypatch.setattr(documents_service, "MAX_UPLOAD_BYTES", 1024 * 1024)

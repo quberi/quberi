@@ -61,7 +61,7 @@ async def _doc(db, boot, space, name, *, state="indexing", status="uploaded", ag
         name=name,
         mime_type="application/pdf",
         size_bytes=1,
-        checksum_sha256="0" * 64,
+        checksum_sha256=uuid.uuid4().hex * 2,
         external_ref={},
         indexing_state=state,
         status=status,

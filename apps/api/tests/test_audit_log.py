@@ -242,7 +242,7 @@ async def _doc(db, org_boot, space, name):
     await db.commit()
     d = Document(
         organization_id=org_boot.organization_id, space_id=space.id, source_id=local.id,
-        name=name, mime_type="text/plain", size_bytes=1, checksum_sha256="0" * 64,
+        name=name, mime_type="text/plain", size_bytes=1, checksum_sha256=uuid.uuid4().hex * 2,
         external_ref={},
     )
     db.add(d)

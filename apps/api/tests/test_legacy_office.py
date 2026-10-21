@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 from types import SimpleNamespace
 
@@ -16,7 +17,7 @@ from quberi_api.services.documents.errors import UnsupportedMimeError
 def _no_infra(monkeypatch):
     async def fake_store(*, storage_key, source_stream, content_type, max_bytes):
         blob = source_stream.read()
-        return SimpleNamespace(storage_key=storage_key, size_bytes=len(blob), checksum_sha256="0" * 64)
+        return SimpleNamespace(storage_key=storage_key, size_bytes=len(blob), checksum_sha256=hashlib.sha256(blob).hexdigest())
 
     async def fake_enqueue(document_id):
         return "job"

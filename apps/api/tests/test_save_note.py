@@ -21,6 +21,7 @@ row, the audit event — runs for real against the test database.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 
@@ -106,7 +107,7 @@ def _no_infra(monkeypatch):
         return _StoreResult(
             storage_key=storage_key,
             size_bytes=len(blob),
-            checksum_sha256="0" * 64,
+            checksum_sha256=hashlib.sha256(blob).hexdigest(),
         )
 
     async def fake_enqueue(document_id):

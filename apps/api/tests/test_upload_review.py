@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import uuid
 from types import SimpleNamespace
@@ -31,7 +32,7 @@ def infra(monkeypatch):
     async def fake_store(*, storage_key, source_stream, content_type, max_bytes):
         blob = source_stream.read()
         return SimpleNamespace(
-            storage_key=storage_key, size_bytes=len(blob), checksum_sha256="0" * 64
+            storage_key=storage_key, size_bytes=len(blob), checksum_sha256=hashlib.sha256(blob).hexdigest()
         )
 
     async def fake_enqueue(document_id):
@@ -72,7 +73,7 @@ async def _upload(db, w, who, name="plan.md"):
     await db.commit()
     view = await documents_service.upload_local(
         db, organization_id=w.boot.organization_id, space_id=w.space.id,
-        uploader_user_id=who.id, filename=name, file_obj=io.BytesIO(b"# hello"),
+        uploader_user_id=who.id, filename=name, file_obj=io.BytesIO(f"# {name}".encode()),  # each file its own bytes
         content_type="text/markdown",
     )
     await db.commit()
@@ -344,7 +345,7 @@ async def test_the_picture_backfill_skips_what_is_waiting(db_session, world, inf
         await db.commit()
         await documents_service.upload_local(
             db, organization_id=w.boot.organization_id, space_id=w.space.id,
-            uploader_user_id=who.id, filename=name, file_obj=io.BytesIO(b"\x89PNG\r\n\x1a\n"),
+            uploader_user_id=who.id, filename=name, file_obj=io.BytesIO(b"\x89PNG\r\n\x1a\n" + name.encode()),
             content_type="image/png",
         )
     await db.commit()

@@ -117,7 +117,7 @@ async def _doc(
         mime_type=mime,
         size_bytes=1,
         storage_key=key,
-        checksum_sha256="0" * 64,
+        checksum_sha256=uuid.uuid4().hex * 2,
         external_ref={},
         indexing_state=state,
         indexing_error=error,

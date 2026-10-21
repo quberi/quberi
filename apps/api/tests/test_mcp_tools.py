@@ -11,6 +11,7 @@ already covers for the exact same adapter functions.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from types import SimpleNamespace
 
@@ -207,7 +208,7 @@ async def test_save_note_lands_in_the_personal_space_by_default(
     async def fake_store(*, storage_key, source_stream, content_type, max_bytes):
         captured["blob"] = source_stream.read()
         return SimpleNamespace(
-            storage_key=storage_key, size_bytes=len(captured["blob"]), checksum_sha256="0" * 64
+            storage_key=storage_key, size_bytes=len(captured["blob"]), checksum_sha256=hashlib.sha256(captured["blob"]).hexdigest()
         )
 
     async def fake_enqueue(document_id):
@@ -239,7 +240,7 @@ async def test_upload_decodes_base64_and_stores_it(http, db_session, redis_clien
     async def fake_store(*, storage_key, source_stream, content_type, max_bytes):
         captured["blob"] = source_stream.read()
         return SimpleNamespace(
-            storage_key=storage_key, size_bytes=len(captured["blob"]), checksum_sha256="0" * 64
+            storage_key=storage_key, size_bytes=len(captured["blob"]), checksum_sha256=hashlib.sha256(captured["blob"]).hexdigest()
         )
 
     async def fake_enqueue(document_id):

@@ -7,6 +7,7 @@ stats), otherwise a chip would show a different set than its own count.
 
 from __future__ import annotations
 
+import uuid
 import pytest
 from sqlalchemy import select
 
@@ -58,7 +59,7 @@ async def _doc_of(db, boot, space, name, mime):
         name=name,
         mime_type=mime,
         size_bytes=1,
-        checksum_sha256="0" * 64,
+        checksum_sha256=uuid.uuid4().hex * 2,
         external_ref={},
         indexing_state="indexed",
         status="uploaded",

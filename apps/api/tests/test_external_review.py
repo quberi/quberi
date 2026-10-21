@@ -52,7 +52,8 @@ async def _setup(db, redis, *, reviewed=True):
 
 async def _upload(http, tokens, name="plan.pdf"):
     return await http.post(
-        UPLOAD, headers=_auth(tokens), files={"file": (name, PDF, "application/pdf")},
+        UPLOAD, headers=_auth(tokens),
+        files={"file": (name, PDF + name.encode(), "application/pdf")},  # each file its own bytes
         data={"space": "Wiki"},
     )
 
