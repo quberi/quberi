@@ -179,7 +179,16 @@ export function uploadDocument(
       } else {
         const body = xhr.response as { detail?: string; code?: string } | undefined
         notifyIfSessionInvalid(xhr.status, body?.code)
-        reject(new ApiError(xhr.status, body?.detail ?? '', body?.code))
+        // A file the space already has carries the existing file's name (when the uploader
+        // may see it) so the screen can say so; keep that for code in ``rawDetail``.
+        reject(
+          new ApiError(
+            xhr.status,
+            body?.detail ?? '',
+            body?.code,
+            body?.code === 'duplicate_document' ? body : undefined,
+          ),
+        )
       }
     }
     if (signal) {

@@ -30,7 +30,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -168,6 +168,21 @@ def _translate(exc: Exception) -> HTTPException:
     raise exc
 
 
+def duplicate_response(exc: DuplicateDocumentError) -> JSONResponse:
+    """409 for a file the space already has, with enough for a screen to say so calmly.
+
+    ``code`` lets the web client show "already there" instead of a failure. The existing
+    file's id and name are included only when the uploader may read it; otherwise saying
+    which file it is would reveal that a hidden file exists.
+    """
+
+    body: dict[str, object] = {"detail": str(exc), "code": "duplicate_document"}
+    if exc.readable and exc.document_id is not None:
+        body["existing_document_id"] = str(exc.document_id)
+        body["existing_name"] = exc.name
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=body)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -280,10 +295,11 @@ async def upload_document(
             file_obj=file.file,
             content_type=content_type,
         )
+    except DuplicateDocumentError as exc:
+        return duplicate_response(exc)  # type: ignore[return-value]
     except (
         DocumentValidationError,
         DocumentPermissionError,
-        DuplicateDocumentError,
         UnsupportedMimeError,
     ) as exc:
         raise _translate(exc) from exc

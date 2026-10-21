@@ -364,7 +364,9 @@
       "progressPct": "{{pct}}%",
       "done": "Done",
       "failed": "Upload failed",
-      "legacy": "Not uploaded: {{name}}. Older {{product}} files ({{ext}}) cannot be read for search. Save it as {{modern}} in {{product}} and upload that."
+      "legacy": "Not uploaded: {{name}}. Older {{product}} files ({{ext}}) cannot be read for search. Save it as {{modern}} in {{product}} and upload that.",
+      "duplicate": "Not added again: this space already has the same file, “{{name}}”.",
+      "duplicateHidden": "Not added again: this space already has the same file."
     },
     "source": {
       "local": "Local",
@@ -432,7 +434,27 @@
         "space.unfrozen": "{{actor}} unfroze the personal space {{resource}}",
         "member.spaces_transferred": "{{actor}} handed over spaces owned by {{resource}}",
         "space.owner_transferred": "{{actor}} handed over ownership of {{resource}}",
-        "ai_model_selection.invalidated": "A member's private key was removed and an organisation model choice stopped working"
+        "ai_model_selection.invalidated": "A member's private key was removed and an organisation model choice stopped working",
+        "document.access_checked": "{{actor}} checked who can read {{resource}}",
+        "document.access_rule_added": "{{actor}} added an access rule to {{resource}}",
+        "document.access_rule_removed": "{{actor}} removed an access rule from {{resource}}",
+        "document.review_approved": "{{actor}} approved {{resource}} for the knowledge base",
+        "document.review_rejected": "{{actor}} rejected {{resource}} in review",
+        "document.upload_duplicate": "{{actor}} uploaded a file that already exists; nothing was added",
+        "knowledge.external_image_search": "{{actor}}'s outside tool searched images",
+        "knowledge.external_list": "{{actor}}'s outside tool listed documents",
+        "knowledge.external_save": "{{actor}}'s outside tool saved a note",
+        "knowledge.external_upload": "{{actor}}'s outside tool uploaded a file",
+        "knowledge.external_upload_duplicate": "{{actor}}'s outside tool uploaded a file that already exists; nothing was added",
+        "org_unit.member_added": "{{actor}} added a member to unit {{resource}}",
+        "org_unit.member_promoted": "{{actor}} made unit {{resource}} a member's primary unit",
+        "org_unit.member_touched": "{{actor}} re-added an existing member of unit {{resource}}",
+        "space.access_request_approved": "{{actor}} approved an access request to {{space}}",
+        "space.access_request_cancelled": "{{actor}} withdrew an access request to {{space}}",
+        "space.access_request_rejected": "{{actor}} declined an access request to {{space}}",
+        "space.access_requested": "{{actor}} requested access to {{space}}",
+        "space.documents_listed_for_access": "{{actor}} listed documents in {{space}} to set access",
+        "space.upload_review_changed": "{{actor}} changed the upload review setting of {{space}}"
       },
       "time": {
         "now": "just now",
@@ -525,7 +547,27 @@
         "space.unfrozen": "Personal space unfrozen",
         "member.spaces_transferred": "Member's spaces handed over",
         "space.owner_transferred": "Space ownership handed over",
-        "ai_model_selection.invalidated": "Model choice invalidated"
+        "ai_model_selection.invalidated": "Model choice invalidated",
+        "document.access_checked": "Checked document access",
+        "document.access_rule_added": "Added document access rule",
+        "document.access_rule_removed": "Removed document access rule",
+        "document.review_approved": "Approved in review",
+        "document.review_rejected": "Rejected in review",
+        "document.upload_duplicate": "Duplicate upload",
+        "knowledge.external_image_search": "Outside tool image search",
+        "knowledge.external_list": "Outside tool listed documents",
+        "knowledge.external_save": "Outside tool saved note",
+        "knowledge.external_upload": "Outside tool upload",
+        "knowledge.external_upload_duplicate": "Outside tool duplicate upload",
+        "org_unit.member_added": "Unit member added",
+        "org_unit.member_promoted": "Made primary unit",
+        "org_unit.member_touched": "Unit member re-added",
+        "space.access_request_approved": "Access request approved",
+        "space.access_request_cancelled": "Access request withdrawn",
+        "space.access_request_rejected": "Access request declined",
+        "space.access_requested": "Access requested",
+        "space.documents_listed_for_access": "Listed documents to set access",
+        "space.upload_review_changed": "Upload review setting changed"
       }
     }
   },
@@ -695,7 +737,9 @@
     "confirm": "Disconnect {{client}}?",
     "disconnect": "Disconnect",
     "lastUsed": "Last used {{when}}",
-    "neverUsed": "Not used yet"
+    "neverUsed": "Not used yet",
+    "authorizedAt": "Authorized {{when}}",
+    "callerHint": "The client name this tool reported about itself. For recognition only, not proof of identity."
   },
   "auth": {
     "signedInAs": "Signed in as",
@@ -1583,7 +1627,50 @@
       "allow": "Can read this document even without access to the space",
       "deny": "Cannot find or read this document, even with access to the space (not the space owner)"
     },
-    "allCovered": "Everyone of this kind is already in a list above."
+    "allCovered": "Everyone of this kind is already in a list above.",
+    "check": {
+      "title": "Check whether someone can read this",
+      "hint": "Pick a member to see whether they can read this document right now, and why. The answer is worked out from the current rules, and each check is recorded in the audit log.",
+      "person": "Member",
+      "inactive": "deactivated",
+      "run": "Check",
+      "outcome": {
+        "account_blocked": "{{name}} cannot read it: the account is deactivated or archived",
+        "denied_by_rule": "{{name}} cannot read it: a deny rule hides it",
+        "waiting_for_approval": "{{name}} cannot read it yet: the document has not been approved",
+        "allowed_by_space": "{{name}} can read it: they can read this space",
+        "allowed_by_share": "{{name}} can read it: the document is shared with them on its own",
+        "no_access": "{{name}} cannot read it: nothing gives them access"
+      },
+      "searchYes": "Shows up in search results",
+      "searchNo": "Does not show up in search results",
+      "via": {
+        "direct": "granted directly",
+        "position": "through their position",
+        "organization_unit": "through their unit",
+        "organization_unit_ancestor": "through a unit above theirs",
+        "group_via_user": "through a group",
+        "group_via_position": "through a group, joined by position",
+        "group_via_organization_unit": "through a group, joined by unit",
+        "organization": "whole organisation"
+      },
+      "step": {
+        "account_blocked": "The account is deactivated or archived, so nothing is visible and no grant has any effect.",
+        "space_unavailable": "The space cannot be read right now, so nobody can read what is in it.",
+        "space_archived": "This space is archived.",
+        "space_role": "Space role “{{role}}”{{via}}, from {{type}} “{{name}}”.",
+        "no_space_role": "Nothing gives them a role on this space.",
+        "role_capped": "The role that applies is “{{role}}”, lower than the highest one above (the organisation owner of a team or enterprise organisation is not a space administrator).",
+        "space_owner": "This is their own space.",
+        "deny_rule": "A deny rule names {{type}} “{{name}}”{{via}}, so they cannot read this document.",
+        "deny_ignored_for_owner": "A deny rule names {{type}} “{{name}}”{{via}}, but the space owner is not affected by deny rules, so it has no effect.",
+        "allow_rule": "An allow rule names {{type}} “{{name}}”{{via}}, so they can read this one document without reading the whole space.",
+        "review_pending": "The document is waiting for approval. Only the uploader and reviewers can see it, and it is not searchable.",
+        "review_rejected": "The document was rejected. Only the uploader and reviewers can see it, and it is not searchable.",
+        "document_archived": "The document is archived.",
+        "not_searchable_yet": "They can read it, but it is not searchable yet: indexing is not finished."
+      }
+    }
   },
   "accessRequests": {
     "inboxTitle": "{{count}} access request(s) waiting for you",

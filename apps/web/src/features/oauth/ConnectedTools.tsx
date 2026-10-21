@@ -38,7 +38,10 @@ export function ConnectedTools() {
 
   const disconnect = async (grant: ExternalGrant) => {
     if (!credentials || busyId) return
-    if (!window.confirm(t('connectedTools.confirm', { client: grant.client_name }))) return
+    const who = grant.caller_label
+      ? `${grant.client_name} (${grant.caller_label})`
+      : grant.client_name
+    if (!window.confirm(t('connectedTools.confirm', { client: who }))) return
     setBusyId(grant.id)
     setError(null)
     try {
@@ -66,6 +69,11 @@ export function ConnectedTools() {
             <div className="integration-source-body">
               <div className="connected-tool-title">
                 <strong>{g.client_name}</strong>
+                {g.caller_label && (
+                  <span className="connected-tool-caller" title={t('connectedTools.callerHint')}>
+                    {g.caller_label}
+                  </span>
+                )}
                 {g.scope.split(/\s+/).includes('knowledge:write') && (
                   <span className="oauth-write-badge">{t('oauth.writeBadge')}</span>
                 )}
@@ -75,6 +83,8 @@ export function ConnectedTools() {
               </div>
               <small className="integration-source-meta">
                 <span>{g.organization_name}</span>
+                <span className="dot-sep">·</span>
+                <span>{t('connectedTools.authorizedAt', { when: formatDate(g.created_at) })}</span>
                 <span className="dot-sep">·</span>
                 <span>
                   {g.last_used_at

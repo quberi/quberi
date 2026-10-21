@@ -72,8 +72,11 @@ interface UploadHandle {
   file: File
   loaded: number
   total: number
-  status: 'uploading' | 'done' | 'failed'
+  /** ``duplicate``: the space already has this exact file. Not a failure; nothing was added. */
+  status: 'uploading' | 'done' | 'failed' | 'duplicate'
   message?: string
+  /** For ``duplicate``: the existing file, when the uploader is allowed to know which one. */
+  existingName?: string
 }
 
 interface DocumentsContextValue {
@@ -312,6 +315,25 @@ export function DocumentsProvider({
         }, 1800)
         return doc
       } catch (err) {
+        if (err instanceof ApiError && err.status === 409 && err.code === 'duplicate_document') {
+          const existing = (err.rawDetail as { existing_name?: unknown } | undefined)?.existing_name
+          setUploads((prev) =>
+            prev.map((u) =>
+              u.id === id
+                ? {
+                    ...u,
+                    loaded: u.total,
+                    status: 'duplicate',
+                    existingName: typeof existing === 'string' ? existing : undefined,
+                  }
+                : u,
+            ),
+          )
+          setTimeout(() => {
+            setUploads((prev) => prev.filter((u) => u.id !== id))
+          }, 8000)
+          return null
+        }
         const msg = toMessage(err)
         setUploads((prev) =>
           prev.map((u) =>

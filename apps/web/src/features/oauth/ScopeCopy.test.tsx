@@ -233,3 +233,31 @@ describe('account page marks tools that can upload files', () => {
     expect(saverRow?.contains(screen.getByText('oauth.uploadBadge'))).toBe(false)
   })
 })
+
+describe('account page tells apart tools that look the same', () => {
+  it('shows the self-reported caller next to the name, only where there is one', async () => {
+    const base = {
+      client_name: 'MCP client',
+      organization_id: 'o',
+      organization_name: 'Me',
+      scope: 'knowledge:read',
+      created_at: '2026-10-15T00:00:00Z',
+      last_used_at: null,
+      expires_at: '2027-01-15T00:00:00Z',
+    }
+    listExternalAccess.mockResolvedValue({
+      items: [
+        { ...base, id: 'a', caller_label: 'Codex 0.42' },
+        { ...base, id: 'b', caller_label: 'Claude Desktop 1.2' },
+        { ...base, id: 'c', caller_label: null },
+      ],
+    })
+    render(<ConnectedTools />)
+    await waitFor(() => expect(screen.getByText('Codex 0.42')).toBeTruthy())
+    expect(screen.getByText('Claude Desktop 1.2')).toBeTruthy()
+    const rows = screen.getAllByText('MCP client').map((el) => el.closest('li'))
+    expect(rows).toHaveLength(3)
+    expect(rows[2]?.querySelector('.connected-tool-caller')).toBeNull()
+    expect(screen.getAllByText('connectedTools.authorizedAt')).toHaveLength(3)
+  })
+})

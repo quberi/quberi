@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import type { AccessSubjectType } from '../spaceAccess/types'
+import { AccessCheckSection } from './AccessCheckSection'
 import { subjectIdForApi, useSubjectCandidates } from '../spaceAccess/useSubjectCandidates'
 import {
   addAccessRule,
@@ -220,6 +221,11 @@ export function DocumentAccessTab({
           <span>{t('docAccess.add')}</span>
         </button>
       </form>
+      <AccessCheckSection
+        documentId={documentId}
+        rulesVersion={rules.map((r) => r.id).join(',')}
+        spaceId={spaceId}
+      />
     </div>
   )
 }

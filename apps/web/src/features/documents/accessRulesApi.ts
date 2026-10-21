@@ -96,3 +96,58 @@ export function listManagedDocuments(
     { credentials },
   )
 }
+
+export type AccessOutcome =
+  | 'account_blocked'
+  | 'denied_by_rule'
+  | 'waiting_for_approval'
+  | 'allowed_by_space'
+  | 'allowed_by_share'
+  | 'no_access'
+
+/** One reason behind the answer. ``code`` is stable and is what the screen translates. */
+export interface AccessCheckStep {
+  kind: string
+  effect: 'grants' | 'blocks' | 'ignored' | 'info'
+  code: string
+  /** A sentence for someone reading the raw answer; the screen prefers its own wording. */
+  summary: string
+  subject_type: string | null
+  subject_id: string | null
+  subject_display_name: string | null
+  role_code: string | null
+  hit_path: string | null
+  rule_id: string | null
+}
+
+export interface AccessCheck {
+  user_id: string
+  user_display_name: string
+  user_email: string
+  user_status: string
+  document_id: string
+  document_name: string
+  space_id: string
+  space_name: string
+  review_state: string
+  indexing_state: string
+  can_read: boolean
+  outcome: AccessOutcome
+  space_role: string | null
+  appears_in_search: boolean
+  steps: AccessCheckStep[]
+}
+
+/** Why one member can or cannot read this document, worked out from the live rules. */
+export function checkDocumentAccess(
+  credentials: DevCredentials,
+  spaceId: string,
+  documentId: string,
+  userId: string,
+): Promise<AccessCheck> {
+  const query = new URLSearchParams({ user_id: userId })
+  return apiFetch<AccessCheck>(
+    `/api/v1/spaces/${spaceId}/documents/${documentId}/access-check?${query.toString()}`,
+    { credentials },
+  )
+}

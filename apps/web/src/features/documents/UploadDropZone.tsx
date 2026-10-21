@@ -118,9 +118,13 @@ function UploadRow({ handle }: { handle: UploadHandle }) {
   const label =
     handle.status === 'done'
       ? t('documents.upload.done')
-      : handle.status === 'failed'
-        ? handle.message || t('documents.upload.failed')
-        : t('documents.upload.progressPct', { pct })
+      : handle.status === 'duplicate'
+        ? handle.existingName
+          ? t('documents.upload.duplicate', { name: handle.existingName })
+          : t('documents.upload.duplicateHidden')
+        : handle.status === 'failed'
+          ? handle.message || t('documents.upload.failed')
+          : t('documents.upload.progressPct', { pct })
   return (
     <li className={`upload-row status-${handle.status}`}>
       <span className="upload-row-icon">
@@ -138,7 +142,7 @@ function UploadRow({ handle }: { handle: UploadHandle }) {
         <span className="upload-row-bar">
           <span
             className="upload-row-fill"
-            style={{ width: `${handle.status === 'done' ? 100 : pct}%` }}
+            style={{ width: `${handle.status === 'done' || handle.status === 'duplicate' ? 100 : pct}%` }}
           />
         </span>
       </span>

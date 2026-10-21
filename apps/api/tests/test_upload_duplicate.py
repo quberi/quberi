@@ -470,3 +470,33 @@ def test_the_web_answers_409_with_the_bilingual_text():
 
     assert http_exc.status_code == 409
     assert "This space already has it" in http_exc.detail
+
+
+def test_the_web_409_carries_a_code_and_names_the_file_it_may_read():
+    import json
+
+    doc_id = uuid.uuid4()
+    exc = DuplicateDocumentError(
+        "这个空间里已有相同的文件。 This space already has it.",
+        readable=True, document_id=doc_id, name="plan.md", review_state="approved",
+    )
+
+    response = web_documents.duplicate_response(exc)
+
+    body = json.loads(response.body)
+    assert response.status_code == 409
+    assert body["code"] == "duplicate_document"
+    assert "This space already has it" in body["detail"]
+    assert body["existing_document_id"] == str(doc_id)
+    assert body["existing_name"] == "plan.md"
+
+
+def test_the_web_409_does_not_name_a_file_the_uploader_cannot_read():
+    import json
+
+    exc = DuplicateDocumentError("已有相同的文件。 Already there.", readable=False)
+
+    body = json.loads(web_documents.duplicate_response(exc).body)
+
+    assert body["code"] == "duplicate_document"
+    assert "existing_document_id" not in body and "existing_name" not in body

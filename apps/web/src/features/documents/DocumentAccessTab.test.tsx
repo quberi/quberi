@@ -7,6 +7,10 @@ const api = vi.hoisted(() => ({
   listAccessRules: vi.fn(),
   addAccessRule: vi.fn(),
   removeAccessRule: vi.fn(),
+  checkDocumentAccess: vi.fn(),
+}))
+vi.mock('../members/MembersContext', () => ({
+  useMembers: () => ({ state: { kind: 'ready', items: [] } }),
 }))
 
 vi.mock('react-i18next', () => ({

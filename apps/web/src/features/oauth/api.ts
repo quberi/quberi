@@ -77,6 +77,8 @@ export function enableExternalTools(
 export interface ExternalGrant {
   id: string
   client_name: string
+  /** Which program is calling, as it introduced itself (display only); null until first connect. */
+  caller_label?: string | null
   organization_id: string
   organization_name: string
   scope: string

@@ -2587,6 +2587,7 @@ input[type="radio"] {
 }
 .upload-row.status-done   { border-color: rgba(53, 198, 143, .35); background: rgba(53, 198, 143, .08); }
 .upload-row.status-failed { border-color: rgba(216, 79, 92, .35); background: rgba(216, 79, 92, .08); }
+.upload-row.status-duplicate { border-color: rgba(139, 108, 243, .28); background: rgba(139, 108, 243, .06); }
 .upload-row-body { display: grid; gap: 1px; min-width: 0; }
 .upload-row-body strong {
   font-size: 12.5px;
@@ -2613,6 +2614,7 @@ input[type="radio"] {
 }
 .upload-row.status-done .upload-row-fill { background: #35b39a; }
 .upload-row.status-failed .upload-row-fill { background: #d84f5c; }
+.upload-row.status-duplicate .upload-row-fill { background: #b3a6ee; }
 
 /* Documents list */
 .documents-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -3601,6 +3603,38 @@ input[type="radio"] {
   gap: 4px;
   font-size: 12px;
 }
+.doc-access-check {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(139, 108, 243, .18);
+}
+.doc-access-check h3 { margin: 0; }
+.doc-access-check-hint { color: #6b6b74; line-height: 1.5; }
+.doc-access-check-form { display: flex; gap: 8px; align-items: center; }
+.doc-access-check-form select { flex: 1; min-width: 0; }
+.doc-access-verdict {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(214, 69, 69, .35);
+  background: rgba(214, 69, 69, .06);
+}
+.doc-access-verdict[data-can-read='yes'] {
+  border-color: rgba(47, 158, 107, .4);
+  background: rgba(47, 158, 107, .07);
+}
+.doc-access-verdict-head { display: flex; align-items: center; gap: 6px; margin: 0; }
+.doc-access-verdict > small { color: #6b6b74; }
+.doc-access-verdict ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.doc-access-step { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 1.5; }
+.doc-access-step svg { flex: none; margin-top: 3px; }
+.doc-access-step-grants svg { color: #2f9e6b; }
+.doc-access-step-blocks svg { color: #d64545; }
+.doc-access-step-ignored { color: #6b6b74; }
+.doc-access-step-info svg, .doc-access-step-ignored svg { color: #857aab; }
 .doc-drawer-note {
   margin: 4px 0 0;
   padding: 10px 12px;
@@ -3906,6 +3940,16 @@ input[type="radio"] {
   gap: 6px;
 }
 .connected-tool-title .oauth-write-badge { margin-left: 0; white-space: nowrap; }
+.connected-tool-caller {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 108, 243, .22);
+  background: rgba(139, 108, 243, .08);
+  color: var(--purple-700);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
 
 .chip-cache-mirror { background: rgba(139, 108, 243, .1); color: var(--purple-700); border-color: rgba(139, 108, 243, .22); }
 .chip-cache-reference_only { background: rgba(53, 198, 143, .14); color: #1e8a5f; border-color: rgba(53, 198, 143, .28); }

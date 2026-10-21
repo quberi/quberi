@@ -364,7 +364,9 @@
       "progressPct": "{{pct}}%",
       "done": "已完成",
       "failed": "上传失败",
-      "legacy": "未上传：{{name}}。旧版 {{product}} 文件（{{ext}}）无法被读取用于搜索，请在 {{product}} 里另存为 {{modern}} 再上传。"
+      "legacy": "未上传：{{name}}。旧版 {{product}} 文件（{{ext}}）无法被读取用于搜索，请在 {{product}} 里另存为 {{modern}} 再上传。",
+      "duplicate": "没有重复添加：这个空间里已有相同的文件“{{name}}”。",
+      "duplicateHidden": "没有重复添加：这个空间里已有相同的文件。"
     },
     "source": {
       "local": "本地",
@@ -432,7 +434,27 @@
         "space.unfrozen": "{{actor}} 解冻了个人空间 {{resource}}",
         "member.spaces_transferred": "{{actor}} 移交了 {{resource}} 名下的空间",
         "space.owner_transferred": "{{actor}} 移交了空间 {{resource}} 的所有权",
-        "ai_model_selection.invalidated": "一个成员的私有密钥被移除,组织的一项模型选择已失效"
+        "ai_model_selection.invalidated": "一个成员的私有密钥被移除,组织的一项模型选择已失效",
+        "document.access_checked": "{{actor}} 查看了 {{resource}} 的访问解释",
+        "document.access_rule_added": "{{actor}} 给 {{resource}} 加了一条访问规则",
+        "document.access_rule_removed": "{{actor}} 移除了 {{resource}} 的一条访问规则",
+        "document.review_approved": "{{actor}} 通过了 {{resource}} 的入库审核",
+        "document.review_rejected": "{{actor}} 驳回了 {{resource}} 的入库审核",
+        "document.upload_duplicate": "{{actor}} 上传的文件已存在，未重复入库",
+        "knowledge.external_image_search": "{{actor}} 的外部工具检索了图片",
+        "knowledge.external_list": "{{actor}} 的外部工具列出了知识库文档",
+        "knowledge.external_save": "{{actor}} 的外部工具保存了一条笔记",
+        "knowledge.external_upload": "{{actor}} 的外部工具上传了文件",
+        "knowledge.external_upload_duplicate": "{{actor}} 的外部工具上传的文件已存在，未重复入库",
+        "org_unit.member_added": "{{actor}} 向组织单元 {{resource}} 添加了成员",
+        "org_unit.member_promoted": "{{actor}} 把组织单元 {{resource}} 设为成员的主属单元",
+        "org_unit.member_touched": "{{actor}} 重复添加了组织单元 {{resource}} 的现有成员",
+        "space.access_request_approved": "{{actor}} 同意了 {{space}} 的访问申请",
+        "space.access_request_cancelled": "{{actor}} 撤回了 {{space}} 的访问申请",
+        "space.access_request_rejected": "{{actor}} 拒绝了 {{space}} 的访问申请",
+        "space.access_requested": "{{actor}} 申请访问 {{space}}",
+        "space.documents_listed_for_access": "{{actor}} 查看了 {{space}} 的文档列表以配置访问",
+        "space.upload_review_changed": "{{actor}} 调整了 {{space}} 的上传审核设置"
       },
       "time": {
         "now": "刚刚",
@@ -525,7 +547,27 @@
         "space.unfrozen": "解冻个人空间",
         "member.spaces_transferred": "移交成员的空间",
         "space.owner_transferred": "移交空间所有权",
-        "ai_model_selection.invalidated": "模型选择失效"
+        "ai_model_selection.invalidated": "模型选择失效",
+        "document.access_checked": "查看访问解释",
+        "document.access_rule_added": "添加文档访问规则",
+        "document.access_rule_removed": "移除文档访问规则",
+        "document.review_approved": "通过入库审核",
+        "document.review_rejected": "驳回入库审核",
+        "document.upload_duplicate": "上传重复文件",
+        "knowledge.external_image_search": "外部工具检索图片",
+        "knowledge.external_list": "外部工具列文档",
+        "knowledge.external_save": "外部工具保存笔记",
+        "knowledge.external_upload": "外部工具上传文件",
+        "knowledge.external_upload_duplicate": "外部工具上传重复文件",
+        "org_unit.member_added": "组织单元加人",
+        "org_unit.member_promoted": "设为主属单元",
+        "org_unit.member_touched": "组织单元重复加人",
+        "space.access_request_approved": "同意访问申请",
+        "space.access_request_cancelled": "撤回访问申请",
+        "space.access_request_rejected": "拒绝访问申请",
+        "space.access_requested": "申请访问空间",
+        "space.documents_listed_for_access": "查看文档列表以配置访问",
+        "space.upload_review_changed": "调整上传审核设置"
       }
     }
   },
@@ -695,7 +737,9 @@
     "confirm": "断开 {{client}}？",
     "disconnect": "断开",
     "lastUsed": "最近使用 {{when}}",
-    "neverUsed": "还没有使用过"
+    "neverUsed": "还没有使用过",
+    "authorizedAt": "授权于 {{when}}",
+    "callerHint": "来自该工具自报的客户端名称，仅供辨认，不作为身份依据"
   },
   "auth": {
     "signedInAs": "当前身份",
@@ -1583,7 +1627,50 @@
       "allow": "即使不能访问空间，也能读取这份文档",
       "deny": "即使能访问空间，也搜不到、读不了这份文档（空间所有者除外）"
     },
-    "allCovered": "这一类的人都已经在上面的列表里了。"
+    "allCovered": "这一类的人都已经在上面的列表里了。",
+    "check": {
+      "title": "检查某个人能不能读",
+      "hint": "选一个成员，看他现在能不能读这份文档，以及原因。结果按当前规则实时计算，每次检查会记入审计日志。",
+      "person": "成员",
+      "inactive": "已停用",
+      "run": "检查",
+      "outcome": {
+        "account_blocked": "{{name}} 读不了：账号已停用或归档",
+        "denied_by_rule": "{{name}} 读不了：被“拒绝”规则挡住",
+        "waiting_for_approval": "{{name}} 现在读不了：文档还没通过审核",
+        "allowed_by_space": "{{name}} 能读：因为他能读这个空间",
+        "allowed_by_share": "{{name}} 能读：因为这份文档被单独允许",
+        "no_access": "{{name}} 读不了：没有任何途径让他读到"
+      },
+      "searchYes": "在检索结果里可见",
+      "searchNo": "不会出现在检索结果里",
+      "via": {
+        "direct": "直接授权",
+        "position": "通过岗位",
+        "organization_unit": "通过所在部门",
+        "organization_unit_ancestor": "通过上级部门",
+        "group_via_user": "通过用户组",
+        "group_via_position": "通过用户组，按岗位加入",
+        "group_via_organization_unit": "通过用户组，按部门加入",
+        "organization": "整个组织"
+      },
+      "step": {
+        "account_blocked": "账号已停用或归档，什么都看不到，任何授权都不起作用。",
+        "space_unavailable": "空间当前不可读，任何人都读不了其中的内容。",
+        "space_archived": "这个空间已归档。",
+        "space_role": "空间角色“{{role}}”{{via}}，来自{{type}}“{{name}}”。",
+        "no_space_role": "没有任何空间角色能让他读到这个空间。",
+        "role_capped": "实际生效的角色是“{{role}}”，低于其他途径里最高的角色（团队或企业组织的组织所有者不是空间管理员）。",
+        "space_owner": "这是他自己的空间。",
+        "deny_rule": "有一条“拒绝”规则指向{{type}}“{{name}}”{{via}}，所以读不了这份文档。",
+        "deny_ignored_for_owner": "有一条“拒绝”规则指向{{type}}“{{name}}”{{via}}，但空间所有者不受拒绝影响，这条不起作用。",
+        "allow_rule": "有一条“允许”规则指向{{type}}“{{name}}”{{via}}，让他不用能读整个空间也能读这一份。",
+        "review_pending": "这份文档正在等待审核，只有上传者和审核人能看到，也不会被搜索到。",
+        "review_rejected": "这份文档已被驳回，只有上传者和审核人能看到，也不会被搜索到。",
+        "document_archived": "这份文档已归档。",
+        "not_searchable_yet": "能读，但现在搜不到：文档还没有完成索引。"
+      }
+    }
   },
   "accessRequests": {
     "inboxTitle": "有 {{count}} 条访问申请等你处理",
