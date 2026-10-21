@@ -284,9 +284,24 @@ async def _index_image(
         # Moved to a new model: drop the vector the old one left behind.
         await remove_image_from_index(qdrant=qdrant, document_id=doc.id, model_id=previous_model)
     _log.info("indexed picture %s in %s (model=%s)", doc.id, store.collection, model_id)
+    await _queue_picture_text(doc)
     return IndexingResult(
         document_id=doc.id, chunk_count=1, collection=store.collection, model_id=model_id
     )
+
+
+async def _queue_picture_text(doc: Document) -> None:
+    """Ask for the text inside a picture to be read and filed, after the picture itself
+    is already searchable. Never raises: the picture's own index is not undone by this."""
+
+    if not get_settings().image_ocr_enabled:
+        return
+    try:
+        from quberi_api.workers.enqueue import enqueue_image_text
+
+        await enqueue_image_text(doc.id, doc.checksum_sha256)
+    except Exception:  # noqa: BLE001
+        _log.exception("could not queue the text of picture %s", doc.id)
 
 
 async def index_document_from_text(

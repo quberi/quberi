@@ -24,6 +24,7 @@ from arq import cron
 
 from quberi_api.core.config import get_settings
 from quberi_api.infrastructure.qdrant import create_qdrant_client
+from quberi_api.services.rag.image_text import index_image_text_job
 from quberi_api.services.rag.indexer import index_document
 from quberi_api.workers.feishu import sync_feishu_source
 from quberi_api.workers.settings import build_redis_settings
@@ -202,7 +203,7 @@ async def purge_revoked_sessions(ctx: dict) -> int:
 class WorkerSettings:
     """arq entry point discovered by ``arq quberi_api.workers.rag.WorkerSettings``."""
 
-    functions = [index_document, sync_feishu_source]
+    functions = [index_document, index_image_text_job, sync_feishu_source]
     # Every hour, on the hour: expire guest-sandbox uploads.
     cron_jobs = [
         cron(sweep_guest_sandbox, minute=0, run_at_startup=True),

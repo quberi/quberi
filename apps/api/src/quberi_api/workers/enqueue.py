@@ -42,6 +42,35 @@ async def enqueue_index_document(document_id: uuid.UUID) -> Optional[str]:
         await pool.close()
 
 
+async def enqueue_image_text(document_id: uuid.UUID, checksum: Optional[str]) -> Optional[str]:
+    """Enqueue reading the text in a picture.
+
+    The job id carries the picture's checksum. arq keeps a finished job's result for an
+    hour, and a job id it still remembers is refused, so a fixed id per document would
+    swallow the request made when the picture is replaced within that hour and leave the
+    old text searchable. A different file is a different id; the same file asked twice is
+    queued once.
+    """
+
+    try:
+        pool = await create_pool(build_redis_settings())
+    except Exception:  # noqa: BLE001
+        _log.exception("could not open arq pool to enqueue picture text for %s", document_id)
+        return None
+    try:
+        job = await pool.enqueue_job(
+            "index_image_text_job",
+            str(document_id),
+            _job_id=f"image-text-{document_id}-{(checksum or 'none')[:16]}",
+        )
+        return job.job_id if job else None
+    except Exception:  # noqa: BLE001
+        _log.exception("failed to enqueue index_image_text_job for %s", document_id)
+        return None
+    finally:
+        await pool.close()
+
+
 async def enqueue_feishu_sync(source_id: uuid.UUID) -> Optional[str]:
     """Enqueue an incremental re-sync of a Feishu document source.
 
