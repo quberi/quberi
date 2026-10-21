@@ -5,6 +5,7 @@ Endpoints
 * GET    /api/v1/spaces/{space_id}/documents/{document_id}/access-rules
 * POST   /api/v1/spaces/{space_id}/documents/{document_id}/access-rules
 * DELETE /api/v1/spaces/{space_id}/documents/{document_id}/access-rules/{rule_id}
+* GET    /api/v1/spaces/{space_id}/documents/{document_id}/access-check?user_id=...
 
 ``allow`` lets the subject read this one document without reading its space; ``deny``
 hides it from the subject even if they can read the space, and wins over every ``allow``.
@@ -24,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import CallerContext, require_caller
+from quberi_api.services.documents import access_explain
 from quberi_api.services.documents import access_rules as rules_service
 from quberi_api.services.documents.errors import DocumentPermissionError
 
@@ -56,6 +58,48 @@ class AccessRuleView(BaseModel):
 class AccessRuleList(BaseModel):
     items: list[AccessRuleView] = Field(default_factory=list)
     total: int
+
+
+class AccessStepView(BaseModel):
+    """One reason in the answer. ``code`` is stable; ``summary`` is a sentence to read."""
+
+    kind: str
+    effect: Literal["grants", "blocks", "ignored", "info"]
+    code: str
+    summary: str
+    subject_type: Optional[str] = None
+    subject_id: Optional[uuid.UUID] = None
+    subject_display_name: Optional[str] = None
+    role_code: Optional[str] = None
+    hit_path: Optional[str] = None
+    rule_id: Optional[uuid.UUID] = None
+
+
+class AccessCheckView(BaseModel):
+    """Why one person can or cannot read one document."""
+
+    user_id: uuid.UUID
+    user_display_name: str
+    user_email: str
+    user_status: str
+    document_id: uuid.UUID
+    document_name: str
+    space_id: uuid.UUID
+    space_name: str
+    review_state: str
+    indexing_state: str
+    can_read: bool
+    outcome: Literal[
+        "account_blocked",
+        "denied_by_rule",
+        "waiting_for_approval",
+        "allowed_by_space",
+        "allowed_by_share",
+        "no_access",
+    ]
+    space_role: Optional[str] = None
+    appears_in_search: bool
+    steps: list[AccessStepView] = Field(default_factory=list)
 
 
 class ManagedDocumentView(BaseModel):
@@ -141,6 +185,68 @@ async def list_managed_documents(
         limit=page.limit,
         offset=page.offset,
     )
+@router.get(
+    "/{space_id}/documents/{document_id}/access-check",
+    response_model=AccessCheckView,
+    summary="Why a person can or cannot read a document (space managers only)",
+)
+async def check_document_access(
+    space_id: uuid.UUID,
+    document_id: uuid.UUID,
+    user_id: uuid.UUID = Query(description="The member to check."),
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> AccessCheckView:
+    """The answer and the reasons, worked out from the live rules at this moment.
+
+    Read-only apart from an audit entry recording who asked about whom. It returns names
+    and rules, never document text.
+    """
+
+    try:
+        result = await access_explain.explain_document_access(
+            session,
+            organization_id=caller.organization.id,
+            actor_user_id=caller.user.id,
+            space_id=space_id,
+            document_id=document_id,
+            subject_user_id=user_id,
+        )
+    except DocumentPermissionError as exc:
+        raise _forbidden(exc) from exc
+    return AccessCheckView(
+        user_id=result.user_id,
+        user_display_name=result.user_display_name,
+        user_email=result.user_email,
+        user_status=result.user_status,
+        document_id=result.document_id,
+        document_name=result.document_name,
+        space_id=result.space_id,
+        space_name=result.space_name,
+        review_state=result.review_state,
+        indexing_state=result.indexing_state,
+        can_read=result.can_read,
+        outcome=result.outcome,  # type: ignore[arg-type]
+        space_role=result.space_role,
+        appears_in_search=result.appears_in_search,
+        steps=[
+            AccessStepView(
+                kind=s.kind,
+                effect=s.effect,  # type: ignore[arg-type]
+                code=s.code,
+                summary=s.summary,
+                subject_type=s.subject_type,
+                subject_id=s.subject_id,
+                subject_display_name=s.subject_display_name,
+                role_code=s.role_code,
+                hit_path=s.hit_path,
+                rule_id=s.rule_id,
+            )
+            for s in result.steps
+        ],
+    )
+
+
 @router.get(_PATH, response_model=AccessRuleList, summary="Who a document is shared with or hidden from")
 async def list_access_rules(
     space_id: uuid.UUID,
