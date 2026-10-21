@@ -6,7 +6,28 @@
 
 ai.quberi.com {
 	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
-	reverse_proxy web:80
+
+	# OAuth authorization server metadata (RFC 8414) and the token/revoke
+	# endpoints the tool itself calls — see api/v1/oauth.py's module
+	# docstring for why every OAuth endpoint lives on this origin now
+	# (previously issuer/token/revoke were on api.quberi.com while
+	# authorization_endpoint, the consent page, was already here; several
+	# MCP clients' OAuth implementations reject that split). Everything
+	# else on this domain (the consent page itself, the web app, any
+	# other /.well-known/* path) is still served by the web app.
+	handle /.well-known/oauth-authorization-server {
+		reverse_proxy api:8000
+	}
+	handle /api/v1/oauth/token {
+		reverse_proxy api:8000
+	}
+	handle /api/v1/oauth/revoke {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
 }
 
 api.quberi.com {
@@ -17,7 +38,8 @@ api.quberi.com {
 # MCP endpoint. A client that gets a 401 from the handler below reads the
 # protected resource metadata (RFC 9728) served here, finds the
 # authorization server, and reads that server's own metadata on
-# api.quberi.com.
+# ai.quberi.com (see the ai.quberi.com block above for why the
+# authorization server moved there from api.quberi.com).
 #
 # `resource` must equal the audience of the tokens issued for this endpoint,
 # character for character (no trailing slash), and `authorization_servers`
@@ -27,10 +49,10 @@ mcp.quberi.com {
 
 	handle /.well-known/oauth-protected-resource {
 		header Content-Type application/json
-		respond `{"resource":"https://mcp.quberi.com","authorization_servers":["https://api.quberi.com"],"scopes_supported":["knowledge:read","knowledge:write","knowledge:upload"],"bearer_methods_supported":["header"]}` 200
+		respond `{"resource":"https://mcp.quberi.com","authorization_servers":["https://ai.quberi.com"],"scopes_supported":["knowledge:read","knowledge:write","knowledge:upload"],"bearer_methods_supported":["header"]}` 200
 	}
 
-	# The authorization server metadata lives on api.quberi.com, not here.
+	# The authorization server metadata lives on ai.quberi.com, not here.
 	handle /.well-known/* {
 		respond 404
 	}

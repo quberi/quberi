@@ -916,8 +916,23 @@ async def test_discovery_document_points_at_the_right_places(http):
     assert meta["token_endpoint_auth_methods_supported"] == ["none"]
     assert meta["token_endpoint"].endswith("/api/v1/oauth/token")
     assert meta["authorization_endpoint"].endswith("/oauth/authorize")
+    assert meta["revocation_endpoint"].endswith("/api/v1/oauth/revoke")
     assert meta["scopes_supported"] == [
         "knowledge:read",
         "knowledge:write",
         "knowledge:upload",
     ]
+    # Every endpoint lives on the same origin as `issuer` (the consent
+    # page's origin). Several MCP clients' OAuth implementations (Codex's
+    # rmcp-client among them) refuse an authorization server whose
+    # authorization_endpoint origin differs from issuer's unless it also
+    # implements RFC 9207 issuer-bound callbacks — collapsing onto one
+    # origin removes that failure mode instead of adding that extra RFC.
+    issuer_origin = urlsplit(meta["issuer"])
+    for field in ("authorization_endpoint", "token_endpoint", "revocation_endpoint"):
+        origin = urlsplit(meta[field])
+        assert (origin.scheme, origin.netloc) == (issuer_origin.scheme, issuer_origin.netloc), (
+            field,
+            meta[field],
+            meta["issuer"],
+        )

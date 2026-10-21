@@ -373,15 +373,32 @@ well_known_router = APIRouter(tags=["oauth"])
 
 @well_known_router.get("/.well-known/oauth-authorization-server")
 async def authorization_server_metadata() -> JSONResponse:
+    """RFC 8414 metadata — every endpoint here lives on one origin (``web``).
+
+    ``issuer``/``token_endpoint``/``revocation_endpoint`` used to be built
+    from ``public_base_url`` (api.quberi.com) while ``authorization_endpoint``
+    was already on ``web_origin`` (ai.quberi.com, where the consent page
+    lives). That cross-origin split is what several MCP clients' OAuth
+    implementations reject outright (observed with Codex's rmcp-client:
+    ``validate_authorization_server_endpoints`` refuses an
+    ``authorization_endpoint`` whose origin differs from ``issuer``'s
+    unless the server also implements RFC 9207 issuer-bound callbacks,
+    which this API does not). Collapsing every endpoint onto ``web_origin``
+    removes the mismatch at its root instead of adding that extra RFC.
+    Caddy proxies ``ai.quberi.com/api/v1/oauth/*`` straight through to the
+    api container (see deploy/Caddyfile) so these three paths resolve
+    exactly like they did on api.quberi.com; nothing else about them
+    changes shape.
+    """
+
     settings = get_settings()
-    api = (settings.public_base_url or "").rstrip("/")
     web = settings.web_origin or ""
     return JSONResponse(
         content={
-            "issuer": api,
+            "issuer": web,
             "authorization_endpoint": f"{web}/oauth/authorize",
-            "token_endpoint": f"{api}/api/v1/oauth/token",
-            "revocation_endpoint": f"{api}/api/v1/oauth/revoke",
+            "token_endpoint": f"{web}/api/v1/oauth/token",
+            "revocation_endpoint": f"{web}/api/v1/oauth/revoke",
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
