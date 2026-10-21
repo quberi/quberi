@@ -140,7 +140,14 @@ def _error_code(exc_info) -> str:
         ("http://127.0.0.1:53682/callback", True),
         ("http://[::1]:53682/callback", True),
         ("https://127.0.0.1:53682/callback", False),
-        ("http://localhost:53682/callback", False),
+        # ``localhost`` (RFC 8252 §7.3 recommends the IP literal, but
+        # Claude Code hardcodes this hostname with no way to configure an
+        # IP literal instead — anthropics/claude-code#82096 — so it is
+        # accepted alongside the IP literals, case-insensitively since
+        # urlsplit lowercases hostname).
+        ("http://localhost:53682/callback", True),
+        ("http://LOCALHOST:53682/callback", True),
+        ("http://localhost.evil.com:53682/callback", False),
         ("http://127.0.0.1.evil.com:53682/callback", False),
         ("http://evil.com:53682/callback", False),
         ("http://127.0.0.1/callback", False),
@@ -159,6 +166,7 @@ def _error_code(exc_info) -> str:
         # shape, not only Codex.
         ("http://127.0.0.1:53682/callback/A1VfCm6C2hld", True),
         ("http://[::1]:53682/callback/abc-DEF_123", True),
+        ("http://localhost:53682/callback/A1VfCm6C2hld", True),
         ("http://127.0.0.1:53682/callback/" + "a" * 64, True),
         ("http://127.0.0.1:53682/callback/" + "a" * 65, False),
         ("http://127.0.0.1:53682/callback/", False),
@@ -746,7 +754,7 @@ async def test_consent_refuses_guests_unknown_apps_and_bad_redirects(http, db_se
     for params in (
         {**base, "client_id": "unknown"},
         {**base, "redirect_uri": "https://evil.example/callback"},
-        {**base, "redirect_uri": "http://localhost:5000/callback"},
+        {**base, "redirect_uri": "http://evil.example:5000/callback"},
         {**base, "scope": "admin"},
     ):
         resp = await http.get("/api/v1/oauth/consent", headers=headers, params=params)

@@ -57,7 +57,15 @@ CLIENTS: dict[str, OAuthClient] = {
     "quberi-mcp": OAuthClient(client_id="quberi-mcp", name="MCP client"),
 }
 
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+# RFC 8252 §7.3 recommends an IP literal over the ``localhost`` name (a name
+# can be redefined by a hosts file or a misconfigured resolver; an IP
+# literal cannot). We accept it anyway because Claude Code hardcodes the
+# ``localhost`` hostname for every MCP server's OAuth redirect_uri with no
+# way to configure it to send an IP literal instead — a confirmed upstream
+# bug/limitation (anthropics/claude-code#82096), not a client misconfiguration
+# we can ask a user to fix. ``urlsplit`` lowercases ``hostname``, so this
+# only ever matches the literal name, never a mixed-case bypass.
 _CALLBACK_PATH = "/callback"
 # Some MCP clients (observed with Codex's rmcp-client) append an opaque,
 # per-server "callback ID" segment to the loopback path instead of using a
