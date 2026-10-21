@@ -30,6 +30,8 @@ router = APIRouter(prefix="/me/external-access", tags=["external"])
 class ExternalGrantView(BaseModel):
     id: uuid.UUID
     client_name: str
+    # Which program is calling, as it introduced itself; absent until it has connected once.
+    caller_label: Optional[str] = None
     organization_id: uuid.UUID
     organization_name: str
     scope: str
@@ -67,6 +69,7 @@ async def list_grants(
             ExternalGrantView(
                 id=g.id,
                 client_name=g.client_name,
+                caller_label=g.caller_label,
                 organization_id=g.organization_id,
                 organization_name=o.name,
                 scope=g.scope,

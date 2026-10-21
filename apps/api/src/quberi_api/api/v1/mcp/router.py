@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -33,8 +34,10 @@ from quberi_api.api.v1.external_schemas import (
     SearchRequest,
 )
 from quberi_api.infrastructure.registry import Infrastructure
-from quberi_api.services.mcp import adapters, formatting, protocol, schema
+from quberi_api.services.mcp import adapters, caller, formatting, protocol, schema
 from quberi_api.services.oauth import core
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["mcp"])
 
@@ -169,6 +172,7 @@ async def mcp_post(
         return _rpc_error(request_id, protocol.INVALID_PARAMS, "params must be an object")
 
     if method == "initialize":
+        await _remember_caller(request, ext, session, params)
         return _json(protocol.result_response(request_id, _initialize(params)))
     if method == "tools/list":
         return _json(
@@ -197,6 +201,24 @@ async def mcp_post(
             )
         )
     return _rpc_error(request_id, protocol.METHOD_NOT_FOUND, f"unknown method: {method!r}")
+
+
+async def _remember_caller(
+    request: Request, ext: core.ExternalCaller, session: AsyncSession, params: dict
+) -> None:
+    """Note which program is behind this connection, for the person's list of connected tools.
+
+    Best effort: a problem here must never stop the handshake.
+    """
+
+    label = caller.caller_label(params, request.headers.get("user-agent"))
+    if label is None:
+        return
+    try:
+        await core.record_caller(session, grant_id=ext.grant_id, label=label)
+    except Exception:  # noqa: BLE001
+        _log.warning("could not record the caller of an MCP connection", exc_info=True)
+        await session.rollback()
 
 
 def _initialize(params: dict) -> dict:

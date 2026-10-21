@@ -45,6 +45,11 @@ class OAuthGrant(TimestampMixin, Base):
     # Shown to the person in their list of connected tools.
     client_name: Mapped[str] = mapped_column(String(200), nullable=False)
     scope: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Which program is actually calling, as that program introduced itself (for an MCP
+    # connection: the name and version in its ``initialize`` request). ``client_name`` is
+    # the registered tool and is the same for every connection of that tool; this is what
+    # tells two of them apart. Self-reported, so display only, never a decision.
+    caller_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     access_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     access_expires_at: Mapped[datetime] = mapped_column(

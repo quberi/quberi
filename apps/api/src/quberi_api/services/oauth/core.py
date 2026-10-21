@@ -33,7 +33,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.audit.models import AuditEvent
@@ -480,6 +480,23 @@ async def revoke_all_for_user(
 # ---------------------------------------------------------------------------
 # Using an access token
 # ---------------------------------------------------------------------------
+
+
+async def record_caller(
+    session: AsyncSession, *, grant_id: uuid.UUID, label: str
+) -> None:
+    """Remember which program is behind a grant. Writes only when the label changes."""
+
+    await session.execute(
+        update(OAuthGrant)
+        .where(
+            OAuthGrant.id == grant_id,
+            OAuthGrant.revoked_at.is_(None),
+            or_(OAuthGrant.caller_label.is_(None), OAuthGrant.caller_label != label),
+        )
+        .values(caller_label=label)
+    )
+    await session.commit()
 
 
 @dataclass(frozen=True)
