@@ -1620,6 +1620,10 @@
     "mine": "Mine"
   },
   "docAccess": {
+    "badge": {
+      "allowHint": "This document is shared with people outside the space; open it to see who",
+      "denyHint": "This document is hidden from some people in the space; open it to see who"
+    },
     "summary": {
         "readers": "people can read this document",
         "makeup": "Made up of",

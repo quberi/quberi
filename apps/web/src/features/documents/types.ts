@@ -83,6 +83,9 @@ export interface DocumentSummary {
   review_note?: string | null
   /** Guest sandbox only: uploaded from the requesting browser. */
   is_mine?: boolean
+  /** Exception rules on this document. Present only for someone who manages the space. */
+  allow_rules?: number | null
+  deny_rules?: number | null
 }
 
 export interface DocumentListFilters {

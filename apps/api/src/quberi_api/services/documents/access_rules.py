@@ -406,3 +406,44 @@ async def list_documents_for_manager(
             )
         )
     return ManagedDocumentPage(items=items, total=total, limit=limit, offset=offset)
+
+
+async def exception_counts_for_manager(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    space_id: uuid.UUID,
+    document_ids: list[uuid.UUID],
+) -> Optional[dict[uuid.UUID, tuple[int, int]]]:
+    """``{document_id: (allow_rules, deny_rules)}`` for documents with rules, or ``None``.
+
+    Only someone who manages the space may see which documents carry exception rules (the
+    same people who can read the rules themselves), so everyone else gets ``None`` and the
+    document list shows nothing extra. Documents without rules are simply absent.
+    """
+
+    try:
+        await _require_space_manager(
+            session,
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            space_id=space_id,
+        )
+    except (DocumentPermissionError, NotFoundError):
+        return None
+    if not document_ids:
+        return {}
+    rows = await session.execute(
+        select(DocumentAccessRule.document_id, DocumentAccessRule.effect, func.count())
+        .where(
+            DocumentAccessRule.organization_id == organization_id,
+            DocumentAccessRule.document_id.in_(document_ids),
+        )
+        .group_by(DocumentAccessRule.document_id, DocumentAccessRule.effect)
+    )
+    out: dict[uuid.UUID, tuple[int, int]] = {}
+    for doc_id, effect, n in rows.all():
+        allow, deny = out.get(doc_id, (0, 0))
+        out[doc_id] = (allow + int(n), deny) if effect == "allow" else (allow, deny + int(n))
+    return out

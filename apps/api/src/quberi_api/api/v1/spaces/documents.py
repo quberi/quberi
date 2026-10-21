@@ -38,6 +38,7 @@ from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import CallerContext, require_caller
 from quberi_api.services import documents as documents_service
 from quberi_api.services import guest_sandbox
+from quberi_api.services.documents import access_rules as rules_service
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
     DocumentValidationError,
@@ -87,6 +88,10 @@ class DocumentView(BaseModel):
     # True only for a guest-sandbox file uploaded from the requesting browser
     # (matched by the hash of its X-Guest-Token). Never true for anyone else.
     is_mine: bool = False
+    # How many exception rules the document carries. Filled in only for someone who manages
+    # the space, and only in the list; ``None`` everywhere else.
+    allow_rules: Optional[int] = None
+    deny_rules: Optional[int] = None
 
 
 class DocumentListFilters(BaseModel):
@@ -120,8 +125,15 @@ class DocumentStats(BaseModel):
     by_indexing_state: dict[str, int] = Field(default_factory=dict)
 
 
-def _serialise(v, guest_token: Optional[str] = None) -> DocumentView:
+def _serialise(
+    v,
+    guest_token: Optional[str] = None,
+    exceptions: Optional[dict[uuid.UUID, tuple[int, int]]] = None,
+) -> DocumentView:
     doc = v.document
+    allow_rules = deny_rules = None
+    if exceptions is not None:
+        allow_rules, deny_rules = exceptions.get(doc.id, (0, 0))
     return DocumentView(
         id=doc.id,
         space_id=doc.space_id,
@@ -147,6 +159,8 @@ def _serialise(v, guest_token: Optional[str] = None) -> DocumentView:
         review_state=doc.review_state,
         review_note=doc.review_note,
         is_mine=guest_sandbox.is_owned_by(doc.attributes, guest_token),
+        allow_rules=allow_rules,
+        deny_rules=deny_rules,
     )
 
 
@@ -228,8 +242,19 @@ async def list_documents(
         limit=limit,
         offset=offset,
     )
+    exceptions = (
+        None
+        if caller.is_guest
+        else await rules_service.exception_counts_for_manager(
+            session,
+            organization_id=caller.organization.id,
+            actor_user_id=caller.user.id,
+            space_id=space_id,
+            document_ids=[v.document.id for v in page.items],
+        )
+    )
     return DocumentList(
-        items=[_serialise(v, x_guest_token) for v in page.items],
+        items=[_serialise(v, x_guest_token, exceptions) for v in page.items],
         total=page.total,
         limit=page.limit,
         offset=page.offset,

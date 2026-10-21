@@ -3603,6 +3603,22 @@ input[type="radio"] {
   gap: 4px;
   font-size: 12px;
 }
+/* Marks on a document row: it has its own access rules */
+.exception-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.exception-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.exception-badge-allow { background: rgba(47, 158, 107, .12); color: #1e8a5f; border: 1px solid rgba(47, 158, 107, .28); }
+.exception-badge-deny { background: rgba(214, 69, 69, .1); color: #b83232; border: 1px solid rgba(214, 69, 69, .28); }
+
 /* "Who can see this" summary cards (space panel and document access tab) */
 .access-summary {
   display: grid;

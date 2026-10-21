@@ -30,6 +30,7 @@ import { AddFeishuDialog } from '../integrations/AddFeishuDialog'
 
 import { DocumentDetailDrawer } from './DocumentDetailDrawer'
 import { formatBytes } from './DocumentRow'
+import { ExceptionBadges } from './ExceptionBadges'
 import { DocumentsProvider, useDocuments } from './DocumentsContext'
 import { isReadOnlySpace } from './permissions'
 import { UploadDropZone } from './UploadDropZone'
@@ -629,6 +630,7 @@ function DocumentsTable({
           >
             <td>
               <strong>{doc.name}</strong>
+              <ExceptionBadges allow={doc.allow_rules} deny={doc.deny_rules} />
               {isGuest && doc.is_mine && (
                 <span className="chip chip-inline">{t('guestSandbox.mine')}</span>
               )}

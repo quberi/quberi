@@ -1620,6 +1620,10 @@
     "mine": "我的"
   },
   "docAccess": {
+    "badge": {
+      "allowHint": "这份文档单独允许了空间之外的人读，点开可以看是谁",
+      "denyHint": "这份文档对空间里的某些人隐藏了，点开可以看是谁"
+    },
     "summary": {
         "readers": "人可以读这份文档",
         "makeup": "构成",
