@@ -44,6 +44,11 @@ _log = logging.getLogger(__name__)
 
 _COLLECTION_PREFIX = "quberi_chunks__"
 
+# (client, collection) pairs this process has already made sure have the ``codes`` index.
+# The client is part of the key so a collection dropped and made again on another client
+# (a test, an operator rebuilding) is checked again rather than assumed.
+_CODES_INDEXED: set[tuple[int, str]] = set()
+
 
 # ---------------------------------------------------------------------------
 # Value types
@@ -63,6 +68,14 @@ class ChunkPoint:
     # redoing the chunking math.
     char_start: int
     char_end: int
+    # Where the text came from: "text" is the document's own text; "image_ocr" is text
+    # read out of a picture. A point without the field (everything indexed before it
+    # existed) is "text".
+    source_kind: str = "text"
+    # Exact keys of the part numbers and dimensions in the text (see ``codes.py``), so a
+    # query that contains one can be looked up exactly instead of by meaning. Empty for
+    # ordinary text.
+    codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -82,6 +95,7 @@ class RetrievedChunk:
     # the UI map a citation onto a highlighted span in the source doc.
     char_start: int
     char_end: int
+    source_kind: str = "text"
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +174,7 @@ class VectorStore:
 
         exists = await self._client.collection_exists(self._collection)
         if exists:
+            await self._ensure_codes_index()
             return
         _log.info(
             "creating Qdrant collection %s (dim=%d, model=%s)",
@@ -190,6 +205,30 @@ class VectorStore:
             field_name="organization_id",
             field_schema=qmodels.PayloadSchemaType.KEYWORD,
         )
+        await self._client.create_payload_index(
+            collection_name=self._collection,
+            field_name="codes",
+            field_schema=qmodels.PayloadSchemaType.KEYWORD,
+        )
+
+    async def _ensure_codes_index(self) -> None:
+        """Make sure an older collection also has the ``codes`` index.
+
+        Collections made before exact code matching existed were created without it.
+        Creating an index that is already there is a no-op on the server, and the process
+        remembers which collections it has checked so this costs one call per collection,
+        not one per document.
+        """
+
+        key = (id(self._client), self._collection)
+        if key in _CODES_INDEXED:
+            return
+        await self._client.create_payload_index(
+            collection_name=self._collection,
+            field_name="codes",
+            field_schema=qmodels.PayloadSchemaType.KEYWORD,
+        )
+        _CODES_INDEXED.add(key)
 
     async def upsert_document(
         self,
@@ -228,6 +267,8 @@ class VectorStore:
                     "text": c.text,
                     "char_start": c.char_start,
                     "char_end": c.char_end,
+                    "source_kind": c.source_kind,
+                    **({"codes": list(c.codes)} if c.codes else {}),
                 },
             )
             for c in chunks
@@ -279,43 +320,29 @@ class VectorStore:
         )
         return int(result.count)
 
-    async def search(
-        self,
+    @staticmethod
+    def _access_filter(
         *,
-        query_vector: list[float],
         space_ids: Iterable[uuid.UUID],
         organization_id: uuid.UUID,
-        limit: int = 12,
         document_ids: Iterable[uuid.UUID] | None = None,
         granted_document_ids: Iterable[uuid.UUID] | None = None,
         denied_document_ids: Iterable[uuid.UUID] | None = None,
-    ) -> list[RetrievedChunk]:
-        """Top-K semantic search restricted to a set of accessible spaces.
+    ) -> qmodels.Filter | None:
+        """The conditions that decide which points a person may be shown.
 
-        Document-level rules are applied inside the index, not afterwards:
-        ``granted_document_ids`` are searched *in addition to* ``space_ids`` (documents
-        shared with the person from spaces they cannot read as a whole), and
-        ``denied_document_ids`` are always excluded, even inside a readable space.
-
-        ``document_ids``, when given, further restricts hits to those documents
-        (filtered inside the vector store, so other documents in the same space
-        cannot crowd the result set). An empty collection means "none", not
-        "no filter".
-
-        Empty ``space_ids`` short-circuits to an empty list — the
-        caller shouldn't get points from spaces they can't see even if
-        their query embeds identically to something in another space.
+        One definition, used by every kind of lookup (by meaning, by exact code), so two
+        ways of searching can never disagree about who may see what. ``None`` means the
+        scope is empty and nothing may be returned.
         """
 
         space_id_list = [str(s) for s in space_ids]
         granted_list = [str(d) for d in (granted_document_ids or [])]
         if not space_id_list and not granted_list:
-            return []
+            return None
         doc_id_list = None if document_ids is None else [str(d) for d in document_ids]
         if doc_id_list is not None and not doc_id_list:
-            return []
-        if not await self._client.collection_exists(self._collection):
-            return []
+            return None
         reachable: list[Any] = []
         if space_id_list:
             reachable.append(
@@ -351,10 +378,119 @@ class VectorStore:
                     key="document_id", match=qmodels.MatchAny(any=doc_id_list)
                 )
             )
+        return qmodels.Filter(must=must, must_not=must_not or None)
+
+    async def search_by_codes(
+        self,
+        *,
+        codes: Sequence[str],
+        space_ids: Iterable[uuid.UUID],
+        organization_id: uuid.UUID,
+        limit: int = 12,
+        document_ids: Iterable[uuid.UUID] | None = None,
+        granted_document_ids: Iterable[uuid.UUID] | None = None,
+        denied_document_ids: Iterable[uuid.UUID] | None = None,
+    ) -> list[RetrievedChunk]:
+        """Points whose text contains one of these part numbers or dimensions, exactly.
+
+        Same access conditions as :meth:`search` (it builds them with the same function),
+        with "similar to this vector" replaced by "has this code". The score is the number
+        of the asked-for codes the point carries, so a point that has two of the three
+        codes outranks one that has one. ``codes`` are keys from :mod:`codes`.
+        """
+
+        wanted = [c for c in dict.fromkeys(codes) if c]
+        if not wanted:
+            return []
+        built = self._access_filter(
+            space_ids=space_ids,
+            organization_id=organization_id,
+            document_ids=document_ids,
+            granted_document_ids=granted_document_ids,
+            denied_document_ids=denied_document_ids,
+        )
+        if built is None or not await self._client.collection_exists(self._collection):
+            return []
+        built.must.append(
+            qmodels.FieldCondition(key="codes", match=qmodels.MatchAny(any=wanted))
+        )
+        # Fetch generously: the ranking by how many codes matched happens here.
+        points, _ = await self._client.scroll(
+            collection_name=self._collection,
+            scroll_filter=built,
+            limit=max(limit * 4, 20),
+            with_payload=True,
+            with_vectors=False,
+        )
+        results: list[tuple[int, RetrievedChunk]] = []
+        for pt in points:
+            payload = pt.payload or {}
+            try:
+                matched = len(set(payload.get("codes") or []) & set(wanted))
+                results.append(
+                    (
+                        matched,
+                        RetrievedChunk(
+                            document_id=uuid.UUID(payload["document_id"]),
+                            space_id=uuid.UUID(payload["space_id"]),
+                            document_name=str(payload.get("document_name", "")),
+                            chunk_index=int(payload.get("chunk_index", 0)),
+                            text=str(payload.get("text", "")),
+                            score=float(matched),
+                            char_start=int(payload.get("char_start", 0)),
+                            char_end=int(payload.get("char_end", 0)),
+                            source_kind=str(payload.get("source_kind", "text")),
+                        ),
+                    )
+                )
+            except (KeyError, ValueError):  # pragma: no cover — defensive
+                _log.warning("skipping malformed Qdrant payload: %s", payload)
+        results.sort(key=lambda pair: (-pair[0], str(pair[1].document_id), pair[1].chunk_index))
+        return [chunk for _, chunk in results[:limit]]
+
+    async def search(
+        self,
+        *,
+        query_vector: list[float],
+        space_ids: Iterable[uuid.UUID],
+        organization_id: uuid.UUID,
+        limit: int = 12,
+        document_ids: Iterable[uuid.UUID] | None = None,
+        granted_document_ids: Iterable[uuid.UUID] | None = None,
+        denied_document_ids: Iterable[uuid.UUID] | None = None,
+    ) -> list[RetrievedChunk]:
+        """Top-K semantic search restricted to a set of accessible spaces.
+
+        Document-level rules are applied inside the index, not afterwards:
+        ``granted_document_ids`` are searched *in addition to* ``space_ids`` (documents
+        shared with the person from spaces they cannot read as a whole), and
+        ``denied_document_ids`` are always excluded, even inside a readable space.
+
+        ``document_ids``, when given, further restricts hits to those documents
+        (filtered inside the vector store, so other documents in the same space
+        cannot crowd the result set). An empty collection means "none", not
+        "no filter".
+
+        Empty ``space_ids`` short-circuits to an empty list — the
+        caller shouldn't get points from spaces they can't see even if
+        their query embeds identically to something in another space.
+        """
+
+        built = self._access_filter(
+            space_ids=space_ids,
+            organization_id=organization_id,
+            document_ids=document_ids,
+            granted_document_ids=granted_document_ids,
+            denied_document_ids=denied_document_ids,
+        )
+        if built is None:
+            return []
+        if not await self._client.collection_exists(self._collection):
+            return []
         response = await self._client.query_points(
             collection_name=self._collection,
             query=query_vector,
-            query_filter=qmodels.Filter(must=must, must_not=must_not or None),
+            query_filter=built,
             limit=limit,
             with_payload=True,
             with_vectors=False,
@@ -381,6 +517,7 @@ class VectorStore:
                         score=float(pt.score or 0.0),
                         char_start=int(payload.get("char_start", 0)),
                         char_end=int(payload.get("char_end", 0)),
+                        source_kind=str(payload.get("source_kind", "text")),
                     )
                 )
             except (KeyError, ValueError):  # pragma: no cover — defensive

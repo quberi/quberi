@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Sequence
 
 from qdrant_client import AsyncQdrantClient
@@ -37,6 +37,7 @@ from quberi_api.services.ai.base import EmbeddingProvider
 from quberi_api.services.ai.registry import MODEL_REGISTRY
 from quberi_api.services.authz import list_accessible_space_ids
 from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access
+from quberi_api.services.rag.codes import extract_codes
 from quberi_api.services.rag.vector_store import RetrievedChunk, VectorStore
 
 _log = logging.getLogger(__name__)
@@ -381,6 +382,19 @@ async def _search_scoped_spaces(
             len(raw) - len(kept),
         )
 
+    # A part number or dimension in the question is also looked up exactly, because
+    # meaning-based search cannot tell Φ520 from Φ522. The same access conditions apply.
+    kept = await _merge_exact_code_hits(
+        store,
+        kept,
+        query=query,
+        space_ids=space_ids,
+        organization_id=org_id,
+        document_ids=document_ids,
+        doc_access=doc_access,
+        limit=top_k,
+    )
+
     # Optional rerank pass.
     if reranker_model_id and len(kept) > 1:
         from quberi_api.services.ai.local_reranker import LocalRerankerProvider
@@ -391,17 +405,8 @@ async def _search_scoped_spaces(
             reordered = sorted(
                 zip(kept, scores), key=lambda pair: pair[1], reverse=True
             )
-            kept = [
-                RetrievedChunk(
-                    document_id=c.document_id,
-                    space_id=c.space_id,
-                    document_name=c.document_name,
-                    chunk_index=c.chunk_index,
-                    text=c.text,
-                    score=float(s),
-                )
-                for c, s in reordered[:top_k]
-            ]
+            # ``replace`` keeps every field but the score (offsets, where the text came from).
+            kept = [replace(c, score=float(s)) for c, s in reordered[:top_k]]
             _log.info(
                 "retrieve: reranked %d candidates → top %d (model=%s)",
                 len(raw), len(kept), reranker_model_id,
@@ -413,6 +418,67 @@ async def _search_scoped_spaces(
         kept = kept[:top_k]
 
     return kept, model_id, store.collection
+
+
+async def _merge_exact_code_hits(
+    store: VectorStore,
+    kept: list[RetrievedChunk],
+    *,
+    query: str,
+    space_ids: Sequence[uuid.UUID],
+    organization_id: uuid.UUID,
+    document_ids: Sequence[uuid.UUID] | None,
+    doc_access: DocAccess,
+    limit: int,
+) -> list[RetrievedChunk]:
+    """Put chunks that contain a part number from the question in front of the rest.
+
+    People who type ``Φ520`` or ``HZ-8800B`` want that exact thing; the closest-in-meaning
+    results can be for ``Φ522``. Those chunks come first, then the by-meaning results,
+    each chunk once. The exact lookup uses the same access conditions as the main search
+    and its hits go through the same re-check, so it opens no second door.
+
+    Any failure leaves the by-meaning results exactly as they were.
+    """
+
+    keys = extract_codes(query)
+    if not keys:
+        return kept
+    try:
+        exact = await store.search_by_codes(
+            codes=keys,
+            space_ids=space_ids,
+            organization_id=organization_id,
+            limit=limit,
+            document_ids=document_ids,
+            granted_document_ids=doc_access.granted_ids,
+            denied_document_ids=doc_access.denied_ids,
+        )
+    except Exception:  # noqa: BLE001 — never lose the normal results over this
+        _log.exception("exact code lookup failed; using meaning-based results only")
+        return kept
+
+    readable = set(space_ids)
+    allowed = [
+        c
+        for c in exact
+        if doc_access.allows(
+            document_id=c.document_id, space_id=c.space_id, readable_spaces=readable
+        )
+    ]
+    if len(allowed) != len(exact):
+        _log.warning(
+            "retrieve: dropped %d exact-code hit(s) that leaked past the access filter",
+            len(exact) - len(allowed),
+        )
+    merged: list[RetrievedChunk] = []
+    seen: set[tuple[uuid.UUID, int]] = set()
+    for chunk in [*allowed, *kept]:
+        ident = (chunk.document_id, chunk.chunk_index)
+        if ident not in seen:
+            seen.add(ident)
+            merged.append(chunk)
+    return merged
 
 
 async def _selected_reranker(
