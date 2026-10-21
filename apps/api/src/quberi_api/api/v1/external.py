@@ -298,6 +298,7 @@ async def save(
 )
 async def upload(
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
     space: Optional[str] = Form(default=None, max_length=200),
     ext: core.ExternalCaller = Depends(require_external_caller),
@@ -305,9 +306,13 @@ async def upload(
     infra: Infrastructure = Depends(get_infrastructure),
 ) -> UploadResponse:
     try:
-        return await adapters.do_upload(request, file, space, ext, session, infra)
+        result = await adapters.do_upload(request, file, space, ext, session, infra)
     except adapters.AdapterHTTPError as exc:
         _raise(exc)
+    if result.duplicate:
+        # Nothing was created, so not 201.
+        response.status_code = status.HTTP_200_OK
+    return result
 
 
 @router.get("/spaces", response_model=SpacesResponse, summary="List the spaces the person can read")

@@ -65,6 +65,7 @@ from quberi_api.services.documents import external_upload
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
     DocumentValidationError,
+    DuplicateDocumentError,
     UnsupportedMimeError,
 )
 from quberi_api.services.errors import NotFoundError
@@ -937,6 +938,41 @@ async def do_upload_bytes(
     except DocumentValidationError as exc:
         status_code = 413 if "limit" in str(exc) else 400
         raise AdapterHTTPError(status_code, {"code": "invalid_file", "message": str(exc)}) from exc
+    except DuplicateDocumentError as exc:
+        # Nothing was stored. If the person may read the file that is already there, say
+        # which one (an answer, not an error: the tool's goal is met). If a rule hides it
+        # from them, a plain refusal that does not name it.
+        if not exc.readable:
+            raise AdapterHTTPError(
+                409, {"code": "already_exists", "message": str(exc)}
+            ) from exc
+        session.add(
+            AuditEvent(
+                organization_id=ext.organization.id,
+                actor_type="user",
+                actor_id=ext.user.id,
+                action="knowledge.external_upload_duplicate",
+                resource_type="oauth_grant",
+                resource_id=ext.grant_id,
+                payload={
+                    "grant_id": str(ext.grant_id),
+                    "client_name": ext.client_name,
+                    "existing_document_id": str(exc.document_id),
+                    "space_id": str(target.space.id),
+                },
+            )
+        )
+        await session.commit()
+        return UploadResponse(
+            document_id=exc.document_id,
+            space_id=target.space.id,
+            space_name=target.space.name,
+            name=exc.name or "",
+            mime_type=checked.mime,
+            size_bytes=len(data),
+            review_state=exc.review_state or "approved",
+            duplicate=True,
+        )
 
     # upload_local already committed the document and its own audit row; this
     # one records that it came through an outside tool, and which one.

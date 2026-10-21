@@ -186,6 +186,22 @@ class Document(TimestampMixin, Base):
             "review_state",
             postgresql_where=text("review_state <> 'approved'"),
         ),
+        # One live copy of a file per space. Only uploaded files count (a reference-only
+        # document has no stored file), not archived or rejected ones, and not a guest
+        # sandbox upload (different visitors may send the same file to a shared space).
+        # The service checks first and answers politely; this closes the race between
+        # two uploads that arrive together.
+        Index(
+            "uq_documents_space_checksum_live",
+            "space_id",
+            "checksum_sha256",
+            unique=True,
+            postgresql_where=text(
+                "storage_key IS NOT NULL AND checksum_sha256 IS NOT NULL "
+                "AND status <> 'archived' AND review_state IN ('approved', 'pending') "
+                "AND (attributes ->> 'guest_owner') IS NULL"
+            ),
+        ),
         Index("ix_documents_space_id_created_at", "space_id", "created_at"),
         Index("ix_documents_uploaded_by_user_id", "uploaded_by_user_id"),
         Index("ix_documents_source_id", "source_id"),

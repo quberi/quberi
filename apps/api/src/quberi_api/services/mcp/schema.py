@@ -155,7 +155,11 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         name="upload",
-        description="Upload a file (already base64-encoded) into the readable knowledge base.",
+        description=(
+            "Upload a file (already base64-encoded) into the readable knowledge base. "
+            "A file identical to one already in the space is not stored twice: the answer "
+            "says it is a duplicate and names the existing file."
+        ),
         input_schema=_UPLOAD_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_UPLOAD,
     ),

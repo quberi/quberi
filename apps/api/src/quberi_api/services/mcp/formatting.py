@@ -163,6 +163,18 @@ def format_documents_result(result: DocumentsResponse) -> str:
 
 def format_upload_result(result: UploadResponse) -> str:
     where = f'the "{result.space_name}" space' if result.space_name else "your knowledge base"
+    if result.duplicate:
+        waiting = (
+            " It is still waiting for approval by the space owner or an admin."
+            if result.review_state == "pending"
+            else ""
+        )
+        return (
+            f'NOT uploaded: {where} already has an identical file, "{result.name}" '
+            f"(same content).{waiting} Nothing was changed. Tell the user the file is already "
+            "in Quberi and do not upload it again; if they want to use it, refer to the "
+            "existing file."
+        )
     if result.review_state == "pending":
         return (
             f'Uploaded to {where} in Quberi as "{result.name}", but it is WAITING FOR APPROVAL. '
@@ -411,6 +423,11 @@ def format_error(exc: AdapterHTTPError) -> str:
         return (
             "Nothing was done: you have no personal space to default to. Ask the person "
             f"which space to use, then try again with that space name.{choices}"
+        )
+    if code == "already_exists":
+        return (
+            f"NOT uploaded: {message} Nothing was changed. Tell the user an identical file "
+            "is already in that space, and do not try to upload it again."
         )
     if code in ("invalid_note", "invalid_file"):
         return f"Quberi rejected the content: {message}"

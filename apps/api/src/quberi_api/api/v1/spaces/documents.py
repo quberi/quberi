@@ -41,6 +41,7 @@ from quberi_api.services import guest_sandbox
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
     DocumentValidationError,
+    DuplicateDocumentError,
     UnsupportedMimeError,
 )
 from quberi_api.services.rag.extract import ExtractError
@@ -161,6 +162,9 @@ def _translate(exc: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     if isinstance(exc, DocumentPermissionError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, DuplicateDocumentError):
+        # The text is already bilingual and the web client shows it as it is.
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     raise exc
 
 
@@ -276,7 +280,12 @@ async def upload_document(
             file_obj=file.file,
             content_type=content_type,
         )
-    except (DocumentValidationError, DocumentPermissionError, UnsupportedMimeError) as exc:
+    except (
+        DocumentValidationError,
+        DocumentPermissionError,
+        DuplicateDocumentError,
+        UnsupportedMimeError,
+    ) as exc:
         raise _translate(exc) from exc
     return _serialise(view)
 

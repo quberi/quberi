@@ -198,3 +198,7 @@ class UploadResponse(BaseModel):
     size_bytes: int
     # 'approved', or 'pending' when the space asks for approval of uploads (see SaveResponse).
     review_state: str = "approved"
+    # True when this space already held an identical file (same SHA-256), so nothing was
+    # uploaded. Then ``document_id``, ``name`` and ``review_state`` describe the file that
+    # was already there. Absent (false) on a normal upload, so existing clients are unaffected.
+    duplicate: bool = False

@@ -22,12 +22,14 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_, select, true
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
+from quberi_api.services.documents.duplicates import DUPLICATE_INDEX, find_live_duplicate
 from quberi_api.services.errors import ForbiddenError, InvalidInputError, NotFoundError
 
 SETTING_KEY = "upload_review"
@@ -256,46 +258,73 @@ async def decide(
     )
     await session.commit()
     changed: list[uuid.UUID] = []
-    async with session.begin():
-        docs = (
-            (
-                await session.execute(
-                    select(Document).where(
-                        Document.id.in_(ids),
-                        Document.organization_id == organization_id,
-                        Document.space_id == space_id,
-                        Document.status != "archived",
+    try:
+        async with session.begin():
+            docs = (
+                (
+                    await session.execute(
+                        select(Document).where(
+                            Document.id.in_(ids),
+                            Document.organization_id == organization_id,
+                            Document.space_id == space_id,
+                            Document.status != "archived",
+                        )
                     )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-        if len(docs) != len(ids):
-            raise NotFoundError("one of the documents was not found in this space")
-        allowed_from = ("pending", "rejected") if approve else ("pending",)
-        for doc in docs:
-            if doc.review_state not in allowed_from:
-                raise InvalidInputError(f"{doc.name!r} is already {doc.review_state}")
-        now = datetime.now(timezone.utc)
-        for doc in docs:
-            doc.review_state = "approved" if approve else "rejected"
-            doc.reviewed_by_user_id = actor_user_id
-            doc.reviewed_at = now
-            doc.review_note = note or None
-            changed.append(doc.id)
-            session.add(
-                AuditEvent(
-                    organization_id=organization_id,
-                    actor_type="user",
-                    actor_id=actor_user_id,
-                    action="document.review_approved" if approve else "document.review_rejected",
-                    resource_type="document",
-                    resource_id=doc.id,
-                    space_id=space_id,
-                    payload={"name": doc.name, "note": note},
+            if len(docs) != len(ids):
+                raise NotFoundError("one of the documents was not found in this space")
+            allowed_from = ("pending", "rejected") if approve else ("pending",)
+            for doc in docs:
+                if doc.review_state not in allowed_from:
+                    raise InvalidInputError(f"{doc.name!r} is already {doc.review_state}")
+            if approve:
+                # A rejected copy may be approved later, but not while an identical file is
+                # already waiting or approved in the same space.
+                for doc in docs:
+                    if doc.review_state != "rejected":
+                        continue
+                    other = await find_live_duplicate(
+                        session,
+                        space_id=space_id,
+                        checksum_sha256=doc.checksum_sha256,
+                        exclude_document_id=doc.id,
+                    )
+                    if other is not None:
+                        raise InvalidInputError(
+                            f"{doc.name!r}：这个空间里已有相同的文件「{other[1]}」，不能再批准这一份。 "
+                            f"This space already has an identical file ({other[1]}), so this copy "
+                            "cannot be approved."
+                        )
+            now = datetime.now(timezone.utc)
+            for doc in docs:
+                doc.review_state = "approved" if approve else "rejected"
+                doc.reviewed_by_user_id = actor_user_id
+                doc.reviewed_at = now
+                doc.review_note = note or None
+                changed.append(doc.id)
+                session.add(
+                    AuditEvent(
+                        organization_id=organization_id,
+                        actor_type="user",
+                        actor_id=actor_user_id,
+                        action="document.review_approved" if approve else "document.review_rejected",
+                        resource_type="document",
+                        resource_id=doc.id,
+                        space_id=space_id,
+                        payload={"name": doc.name, "note": note},
+                    )
                 )
-            )
+    except IntegrityError as exc:
+        if DUPLICATE_INDEX not in str(exc):
+            raise
+        # Two rejected copies of one file were approved together.
+        raise InvalidInputError(
+            "这些文件里有内容相同的，不能一起批准。 "
+            "Some of these files are identical, so they cannot all be approved."
+        ) from exc
     if approve:
         from quberi_api.workers.enqueue import enqueue_index_document
 

@@ -17,6 +17,7 @@ treated identically to a directly-bound user.
 from __future__ import annotations
 
 import io
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from datetime import datetime, timezone
 from typing import AsyncIterator, BinaryIO, Optional
 
 from sqlalchemy import and_, case, func, not_, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.audit.models import AuditEvent
@@ -32,16 +34,24 @@ from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services import access_guard, doc_acl, document_sources
 from quberi_api.services.documents import review as review_service
+from quberi_api.services.documents.duplicates import (
+    DUPLICATE_INDEX as _DUPLICATE_INDEX,
+    find_live_duplicate,
+    is_guest_upload as _is_guest_upload,
+)
 from quberi_api.domain.enums import READABLE_SPACE_STATUSES
 from quberi_api.services.authz import resolve_effective_role_codes, user_is_blocked
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
     DocumentValidationError,
+    DuplicateDocumentError,
     UnsupportedMimeError,
 )
 from quberi_api.services.errors import NotFoundError
 from quberi_api.workers.enqueue import enqueue_index_document
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -647,6 +657,72 @@ async def get_document(
 # ---------------------------------------------------------------------------
 
 
+def _duplicate_message(name: Optional[str], review_state: Optional[str], readable: bool) -> str:
+    if not readable:
+        # Nothing about which file it is: a rule hides it from this person.
+        return (
+            "这个空间里已有内容相同的文件。 "
+            "This space already has a file with identical content."
+        )
+    if review_state == "pending":
+        return (
+            f"这个空间里已有相同的文件「{name}」，正在等待审核。 "
+            f"This space already has an identical file: {name} (waiting for approval)."
+        )
+    return f"这个空间里已有相同的文件「{name}」。 This space already has an identical file: {name}."
+
+
+async def _refuse_duplicate(
+    session: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    space_id: uuid.UUID,
+    uploader_user_id: uuid.UUID,
+    filename: str,
+    stored,
+    existing: tuple[uuid.UUID, str, str],
+) -> None:
+    """Throw away the copy that was just stored, record the attempt, and refuse it."""
+
+    existing_id, existing_name, existing_state = existing
+    # Whether this person may read the existing file decides what they are told.
+    readable = await doc_acl.can_read_document(
+        session,
+        user_id=uploader_user_id,
+        organization_id=organization_id,
+        document_id=existing_id,
+    )
+    await session.commit()  # close the read transaction before writing
+    try:
+        await local_connector.delete(stored.storage_key)
+    except Exception:  # noqa: BLE001 - the refusal matters more than the cleanup
+        _log.warning("could not remove the duplicate upload %s", stored.storage_key, exc_info=True)
+    async with session.begin():
+        session.add(
+            AuditEvent(
+                organization_id=organization_id,
+                actor_type="user",
+                actor_id=uploader_user_id,
+                action="document.upload_duplicate",
+                resource_type="document",
+                resource_id=existing_id,
+                space_id=space_id,
+                payload={
+                    "name": filename,
+                    "checksum_sha256": stored.checksum_sha256,
+                    "existing_document_id": str(existing_id),
+                },
+            )
+        )
+    raise DuplicateDocumentError(
+        _duplicate_message(existing_name, existing_state, readable),
+        readable=readable,
+        document_id=existing_id if readable else None,
+        name=existing_name if readable else None,
+        review_state=existing_state if readable else None,
+    )
+
+
 async def upload_local(
     session: AsyncSession,
     *,
@@ -704,46 +780,84 @@ async def upload_local(
         max_bytes=MAX_UPLOAD_BYTES,
     )
 
-    async with session.begin():
-        doc = Document(
-            id=doc_id,
+    # The checksum is only known once the file has been read, so the identical-file
+    # check comes after the store; a refused copy is removed again.
+    duplicate_guard = not _is_guest_upload(attributes)
+    if duplicate_guard:
+        existing = await find_live_duplicate(
+            session, space_id=space_id, checksum_sha256=stored.checksum_sha256
+        )
+        if existing is not None:
+            await _refuse_duplicate(
+                session,
+                organization_id=organization_id,
+                space_id=space_id,
+                uploader_user_id=uploader_user_id,
+                filename=filename,
+                stored=stored,
+                existing=existing,
+            )
+        await session.commit()  # close the read transaction before writing
+
+    try:
+        async with session.begin():
+            doc = Document(
+                id=doc_id,
+                organization_id=organization_id,
+                space_id=space_id,
+                source_id=local_source.id,
+                uploaded_by_user_id=uploader_user_id,
+                name=filename,
+                mime_type=mime,
+                size_bytes=stored.size_bytes,
+                storage_key=stored.storage_key,
+                checksum_sha256=stored.checksum_sha256,
+                external_ref={},
+                sync_state="local_only",
+                status="uploaded",
+                review_state=review_state,
+                attributes=dict(attributes or {}),
+            )
+            session.add(doc)
+            session.add(
+                AuditEvent(
+                    organization_id=organization_id,
+                    actor_type="user",
+                    actor_id=uploader_user_id,
+                    action="document.uploaded",
+                    resource_type="document",
+                    resource_id=doc_id,
+                    space_id=space_id,
+                    payload={
+                        "name": filename,
+                        "mime": mime,
+                        "size_bytes": stored.size_bytes,
+                        "checksum_sha256": stored.checksum_sha256,
+                        "review_state": review_state,
+                    },
+                )
+            )
+            await session.flush()
+            await session.refresh(
+                doc, attribute_names=["created_at", "updated_at", "indexing_state"]
+            )
+    except IntegrityError as exc:
+        # Two uploads of the same file arrived together and the other one won.
+        if not duplicate_guard or _DUPLICATE_INDEX not in str(exc):
+            raise
+        existing = await find_live_duplicate(
+            session, space_id=space_id, checksum_sha256=stored.checksum_sha256
+        )
+        if existing is None:
+            raise
+        await _refuse_duplicate(
+            session,
             organization_id=organization_id,
             space_id=space_id,
-            source_id=local_source.id,
-            uploaded_by_user_id=uploader_user_id,
-            name=filename,
-            mime_type=mime,
-            size_bytes=stored.size_bytes,
-            storage_key=stored.storage_key,
-            checksum_sha256=stored.checksum_sha256,
-            external_ref={},
-            sync_state="local_only",
-            status="uploaded",
-            review_state=review_state,
-            attributes=dict(attributes or {}),
-        )
-        session.add(doc)
-        session.add(
-            AuditEvent(
-                organization_id=organization_id,
-                actor_type="user",
-                actor_id=uploader_user_id,
-                action="document.uploaded",
-                resource_type="document",
-                resource_id=doc_id,
-                space_id=space_id,
-                payload={
-                    "name": filename,
-                    "mime": mime,
-                    "size_bytes": stored.size_bytes,
-                    "checksum_sha256": stored.checksum_sha256,
-                    "review_state": review_state,
-                },
-            )
-        )
-        await session.flush()
-        await session.refresh(
-            doc, attribute_names=["created_at", "updated_at", "indexing_state"]
+            uploader_user_id=uploader_user_id,
+            filename=filename,
+            stored=stored,
+            existing=existing,
         )
 
     # Kick off the RAG indexing pipeline asynchronously. A failed enqueue

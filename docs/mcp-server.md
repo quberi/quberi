@@ -68,3 +68,15 @@ app. It cannot see or change anything that account could not already see or
 change there. Revoking access works the same way it does for any other
 outside tool: from the connected-tools page, or automatically if the member
 is deactivated (see [member offboarding](./member-offboarding.md)).
+
+### Uploading a file that is already there
+
+A space keeps one copy of a file. If `upload` is given a file with exactly the
+same content (the same SHA-256) as one already in that space, nothing is stored:
+the tool answers that the file is already there and names it, so the client
+does not need to guess from file names. The same rule applies to uploads in the
+web app, which refuses the second copy. A file waiting for approval counts; one
+that was rejected does not. If a rule hides the existing file from you, the
+answer says an identical file exists without naming it. The check is per space
+and exact: the same picture saved again at a different size or quality is a
+different file.
