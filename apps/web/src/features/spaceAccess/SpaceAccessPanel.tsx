@@ -15,7 +15,8 @@ import { useTranslation } from 'react-i18next'
 
 import { ApiError } from '../api/client'
 
-import { useEffectiveSpaceMembers, useSpaceAccess } from './useSpaceAccess'
+import { SpaceAccessSummaryCard } from './SpaceAccessSummaryCard'
+import { useEffectiveSpaceMembers, useSpaceAccess, useSpaceAccessSummary } from './useSpaceAccess'
 import { subjectIdForApi, useSubjectCandidates } from './useSubjectCandidates'
 import type {
   AccessBinding,
@@ -36,19 +37,20 @@ export function SpaceAccessPanel({ spaceId }: { spaceId: string | null }) {
   const { t } = useTranslation()
   const { state, reload, revoke, grant } = useSpaceAccess(spaceId)
   const effective = useEffectiveSpaceMembers(spaceId)
+  const summary = useSpaceAccessSummary(spaceId)
   const [addOpen, setAddOpen] = useState(false)
 
   // Any successful grant/revoke also invalidates the effective view — the
   // hooks are independent by design, so we chain the reload here.
   const reloadBoth = async () => {
-    await Promise.all([reload(), effective.reload()])
+    await Promise.all([reload(), effective.reload(), summary.reload()])
   }
 
   const doRevoke = async (b: AccessBinding) => {
     if (!window.confirm(t('spaceAccess.confirmRevoke'))) return
     try {
       await revoke(b.id)
-      await effective.reload()
+      await Promise.all([effective.reload(), summary.reload()])
     } catch (err) {
       window.alert(
         err instanceof ApiError ? err.detail || `HTTP ${err.status}` : String(err),
@@ -93,6 +95,8 @@ export function SpaceAccessPanel({ spaceId }: { spaceId: string | null }) {
           </button>
         </div>
       </div>
+
+      <SpaceAccessSummaryCard state={summary.state} />
 
       {state.kind === 'loading' && (
         <div className="state-panel">{t('spaceAccess.loading')}</div>
@@ -145,6 +149,7 @@ export function SpaceAccessPanel({ spaceId }: { spaceId: string | null }) {
           // view; the hook's ``grant`` callback already refreshes the
           // direct list.
           void effective.reload()
+          void summary.reload()
         }}
         spaceId={spaceId}
         grant={grant}

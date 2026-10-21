@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   addAccessRule: vi.fn(),
   removeAccessRule: vi.fn(),
   checkDocumentAccess: vi.fn(),
+  getDocumentAccessSummary: vi.fn(),
 }))
 vi.mock('../members/MembersContext', () => ({
   useMembers: () => ({ state: { kind: 'ready', items: [] } }),
@@ -41,9 +42,43 @@ const rule = (id: string, effect: 'allow' | 'deny', name: string) => ({
   created_at: '2026-01-01T00:00:00Z',
 })
 
+const summary = (over: Record<string, unknown> = {}) => ({
+  document_id: 'd1',
+  space_id: 's1',
+  review_state: 'approved',
+  space_people: 3,
+  readers: 3,
+  shared_only: 0,
+  hidden: 0,
+  allow_rules: 0,
+  deny_rules: 0,
+  sources: [],
+  ...over,
+})
+
 describe('DocumentAccessTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    api.getDocumentAccessSummary.mockResolvedValue(summary())
+  })
+
+  it('shows how many people can read it, above the rules', async () => {
+    api.listAccessRules.mockResolvedValue({ items: [], total: 0 })
+    api.getDocumentAccessSummary.mockResolvedValue(
+      summary({ readers: 11, space_people: 12, hidden: 1, deny_rules: 1 }),
+    )
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    expect(await screen.findByTestId('document-access-summary')).toBeTruthy()
+    expect(screen.getByText('11')).toBeTruthy()
+    expect(api.getDocumentAccessSummary).toHaveBeenCalledWith({ sessionToken: 't' }, 's1', 'd1')
+  })
+
+  it('still shows the rules when the numbers cannot be had', async () => {
+    api.listAccessRules.mockResolvedValue({ items: [rule('r1', 'allow', 'Bob')], total: 1 })
+    api.getDocumentAccessSummary.mockRejectedValue(new ApiError(500, 'boom'))
+    render(<DocumentAccessTab documentId="d1" spaceId="s1" />)
+    expect(await screen.findByText('Bob')).toBeTruthy()
+    expect(screen.queryByTestId('document-access-summary')).toBeNull()
   })
 
   it('shows who the document is shared with and hidden from', async () => {

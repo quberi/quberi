@@ -3,11 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import type { AccessSubjectType } from '../spaceAccess/types'
+import type { AccessSubjectType, DocumentAccessSummary } from '../spaceAccess/types'
 import { AccessCheckSection } from './AccessCheckSection'
+import { DocumentAccessSummaryCard } from './DocumentAccessSummaryCard'
 import { subjectIdForApi, useSubjectCandidates } from '../spaceAccess/useSubjectCandidates'
 import {
   addAccessRule,
+  getDocumentAccessSummary,
   listAccessRules,
   removeAccessRule,
   type AccessEffect,
@@ -26,7 +28,7 @@ type LoadState =
   | { kind: 'loading' }
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; items: DocumentAccessRule[] }
+  | { kind: 'ready'; items: DocumentAccessRule[]; summary: DocumentAccessSummary | null }
 
 function messageOf(err: unknown): string {
   return err instanceof ApiError ? err.detail || `HTTP ${err.status}` : String(err)
@@ -75,8 +77,12 @@ export function DocumentAccessTab({
     if (!credentials) return
     setState({ kind: 'loading' })
     try {
-      const list = await listAccessRules(credentials, spaceId, documentId)
-      setState({ kind: 'ready', items: list.items })
+      // The numbers are a convenience: if they cannot be had, the rules still show.
+      const [list, summary] = await Promise.all([
+        listAccessRules(credentials, spaceId, documentId),
+        getDocumentAccessSummary(credentials, spaceId, documentId).catch(() => null),
+      ])
+      setState({ kind: 'ready', items: list.items, summary })
     } catch (err) {
       if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
         setState({ kind: 'forbidden' })
@@ -157,6 +163,7 @@ export function DocumentAccessTab({
 
   return (
     <div className="doc-drawer-body doc-access">
+      {state.summary && <DocumentAccessSummaryCard summary={state.summary} />}
       <p className="doc-drawer-note">{t('docAccess.intro')}</p>
       <RuleList
         empty={t('docAccess.noneShared')}

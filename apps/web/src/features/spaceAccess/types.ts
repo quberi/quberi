@@ -76,3 +76,43 @@ export interface EffectiveMemberList {
   items: EffectiveMember[]
   total: number
 }
+
+// --- Access-summary contract ------------------------------------------------
+
+/** Something a space is open to: a department, position, group, person or everyone. */
+export interface AccessSource {
+  subject_type: AccessSubjectType
+  subject_id: string
+  name: string
+  role_code: SpaceRoleCode
+}
+
+/** "Who can see this space" at a glance. Counts only people who can really read it. */
+export interface SpaceAccessSummary {
+  space_id: string
+  status: string
+  people: number
+  by_role: Partial<Record<SpaceRoleCode, number>>
+  sources: AccessSource[]
+  documents: number
+  documents_with_exceptions: number
+  allow_rules: number
+  deny_rules: number
+}
+
+/** "Who can read this document" at a glance. */
+export interface DocumentAccessSummary {
+  document_id: string
+  space_id: string
+  review_state: string
+  space_people: number
+  /** ``null``: not approved yet, or the organisation is too large to count. */
+  readers: number | null
+  /** Readers who can read it only because a rule shares it with them. */
+  shared_only: number
+  /** People the space admits but a deny rule hides this document from. */
+  hidden: number
+  allow_rules: number
+  deny_rules: number
+  sources: AccessSource[]
+}

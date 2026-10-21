@@ -1088,6 +1088,17 @@
     }
   },
   "spaceAccess": {
+    "summary": {
+        "loading": "正在统计…",
+        "people": "人可以访问",
+        "openTo": "开放给",
+        "exceptions": "例外规则",
+        "wholeOrg": "整个企业",
+        "nobody": "还没有开放给任何人（只有所有者本人）",
+        "moreUsers": "等另外 {{count}} 人",
+        "noExceptions": "共 {{count}} 份文档，没有例外规则",
+        "someExceptions": "共 {{documents}} 份文档，其中 {{count}} 份有例外规则（允许 {{allow}} 条，拒绝 {{deny}} 条）"
+      },
     "title": "空间访问",
     "description": "直接授予此空间的角色。通过工作组、岗位或组织单元继承而来的成员不会出现在此列表。",
     "empty": "此空间尚无直接授权。",
@@ -1609,6 +1620,19 @@
     "mine": "我的"
   },
   "docAccess": {
+    "summary": {
+        "readers": "人可以读这份文档",
+        "makeup": "构成",
+        "fromSpace": "空间里 {{count}} 人能读",
+        "sharedOnly": "，另加单独允许 {{count}} 人",
+        "hidden": "，减去被拒绝 {{count}} 人",
+        "inherited": "继承自空间",
+        "exceptions": "例外规则",
+        "noExceptions": "没有，和空间一致",
+        "someExceptions": "允许 {{allow}} 条，拒绝 {{deny}} 条",
+        "notApproved": "文档还没通过审核，现在只有上传者和审核人能看到",
+        "tooLarge": "组织人数太多，这里不统计具体人数"
+      },
     "intro": "能读取这个空间的人都能读取这份文档。添加“允许”规则，可以让空间之外的人只读这一份；添加“拒绝”规则，可以对空间里的某个人隐藏这一份。拒绝优先于一切，只有空间所有者除外：所有者不受拒绝影响，要对他隐藏，得先把空间转给别人。修改立即生效。",
     "forbidden": "只有空间管理员或所有者可以查看或修改谁能读取这份文档。",
     "retry": "重试",

@@ -6,6 +6,7 @@ import type {
   AccessBindingList,
   AddAccessBindingInput,
   EffectiveMemberList,
+  SpaceAccessSummary,
 } from './types'
 
 export function listAccessBindings(
@@ -49,4 +50,13 @@ export function listEffectiveMembers(
     `/api/v1/spaces/${spaceId}/effective-members`,
     { credentials },
   )
+}
+
+export function getSpaceAccessSummary(
+  credentials: DevCredentials,
+  spaceId: string,
+): Promise<SpaceAccessSummary> {
+  return apiFetch<SpaceAccessSummary>(`/api/v1/spaces/${spaceId}/access-summary`, {
+    credentials,
+  })
 }

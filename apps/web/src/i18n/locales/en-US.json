@@ -1088,6 +1088,17 @@
     }
   },
   "spaceAccess": {
+    "summary": {
+        "loading": "Counting…",
+        "people": "people can access",
+        "openTo": "Open to",
+        "exceptions": "Exceptions",
+        "wholeOrg": "Whole organisation",
+        "nobody": "Not open to anyone yet (only the owner)",
+        "moreUsers": "and {{count}} more",
+        "noExceptions": "{{count}} documents, no exception rules",
+        "someExceptions": "{{documents}} documents, {{count}} with exception rules ({{allow}} allow, {{deny}} deny)"
+      },
     "title": "Space access",
     "description": "Direct role grants on this space. Members who inherit access via groups, positions, or org units are not listed here.",
     "empty": "No direct grants on this space yet.",
@@ -1609,6 +1620,19 @@
     "mine": "Mine"
   },
   "docAccess": {
+    "summary": {
+        "readers": "people can read this document",
+        "makeup": "Made up of",
+        "fromSpace": "{{count}} who can read the space",
+        "sharedOnly": ", plus {{count}} it is shared with on its own",
+        "hidden": ", minus {{count}} it is hidden from",
+        "inherited": "From the space",
+        "exceptions": "Exceptions",
+        "noExceptions": "None, same as the space",
+        "someExceptions": "{{allow}} allow, {{deny}} deny",
+        "notApproved": "This document has not been approved yet, so only its uploader and reviewers can see it",
+        "tooLarge": "The organisation is too large to count exactly here"
+      },
     "intro": "Anyone who can read this space can read this document. Add an Allow rule to let someone outside the space read just this one, or a Deny rule to hide it from someone inside. Deny always wins, except against the space's owner, who cannot be denied; hand the space to someone else first. Changes apply immediately.",
     "forbidden": "Only a space admin or owner can see or change who can read this document.",
     "retry": "Try again",

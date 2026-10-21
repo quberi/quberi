@@ -1,6 +1,6 @@
 import { apiFetch } from '../api/client'
 import type { DevCredentials } from '../auth/types'
-import type { AccessSubjectType } from '../spaceAccess/types'
+import type { AccessSubjectType, DocumentAccessSummary } from '../spaceAccess/types'
 
 /** One document-level rule: ``allow`` shares the document, ``deny`` hides it (deny wins). */
 export type AccessEffect = 'allow' | 'deny'
@@ -148,6 +148,18 @@ export function checkDocumentAccess(
   const query = new URLSearchParams({ user_id: userId })
   return apiFetch<AccessCheck>(
     `/api/v1/spaces/${spaceId}/documents/${documentId}/access-check?${query.toString()}`,
+    { credentials },
+  )
+}
+
+/** How many people can read this document, and how many exceptions it has. */
+export function getDocumentAccessSummary(
+  credentials: DevCredentials,
+  spaceId: string,
+  documentId: string,
+): Promise<DocumentAccessSummary> {
+  return apiFetch<DocumentAccessSummary>(
+    `/api/v1/spaces/${spaceId}/documents/${documentId}/access-summary`,
     { credentials },
   )
 }

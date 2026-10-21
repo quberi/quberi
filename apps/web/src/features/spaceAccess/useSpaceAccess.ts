@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext'
 
 import {
   addAccessBinding,
+  getSpaceAccessSummary,
   listAccessBindings,
   listEffectiveMembers,
   removeAccessBinding,
@@ -13,6 +14,7 @@ import type {
   AccessBinding,
   AddAccessBindingInput,
   EffectiveMember,
+  SpaceAccessSummary,
 } from './types'
 
 /**
@@ -148,6 +150,52 @@ export function useEffectiveSpaceMembers(
       const { items } = await listEffectiveMembers(credentials, spaceId)
       if (loadedForRef.current !== spaceId) return
       setState({ kind: 'ready', items })
+    } catch (err) {
+      if (loadedForRef.current !== spaceId) return
+      setState({ kind: 'error', message: effectiveToMessage(err) })
+    }
+  }, [credentials, spaceId])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  return useMemo(() => ({ state, reload }), [state, reload])
+}
+
+// ---------------------------------------------------------------------------
+// Summary hook
+// ---------------------------------------------------------------------------
+
+type SummaryState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; summary: SpaceAccessSummary }
+
+export interface UseSpaceAccessSummaryResult {
+  state: SummaryState
+  reload: () => Promise<void>
+}
+
+/** The "who can see this space" card's numbers. Reload it after anything that changes access. */
+export function useSpaceAccessSummary(spaceId: string | null): UseSpaceAccessSummaryResult {
+  const { credentials } = useAuth()
+  const [state, setState] = useState<SummaryState>({ kind: 'idle' })
+  const loadedForRef = useRef<string | null>(null)
+
+  const reload = useCallback(async () => {
+    if (!credentials || !spaceId) {
+      setState({ kind: 'idle' })
+      return
+    }
+    loadedForRef.current = spaceId
+    // Keep showing the old numbers while the new ones load: no flicker on every change.
+    setState((prev) => (prev.kind === 'ready' ? prev : { kind: 'loading' }))
+    try {
+      const summary = await getSpaceAccessSummary(credentials, spaceId)
+      if (loadedForRef.current !== spaceId) return
+      setState({ kind: 'ready', summary })
     } catch (err) {
       if (loadedForRef.current !== spaceId) return
       setState({ kind: 'error', message: effectiveToMessage(err) })
