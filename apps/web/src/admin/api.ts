@@ -278,3 +278,65 @@ export function setOrgPlatformModelVisibility(
     { method: 'PUT', body: input },
   )
 }
+
+// ---------------------------------------------------------------------------
+// Outside tools allowed to ask for access (OAuth clients)
+// ---------------------------------------------------------------------------
+
+export type OAuthClientKind = 'registered' | 'metadata_url'
+
+export interface OAuthClientRow {
+  id: string
+  client_id: string
+  kind: OAuthClientKind
+  name: string
+  redirect_uris: string[]
+  enabled: boolean
+  allow_mcp: boolean
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RejectedAttempt {
+  client_id: string
+  redirect_uri: string
+  reason: 'unknown_client' | 'redirect_not_allowed' | string
+  at: string
+}
+
+export interface OAuthClientList {
+  items: OAuthClientRow[]
+  rejected: RejectedAttempt[]
+  advertises_metadata_documents: boolean
+}
+
+export interface OAuthClientInput {
+  client_id: string
+  kind: OAuthClientKind
+  name: string
+  redirect_uris: string[]
+  enabled: boolean
+  allow_mcp: boolean
+  note: string | null
+}
+
+export function listOAuthClients(token: string): Promise<OAuthClientList> {
+  return adminFetch(token, '/api/v1/admin/oauth-clients')
+}
+
+export function createOAuthClient(token: string, input: OAuthClientInput): Promise<OAuthClientRow> {
+  return adminFetch(token, '/api/v1/admin/oauth-clients', { method: 'POST', body: input })
+}
+
+export function updateOAuthClient(
+  token: string,
+  id: string,
+  input: Partial<OAuthClientInput>,
+): Promise<OAuthClientRow> {
+  return adminFetch(token, `/api/v1/admin/oauth-clients/${id}`, { method: 'PATCH', body: input })
+}
+
+export function deleteOAuthClient(token: string, id: string): Promise<void> {
+  return adminFetch(token, `/api/v1/admin/oauth-clients/${id}`, { method: 'DELETE' })
+}

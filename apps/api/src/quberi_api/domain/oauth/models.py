@@ -17,10 +17,21 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from quberi_api.db.base import Base
+from quberi_api.domain._constraints import in_values
 from quberi_api.db.types import TimestampMixin, UUIDPk
 
 
@@ -41,7 +52,9 @@ class OAuthGrant(TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # A tool's own id, or for a tool that identifies itself by URL (a Client ID Metadata
+    # Document), that URL: it can be long.
+    client_id: Mapped[str] = mapped_column(String(255), nullable=False)
     # Shown to the person in their list of connected tools.
     client_name: Mapped[str] = mapped_column(String(200), nullable=False)
     scope: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -74,3 +87,41 @@ class OAuthGrant(TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     revoke_reason: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+
+class OAuthClientConfig(TimestampMixin, Base):
+    """A tool that may ask for access, as configured by a platform admin.
+
+    ``kind`` says how the tool names itself:
+
+    * ``registered``: a plain id we gave it (``quberi-mcp``), matched exactly.
+    * ``metadata_url``: the URL of its own Client ID Metadata Document, matched exactly or,
+      when it contains ``{id}``, as a pattern whose ``{id}`` is a short opaque segment.
+
+    ``redirect_uris`` is where it may be sent the authorisation code: the word ``loopback``
+    (a callback on the person's own machine, any port) or an exact ``https://`` address in
+    which ``{id}`` stands for the same segment captured from the client id. Nothing is
+    fetched from the tool's URL: what we trust is what the admin wrote here.
+    """
+
+    __tablename__ = "oauth_clients"
+    __table_args__ = (
+        UniqueConstraint("client_id", name="uq_oauth_clients_client_id"),
+        in_values("kind", ("registered", "metadata_url"), name="kind"),
+    )
+
+    id: Mapped[UUIDPk]
+    client_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Shown to people on the consent page and in their list of connected tools.
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    redirect_uris: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    # Whether the MCP server accepts a token issued to this tool. Checked on every request, so
+    # switching it off (or the tool) cuts access at once.
+    allow_mcp: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -35,7 +35,7 @@ from quberi_api.api.v1.external_schemas import (
 )
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services.mcp import adapters, caller, formatting, protocol, schema
-from quberi_api.services.oauth import core
+from quberi_api.services.oauth import clients, core
 
 _log = logging.getLogger(__name__)
 
@@ -52,12 +52,11 @@ _bearer = HTTPBearer(auto_error=False)
 # match what Caddy already serves in production.
 _RESOURCE_METADATA_URL = "https://mcp.quberi.com/.well-known/oauth-protected-resource"
 
-# The only client_id this endpoint accepts (design.md §2.2's minimal audience
-# check): a token that is not for this client_id was not issued for this
-# resource. See services/oauth/clients.py's CLIENTS registration and
-# schema.py's module docstring for why this string must never be reused for
-# a differently-scoped MCP registration.
-_MCP_CLIENT_ID = "quberi-mcp"
+# Which tools this endpoint accepts (design.md §2.2's minimal audience check): a token issued
+# to a tool that is not marked "may use the MCP server" in the oauth_clients table was not
+# issued for this resource. It is looked up on every request, so switching a tool off (or off
+# for MCP) cuts its access at once. See schema.py's module docstring for why a tool's id must
+# never be reused for a differently-scoped MCP registration.
 
 
 def _www_authenticate(error: str = "invalid_token") -> dict:
@@ -95,7 +94,10 @@ async def require_mcp_caller(
             detail={"code": exc.code, "message": exc.detail},
             headers=headers,
         ) from exc
-    if caller.client_id != _MCP_CLIENT_ID:
+    tool = await clients.resolve_client(session, caller.client_id)
+    # The lookup began a read transaction; close it so the handler can open its own.
+    await session.commit()
+    if tool is None or not tool.allow_mcp:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={

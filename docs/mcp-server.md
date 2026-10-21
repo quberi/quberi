@@ -18,16 +18,24 @@ browser — nothing about this requires a separate account or an API key.
 
 ## Configuring the MCP client
 
-Quberi's authorization server does not implement automatic client
-registration (neither
-[Dynamic Client Registration](https://www.rfc-editor.org/rfc/rfc7591) nor
-[Client ID Metadata Documents](https://modelcontextprotocol.io/specification/draft/basic/authorization/client-registration)).
-This is deliberate: which tools can start a login is a short, reviewed list
-in the server's own code
-(`apps/api/src/quberi_api/services/oauth/clients.py`), not something a
-client can grant itself by showing up. A client that tries to register
-itself automatically will fail before it ever shows you a sign-in page.
-
+Quberi's authorization server does not implement open automatic client
+registration: there is no
+[Dynamic Client Registration](https://www.rfc-editor.org/rfc/rfc7591), and it
+never fetches an arbitrary tool's
+[Client ID Metadata Document](https://modelcontextprotocol.io/specification/draft/basic/authorization/client-registration).
+This is deliberate: which tools can start a login is a short list that a
+platform admin maintains (the "Outside tools" page of the platform admin
+console, stored in the `oauth_clients` table), not something a client can
+grant itself by showing up. Each entry says which client ID the tool presents
+and the exact callback addresses it may be sent its code to. A tool that is
+not on the list fails before it ever shows you a sign-in page.
+Two kinds of entry exist. A **registered** client ID (`quberi-mcp`) is passed
+explicitly by the tool's user, as described below. A tool that identifies
+itself by the URL of its own metadata document (ChatGPT, Claude Code) can be
+listed by that URL, and the server then advertises
+`client_id_metadata_document_supported` so those tools connect with no ID to
+type. What is trusted about such a tool is only what the admin wrote down:
+nothing is fetched from its URL.
 What this means in practice: **pass the pre-registered client ID
 explicitly** when you add the server. For Codex CLI:
 

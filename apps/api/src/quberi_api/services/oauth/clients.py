@@ -1,17 +1,21 @@
 """Tools that are allowed to ask for access.
 
-Clients are registered here, in code, not by the tools themselves. There is no
-dynamic client registration: an unknown tool simply cannot start a login.
-Adding a tool is a reviewed code change.
+Which tools may ask, and where each may be sent its authorisation code, is configuration a
+platform admin edits (table ``oauth_clients``), not code. There is no dynamic client
+registration and nothing is fetched from a tool's URL: an unknown tool simply cannot start a
+login, and what we trust about a known one is exactly what the admin wrote down.
 
-All of them are *public* clients (a desktop tool cannot keep a secret), so the
-protection is PKCE plus a strict redirect rule: by default, the tool must
-receive the code on a loopback address on its own machine (RFC 8252), so a
-code can never be sent to a web address someone controls. The one exception
-is the hosted Claude apps' own fixed callback (see ``_CLAUDE_HOSTED_CALLBACK``
-below) — there the "someone" receiving the code is Anthropic's own
-infrastructure, which is the documented, intended architecture for those
-clients, not a third party.
+All of them are *public* clients (a desktop tool cannot keep a secret), so the protection is
+PKCE plus a strict redirect rule per tool. A rule is either ``loopback`` (the tool receives the
+code on its own machine, RFC 8252, so a code can never be sent to a web address someone
+controls) or an exact ``https://`` address. An https address is a different trust decision from
+loopback, since it hands the code to someone's server: the hosted Claude apps' fixed callback
+(Anthropic's own infrastructure) and ChatGPT's per-connection callback (OpenAI's) are the
+intended cases.
+
+A tool that identifies itself by the URL of a Client ID Metadata Document is matched on that
+URL; a URL containing ``{id}`` matches any value of one short opaque segment there, and an
+https redirect rule may use the same ``{id}`` to demand the same segment in the callback.
 """
 
 from __future__ import annotations
@@ -19,6 +23,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quberi_api.domain.oauth.models import OAuthClientConfig
 
 # What a grant can do. ``knowledge:read`` searches knowledge the person can
 # read; ``knowledge:write`` additionally saves notes into a space they can
@@ -46,77 +55,46 @@ DEFAULT_SCOPES = (SCOPE_KNOWLEDGE_READ,)
 
 @dataclass(frozen=True)
 class OAuthClient:
+    """A tool that may ask, as resolved for one request."""
+
+    # What the tool presented. For a URL pattern this is the concrete URL.
     client_id: str
     name: str
+    redirect_rules: tuple[str, ...]
+    # The value of ``{id}`` captured from the client id, when the client is a URL pattern.
+    captured_id: str | None = None
+    # Whether the MCP server accepts a token issued to this tool.
+    allow_mcp: bool = False
+
+    def redirect_allowed(self, uri: str) -> bool:
+        return redirect_allowed(self.redirect_rules, uri, captured_id=self.captured_id)
 
 
-CLIENTS: dict[str, OAuthClient] = {
-    "quberi-harness": OAuthClient(
-        client_id="quberi-harness", name="DeepSeek Harness"
-    ),
-    # A protocol-generic client: any tool that speaks MCP (Model Context
-    # Protocol), not a particular one. Codex is the first to connect, but
-    # this row is not named after it, so a second MCP client does not need
-    # to be squeezed into the same registration.
-    "quberi-mcp": OAuthClient(client_id="quberi-mcp", name="MCP client"),
-}
+KIND_REGISTERED = "registered"
+KIND_METADATA_URL = "metadata_url"
+KINDS = (KIND_REGISTERED, KIND_METADATA_URL)
+LOOPBACK = "loopback"
+ID_PLACEHOLDER = "{id}"
+# The opaque segment ``{id}`` stands for: short, URL-safe, no slashes.
+_ID_CLASS = r"[A-Za-z0-9_-]{1,64}"
+MAX_CLIENT_ID_LENGTH = 255
+
+_REGISTERED_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
-# RFC 8252 §7.3 recommends an IP literal over the ``localhost`` name (a name
-# can be redefined by a hosts file or a misconfigured resolver; an IP
-# literal cannot). We accept it anyway because Claude Code hardcodes the
-# ``localhost`` hostname for every MCP server's OAuth redirect_uri with no
-# way to configure it to send an IP literal instead — a confirmed upstream
-# bug/limitation (anthropics/claude-code#82096), not a client misconfiguration
-# we can ask a user to fix. ``urlsplit`` lowercases ``hostname``, so this
-# only ever matches the literal name, never a mixed-case bypass.
+# RFC 8252 §7.3 recommends an IP literal over the ``localhost`` name (a name can be redefined
+# by a hosts file or a misconfigured resolver; an IP literal cannot). We accept it anyway
+# because Claude Code hardcodes the ``localhost`` hostname for every MCP server's OAuth
+# redirect_uri with no way to configure an IP literal instead (anthropics/claude-code#82096).
+# ``urlsplit`` lowercases ``hostname``, so this only ever matches the literal name.
 _CALLBACK_PATH = "/callback"
-# Some MCP clients (observed with Codex's rmcp-client) append an opaque,
-# per-server "callback ID" segment to the loopback path instead of using a
-# bare ``/callback`` — this is how they disambiguate which locally-running
-# OAuth flow a redirect belongs to when more than one is in flight, and it
-# is independent of whether the authorization server implements RFC 9207
-# issuer-bound callbacks (the id is generated client-side either way).
-# Accepting this shape (rather than only the bare path) means a new MCP
-# client that uses the same pattern works without a code change here; it
-# is not a Codex-specific carve-out. The suffix itself stays tightly
-# bounded — URL-safe characters only, short — so this still only ever
-# matches "loopback callback plus an opaque id", never an arbitrary path.
+# Some MCP clients (observed with Codex's rmcp-client) append an opaque, per-server "callback
+# ID" segment to the loopback path. The suffix stays tightly bounded: URL-safe characters only,
+# short.
 _CALLBACK_ID_RE = re.compile(r"^/callback/[A-Za-z0-9_-]{1,64}$")
 
-# The one non-loopback exception. The hosted Claude apps (claude.ai on the
-# web, Desktop, mobile, Cowork) are not a local process receiving a code on
-# the user's own machine — Anthropic's documented architecture has the
-# user's browser deliver the code to Anthropic's own server at this fixed
-# address, which Anthropic's client then exchanges for tokens (see
-# https://claude.com/docs/connectors/building/authentication, "Callback
-# URLs": "For the hosted Claude apps ... register exactly this redirect
-# URI"). This is a different trust decision from the loopback rule above —
-# it means trusting Anthropic's infrastructure with the authorization code,
-# not just the user's own machine — so it is its own named constant rather
-# than a pattern, and it is the only address ever compared against as an
-# exact string rather than a loopback-shaped host/port/path combination.
-# Claude Code (the CLI) does NOT use this: it is a native client and uses
-# the ordinary loopback redirect above, like every other MCP CLI.
-_CLAUDE_HOSTED_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
 
-
-def get_client(client_id: str) -> OAuthClient | None:
-    return CLIENTS.get(client_id)
-
-
-def is_valid_redirect_uri(uri: str) -> bool:
-    """A loopback ``/callback`` (optionally ``/callback/<opaque-id>``), or the
-    hosted Claude apps' fixed callback.
-
-    The port is chosen by the tool at run time (RFC 8252), so it is not
-    pinned; everything else about a loopback address must match exactly.
-    """
-
-    if not uri or len(uri) > 200:
-        return False
-    if uri == _CLAUDE_HOSTED_CALLBACK:
-        return True
+def _loopback_ok(uri: str) -> bool:
     try:
         parts = urlsplit(uri)
         port = parts.port
@@ -135,12 +113,173 @@ def is_valid_redirect_uri(uri: str) -> bool:
     )
 
 
+def redirect_allowed(rules: tuple[str, ...] | list[str], uri: str, *, captured_id: str | None = None) -> bool:
+    """Is ``uri`` one of the places this tool may be sent its code?
+
+    The port of a loopback address is chosen by the tool at run time (RFC 8252), so it is not
+    pinned; everything else must match exactly. An https rule is compared as an exact string,
+    after replacing ``{id}`` with the segment captured from the client id (a rule that needs
+    ``{id}`` for a client without one never matches).
+    """
+
+    if not uri or len(uri) > 200:
+        return False
+    for rule in rules:
+        if rule == LOOPBACK:
+            if _loopback_ok(uri):
+                return True
+            continue
+        if ID_PLACEHOLDER in rule:
+            if captured_id is None:
+                continue
+            rule = rule.replace(ID_PLACEHOLDER, captured_id)
+        if uri == rule:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# What an admin may write
+# ---------------------------------------------------------------------------
+
+
+class ClientConfigError(ValueError):
+    """The configuration an admin typed is not acceptable."""
+
+
+def _check_https_url(value: str, *, what: str, allow_id: bool) -> None:
+    if len(value) > MAX_CLIENT_ID_LENGTH:
+        raise ClientConfigError(f"{what} is too long")
+    if "*" in value or " " in value:
+        raise ClientConfigError(f"{what} may not contain wildcards or spaces")
+    placeholder_count = value.count(ID_PLACEHOLDER)
+    if placeholder_count and not allow_id:
+        raise ClientConfigError(f"{what} may not contain {ID_PLACEHOLDER}")
+    if placeholder_count > 1:
+        raise ClientConfigError(f"{what} may contain {ID_PLACEHOLDER} at most once")
+    probe = value.replace(ID_PLACEHOLDER, "x")
+    if "{" in probe or "}" in probe:
+        raise ClientConfigError(f"{what} contains braces other than {ID_PLACEHOLDER}")
+    try:
+        parts = urlsplit(probe)
+        port = parts.port
+    except ValueError as exc:
+        raise ClientConfigError(f"{what} is not a valid address") from exc
+    if parts.scheme != "https" or not parts.hostname:
+        raise ClientConfigError(f"{what} must be an https:// address")
+    if parts.username or parts.password or parts.query or parts.fragment:
+        raise ClientConfigError(f"{what} may not carry credentials, a query or a fragment")
+    if port is not None:
+        raise ClientConfigError(f"{what} may not name a port")
+    host = parts.hostname
+    if host.replace(".", "").isdigit() or ":" in host or "." not in host:
+        raise ClientConfigError(f"{what} must use a real domain name, not an IP address")
+    if ID_PLACEHOLDER in value:
+        path_start = value.find("/", len("https://"))
+        if path_start == -1 or value.index(ID_PLACEHOLDER) < path_start:
+            raise ClientConfigError(f"{ID_PLACEHOLDER} may only appear in the path of {what}")
+
+
+def validate_client_config(client_id: str, kind: str, redirect_uris: list[str]) -> tuple[str, list[str]]:
+    """Return the cleaned ``(client_id, redirect_uris)`` or raise :class:`ClientConfigError`."""
+
+    client_id = (client_id or "").strip()
+    if kind not in KINDS:
+        raise ClientConfigError("unknown kind")
+    if kind == KIND_REGISTERED:
+        if not _REGISTERED_ID_RE.match(client_id):
+            raise ClientConfigError(
+                "a registered client id is 1 to 64 letters, digits, dots, dashes or underscores"
+            )
+    else:
+        _check_https_url(client_id, what="the client id URL", allow_id=True)
+    rules: list[str] = []
+    for raw in redirect_uris or []:
+        rule = (raw or "").strip()
+        if not rule:
+            continue
+        if rule != LOOPBACK:
+            _check_https_url(rule, what=f"redirect {rule!r}", allow_id=True)
+            if ID_PLACEHOLDER in rule and ID_PLACEHOLDER not in client_id:
+                raise ClientConfigError(
+                    f"redirect {rule!r} uses {ID_PLACEHOLDER} but the client id does not"
+                )
+        if rule not in rules:
+            rules.append(rule)
+    if not rules:
+        raise ClientConfigError("at least one redirect rule is required")
+    return client_id, rules
+
+
+# ---------------------------------------------------------------------------
+# Lookup
+# ---------------------------------------------------------------------------
+
+
+def _pattern(client_id: str) -> re.Pattern[str]:
+    return re.compile("^" + re.escape(client_id).replace(re.escape(ID_PLACEHOLDER), f"(?P<id>{_ID_CLASS})") + "$")
+
+
+def match_client(rows: list[OAuthClientConfig], client_id: str) -> OAuthClient | None:
+    """The enabled row ``client_id`` names, exact matches first, then ``{id}`` patterns."""
+
+    if not client_id or len(client_id) > MAX_CLIENT_ID_LENGTH:
+        return None
+    for row in rows:
+        if row.enabled and ID_PLACEHOLDER not in row.client_id and row.client_id == client_id:
+            return OAuthClient(
+                client_id, row.name, tuple(row.redirect_uris or ()), allow_mcp=row.allow_mcp
+            )
+    for row in rows:
+        if row.enabled and ID_PLACEHOLDER in row.client_id:
+            found = _pattern(row.client_id).match(client_id)
+            if found:
+                return OAuthClient(
+                    client_id,
+                    row.name,
+                    tuple(row.redirect_uris or ()),
+                    captured_id=found.group("id"),
+                    allow_mcp=row.allow_mcp,
+                )
+    return None
+
+
+async def list_configured(session: AsyncSession) -> list[OAuthClientConfig]:
+    return list(
+        (
+            await session.execute(
+                select(OAuthClientConfig).order_by(OAuthClientConfig.created_at, OAuthClientConfig.client_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def resolve_client(session: AsyncSession, client_id: str) -> OAuthClient | None:
+    """The tool a request names, or ``None`` if it is unknown or switched off."""
+
+    if not client_id or len(client_id) > MAX_CLIENT_ID_LENGTH:
+        return None
+    return match_client(await list_configured(session), client_id)
+
+
+async def metadata_documents_supported(session: AsyncSession) -> bool:
+    """Is any tool that names itself by metadata URL switched on?
+
+    Advertised in the server metadata, because some clients (Claude Code) switch to their
+    metadata URL as soon as the server says it understands one.
+    """
+
+    return any(r.enabled and r.kind == KIND_METADATA_URL for r in await list_configured(session))
+
+
 def normalise_scope(scope: str | None) -> str | None:
     """The requested scopes if all are supported, else ``None``.
 
-    Naming no scope grants :data:`DEFAULT_SCOPES` (read-only) rather than
-    everything supported: write must be requested explicitly, so widening the
-    set of supported scopes never retroactively widens an existing grant.
+    Naming no scope grants :data:`DEFAULT_SCOPES` (read-only) rather than everything supported:
+    write must be requested explicitly, so widening the set of supported scopes never
+    retroactively widens an existing grant.
     """
 
     requested = [s for s in (scope or "").split() if s]
@@ -149,3 +288,61 @@ def normalise_scope(scope: str | None) -> str | None:
     if any(s not in SUPPORTED_SCOPES for s in requested):
         return None
     return " ".join(sorted(set(requested)))
+
+
+# ---------------------------------------------------------------------------
+# What people tried that we did not recognise
+# ---------------------------------------------------------------------------
+#
+# A tool we have not configured fails with "unknown application". The only way for an admin to
+# learn what such a tool calls itself (the hosted Claude apps' metadata URL, say) is to see the
+# attempt, so the last few are kept for the platform admin console. Only attempts by a signed-in
+# person are kept (the consent page), the list is capped, and it expires on its own.
+
+import json as _json
+import time as _time
+
+REJECTED_KEY = "quberi:oauth:rejected-clients"
+REJECTED_KEEP = 30
+REJECTED_TTL_SECONDS = 30 * 24 * 3600
+
+
+def _printable(value: str, limit: int) -> str:
+    return "".join(ch for ch in value if ch.isprintable())[:limit]
+
+
+async def record_rejected(redis, *, client_id: str, redirect_uri: str, reason: str) -> None:
+    """Remember a refused attempt (best effort: never let this break the refusal)."""
+
+    try:
+        member = _json.dumps(
+            {
+                "client_id": _printable(client_id, MAX_CLIENT_ID_LENGTH),
+                "redirect_uri": _printable(redirect_uri, 200),
+                "reason": reason,
+            },
+            sort_keys=True,
+        )
+        await redis.zadd(REJECTED_KEY, {member: _time.time()})
+        await redis.zremrangebyrank(REJECTED_KEY, 0, -(REJECTED_KEEP + 1))
+        await redis.expire(REJECTED_KEY, REJECTED_TTL_SECONDS)
+    except Exception:  # noqa: BLE001 - diagnostics only
+        return
+
+
+async def recent_rejected(redis) -> list[dict]:
+    """The latest refused attempts, newest first: ``client_id``, ``redirect_uri``, ``reason``, ``at``."""
+
+    try:
+        rows = await redis.zrevrange(REJECTED_KEY, 0, REJECTED_KEEP - 1, withscores=True)
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[dict] = []
+    for member, score in rows:
+        try:
+            item = _json.loads(member)
+        except ValueError:
+            continue
+        item["at"] = float(score)
+        out.append(item)
+    return out

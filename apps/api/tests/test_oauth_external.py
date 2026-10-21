@@ -190,7 +190,9 @@ def _error_code(exc_info) -> str:
     ],
 )
 def test_redirect_must_be_a_loopback_callback(uri, ok):
-    assert clients.is_valid_redirect_uri(uri) is ok
+    # The rules the built-in ``quberi-mcp`` tool is configured with.
+    rules = ("loopback", "https://claude.ai/api/mcp/auth_callback")
+    assert clients.redirect_allowed(rules, uri) is ok
 
 
 def test_pkce_only_accepts_the_matching_s256_verifier():

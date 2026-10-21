@@ -70,7 +70,7 @@ class ConsentView(BaseModel):
 class AuthorizeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    client_id: str = Field(min_length=1, max_length=64)
+    client_id: str = Field(min_length=1, max_length=clients.MAX_CLIENT_ID_LENGTH)
     redirect_uri: str = Field(min_length=1, max_length=200)
     scope: Optional[str] = Field(default=None, max_length=200)
     state: str = Field(default="", max_length=512)
@@ -101,13 +101,23 @@ def _require_real_user(caller: CallerContext) -> None:
         )
 
 
-def _validate_client(
-    client_id: str, redirect_uri: str, scope: Optional[str]
+async def _validate_client(
+    session: AsyncSession,
+    infra: Infrastructure,
+    client_id: str,
+    redirect_uri: str,
+    scope: Optional[str],
 ) -> tuple[clients.OAuthClient, str]:
-    client = clients.get_client(client_id)
+    client = await clients.resolve_client(session, client_id)
     if client is None:
+        await clients.record_rejected(
+            infra.redis, client_id=client_id, redirect_uri=redirect_uri, reason="unknown_client"
+        )
         raise _bad_request("unknown application")
-    if not clients.is_valid_redirect_uri(redirect_uri):
+    if not client.redirect_allowed(redirect_uri):
+        await clients.record_rejected(
+            infra.redis, client_id=client_id, redirect_uri=redirect_uri, reason="redirect_not_allowed"
+        )
         raise _bad_request("the redirect address is not allowed")
     normalised = clients.normalise_scope(scope)
     if normalised is None:
@@ -122,9 +132,10 @@ async def consent(
     scope: Optional[str] = None,
     caller: CallerContext = Depends(require_caller),
     session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
 ) -> ConsentView:
     _require_real_user(caller)
-    client, normalised = _validate_client(client_id, redirect_uri, scope)
+    client, normalised = await _validate_client(session, infra, client_id, redirect_uri, scope)
 
     mine = [
         o
@@ -182,8 +193,8 @@ async def authorize(
     infra: Infrastructure = Depends(get_infrastructure),
 ) -> AuthorizeResponse:
     _require_real_user(caller)
-    client, scope = _validate_client(
-        payload.client_id, payload.redirect_uri, payload.scope
+    client, scope = await _validate_client(
+        session, infra, payload.client_id, payload.redirect_uri, payload.scope
     )
     if payload.code_challenge_method != "S256" or not core.is_valid_challenge(
         payload.code_challenge
@@ -311,7 +322,9 @@ async def token(
         form = await request.form()
         grant_type = str(form.get("grant_type", ""))
         client_id = str(form.get("client_id", ""))
-        client = clients.get_client(client_id)
+        client = await clients.resolve_client(session, client_id)
+        # The lookup began a read transaction; close it so the exchange can open its own.
+        await session.commit()
         if client is None:
             raise core.OAuthError("invalid_client", "unknown application", status=401)
 
@@ -372,7 +385,9 @@ well_known_router = APIRouter(tags=["oauth"])
 
 
 @well_known_router.get("/.well-known/oauth-authorization-server")
-async def authorization_server_metadata() -> JSONResponse:
+async def authorization_server_metadata(
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
     """RFC 8414 metadata — every endpoint here lives on one origin (``web``).
 
     ``issuer``/``token_endpoint``/``revocation_endpoint`` used to be built
@@ -393,17 +408,22 @@ async def authorization_server_metadata() -> JSONResponse:
 
     settings = get_settings()
     web = settings.web_origin or ""
-    return JSONResponse(
-        content={
-            "issuer": web,
-            "authorization_endpoint": f"{web}/oauth/authorize",
-            "token_endpoint": f"{web}/api/v1/oauth/token",
-            "revocation_endpoint": f"{web}/api/v1/oauth/revoke",
-            "response_types_supported": ["code"],
-            "grant_types_supported": ["authorization_code", "refresh_token"],
-            "code_challenge_methods_supported": ["S256"],
-            "token_endpoint_auth_methods_supported": ["none"],
-            "scopes_supported": list(clients.SUPPORTED_SCOPES),
-        },
-        headers={"Cache-Control": "public, max-age=3600"},
-    )
+    # Say we understand client ID metadata documents only while at least one such tool is
+    # switched on: clients such as Claude Code move to their metadata URL as soon as we do.
+    supports_metadata_documents = await clients.metadata_documents_supported(session)
+    await session.commit()
+    document = {
+        "issuer": web,
+        "authorization_endpoint": f"{web}/oauth/authorize",
+        "token_endpoint": f"{web}/api/v1/oauth/token",
+        "revocation_endpoint": f"{web}/api/v1/oauth/revoke",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["none"],
+        "scopes_supported": list(clients.SUPPORTED_SCOPES),
+    }
+    if supports_metadata_documents:
+        document["client_id_metadata_document_supported"] = True
+    # Short, because turning a tool on or off should show up quickly.
+    return JSONResponse(content=document, headers={"Cache-Control": "public, max-age=60"})

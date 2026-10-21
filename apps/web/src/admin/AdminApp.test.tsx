@@ -19,6 +19,7 @@ vi.mock('./api', async (importOriginal) => {
 vi.mock('./OverviewView', () => ({ OverviewView: () => <div>overview-view</div> }))
 vi.mock('./OrganizationsView', () => ({ OrganizationsView: () => <div>orgs-view</div> }))
 vi.mock('./ModelsView', () => ({ ModelsView: () => <div>models-view</div> }))
+vi.mock('./ClientsView', () => ({ ClientsView: () => <div>clients-view</div> }))
 
 import { AdminApp } from './AdminApp'
 

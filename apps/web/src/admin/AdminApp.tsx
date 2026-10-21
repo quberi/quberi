@@ -3,6 +3,7 @@ import {
   Cpu,
   LayoutDashboard,
   LogOut,
+  Plug,
   RefreshCw,
   ShieldCheck,
   Users,
@@ -20,6 +21,7 @@ import {
   type OrganizationStatsRow,
   type PlatformOverview,
 } from './api'
+import { ClientsView } from './ClientsView'
 import { ModelsView } from './ModelsView'
 import { OrganizationsView } from './OrganizationsView'
 import { OverviewView } from './OverviewView'
@@ -28,12 +30,13 @@ const TOKEN_KEY = 'quberi.admin.token'
 // Set while the signed-in account still has to choose a new password.
 const MUST_CHANGE_KEY = 'quberi.admin.mustChange'
 
-type AdminView = 'overview' | 'organizations' | 'models'
+type AdminView = 'overview' | 'organizations' | 'models' | 'clients'
 
 const NAV_ITEMS: { key: AdminView; label: string; icon: typeof LayoutDashboard }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
   { key: 'organizations', label: 'Organizations', icon: Users },
   { key: 'models', label: 'Models', icon: Cpu },
+  { key: 'clients', label: 'Outside tools', icon: Plug },
 ]
 
 export function AdminApp() {
@@ -353,6 +356,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: () => void 
           {!loading && !error && view === 'models' && (
             <ModelsView token={token} modelCatalog={modelCatalog} />
           )}
+          {!loading && !error && view === 'clients' && <ClientsView token={token} />}
         </main>
       </div>
     </div>

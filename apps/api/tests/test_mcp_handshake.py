@@ -325,3 +325,87 @@ async def test_an_unknown_method_is_method_not_found(http, db_session, redis_cli
     body = resp.json()
     assert body["error"]["code"] == protocol.METHOD_NOT_FOUND
     assert body["id"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Which tools the MCP server accepts is configuration, checked on every request
+# ---------------------------------------------------------------------------
+
+CHATGPT_ID = "https://chatgpt.com/oauth/abc123/client.json"
+CHATGPT_CALLBACK = "https://chatgpt.com/connector/oauth/abc123"
+
+
+async def _chatgpt_tokens(db, redis, boot):
+    verifier, challenge = _pkce()
+    code = await core.create_authorization_code(
+        redis,
+        client_id=CHATGPT_ID,
+        redirect_uri=CHATGPT_CALLBACK,
+        code_challenge=challenge,
+        user_id=boot.user_id,
+        organization_id=boot.organization_id,
+        scope="knowledge:read",
+    )
+    await db.commit()
+    tokens = await core.exchange_code(
+        db,
+        redis,
+        code=code,
+        code_verifier=verifier,
+        redirect_uri=CHATGPT_CALLBACK,
+        client_id=CHATGPT_ID,
+        client_name="ChatGPT",
+    )
+    await db.commit()
+    return tokens
+
+
+async def _tools_list(http, tokens):
+    return await http.post(
+        "/", headers=_auth(tokens), json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+    )
+
+
+async def test_a_tool_that_names_itself_by_url_is_accepted_on_the_mcp_server(
+    http, db_session, redis_client
+):
+    boot = await _org(db_session)
+    tokens = await _chatgpt_tokens(db_session, redis_client, boot)
+
+    assert (await _tools_list(http, tokens)).status_code == 200
+
+
+async def test_switching_a_tool_off_cuts_its_mcp_access_at_once(http, db_session, redis_client):
+    from sqlalchemy import update
+
+    from quberi_api.domain.oauth.models import OAuthClientConfig
+
+    boot = await _org(db_session)
+    tokens = await _chatgpt_tokens(db_session, redis_client, boot)
+    assert (await _tools_list(http, tokens)).status_code == 200
+
+    await db_session.execute(
+        update(OAuthClientConfig).where(OAuthClientConfig.client_id == CHATGPT_ID.replace("abc123", "{id}")).values(enabled=False)
+    )
+    await db_session.commit()
+
+    resp = await _tools_list(http, tokens)
+    assert resp.status_code == 401
+    assert "resource_metadata=" in resp.headers["www-authenticate"]
+
+
+async def test_a_tool_not_marked_for_mcp_is_refused_even_though_it_is_switched_on(
+    http, db_session, redis_client
+):
+    from sqlalchemy import update
+
+    from quberi_api.domain.oauth.models import OAuthClientConfig
+
+    boot = await _org(db_session)
+    tokens = await _chatgpt_tokens(db_session, redis_client, boot)
+    await db_session.execute(
+        update(OAuthClientConfig).where(OAuthClientConfig.client_id == CHATGPT_ID.replace("abc123", "{id}")).values(allow_mcp=False)
+    )
+    await db_session.commit()
+
+    assert (await _tools_list(http, tokens)).status_code == 401
