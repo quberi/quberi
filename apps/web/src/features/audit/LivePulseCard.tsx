@@ -17,9 +17,10 @@ import {
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import type { TFunction } from 'i18next'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { eventSentence } from './sentence'
+import { eventSentence, isLookOnlyAction } from './sentence'
 import { useRecentEvents } from './useRecentEvents'
 import type { RecentEvent } from './types'
 import { useFormatDate } from '../../i18n/formatDate'
@@ -39,7 +40,14 @@ import { useFormatDate } from '../../i18n/formatDate'
  */
 export function LivePulseCard() {
   const { t } = useTranslation()
-  const { state, reload } = useRecentEvents({ limit: 15 })
+  // Fetch more than is shown: the looking-only events are hidden by default and would
+  // otherwise leave the list nearly empty.
+  const { state, reload } = useRecentEvents({ limit: 60 })
+  const [showLooks, setShowLooks] = useState(false)
+  const shown =
+    state.kind === 'ready'
+      ? (showLooks ? state.items : state.items.filter((e) => !isLookOnlyAction(e.action))).slice(0, 15)
+      : []
 
   return (
     <div className="live-pulse-card">
@@ -48,6 +56,14 @@ export function LivePulseCard() {
           <Activity size={13} />
           <span>{t('audit.recent.title')}</span>
         </span>
+        <label className="live-pulse-toggle">
+          <input
+            checked={showLooks}
+            onChange={(e) => setShowLooks(e.target.checked)}
+            type="checkbox"
+          />
+          <span>{t('audit.recent.showLooks')}</span>
+        </label>
         <button
           aria-label={t('audit.recent.refresh')}
           className="live-pulse-refresh"
@@ -70,12 +86,12 @@ export function LivePulseCard() {
           {t('audit.recent.loadError')}
         </div>
       )}
-      {state.kind === 'ready' && state.items.length === 0 && (
+      {state.kind === 'ready' && shown.length === 0 && (
         <div className="live-pulse-empty">{t('audit.recent.empty')}</div>
       )}
-      {state.kind === 'ready' && state.items.length > 0 && (
+      {state.kind === 'ready' && shown.length > 0 && (
         <ul className="live-pulse-list">
-          {state.items.map((ev) => (
+          {shown.map((ev) => (
             <PulseRow event={ev} key={ev.id} />
           ))}
         </ul>

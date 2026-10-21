@@ -23,3 +23,26 @@ export function eventSentence(t: TFunction, event: RecentEvent): string {
     defaultValue: fallback,
   })
 }
+
+/**
+ * Events that only record somebody looking at something or chatting, not a change to the
+ * organisation. The Overview feed hides them by default so the changes that matter (access
+ * granted, a member deactivated, a rule added, a file uploaded) are not buried under them.
+ */
+const LOOK_ONLY_ACTIONS = new Set([
+  'document.access_checked',
+  'space.documents_listed_for_access',
+  'knowledge.external_search',
+  'knowledge.external_image_search',
+  'knowledge.external_list',
+  'conversation.created',
+  'conversation.renamed',
+  'message.sent',
+  'message.send_cancelled',
+  'document.upload_duplicate',
+  'knowledge.external_upload_duplicate',
+])
+
+export function isLookOnlyAction(action: string): boolean {
+  return LOOK_ONLY_ACTIONS.has(action)
+}

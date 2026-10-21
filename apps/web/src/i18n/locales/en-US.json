@@ -37,6 +37,44 @@
       "description": "The newest activity across your organization."
     }
   },
+  "overview": {
+      "stat": {
+        "members": "Members",
+        "membersActive": "{{count}} active",
+        "membersInvited": "{{count}} invited",
+        "membersSuspended": "{{count}} deactivated",
+        "spaces": "Spaces",
+        "spacesEnterprise": "{{count}} enterprise",
+        "spacesTeam": "{{count}} team",
+        "spacesPersonal": "{{count}} personal",
+        "spacesArchived": "{{count}} archived",
+        "documents": "Documents",
+        "docsIndexed": "{{count}} indexed",
+        "docsWaiting": "{{count}} waiting",
+        "docsFailed": "{{count}} failed",
+        "external": "Connected outside tools",
+        "externalCalls": "{{count}} calls in the last 7 days"
+      },
+      "attention": {
+        "title": "Needs attention",
+        "go": "Take a look",
+        "pending_reviews": "{{count}} uploads are waiting for review",
+        "access_requests": "{{count}} space access requests are waiting",
+        "index_failed": "{{count}} documents failed to index",
+        "suspended_owning_spaces": "{{count}} deactivated members still own spaces nobody has taken over{{names}}",
+        "org_wide_spaces": "{{count}} spaces are open to the whole organisation{{names}}"
+      },
+      "trend": {
+        "title": "Last {{days}} days",
+        "documents": "New documents",
+        "questions": "Questions asked"
+      },
+      "cited": {
+        "title": "Most cited documents, last {{days}} days",
+        "empty": "No document has been cited in an answer in this period.",
+        "note": "Counted by answers that cite the document; several citations in one answer count once. Only enterprise-space documents and ones you can read yourself are listed."
+      }
+    },
   "myModels": {
     "eyebrow": "My models",
     "title": "My models",
@@ -378,6 +416,7 @@
   "audit": {
     "recent": {
       "title": "Live pulse",
+      "showLooks": "Show look-only events",
       "refresh": "Refresh",
       "loading": "Loading events…",
       "loadError": "Could not load recent events.",

@@ -37,6 +37,44 @@
       "description": "组织内最新的活动动态。"
     }
   },
+  "overview": {
+      "stat": {
+        "members": "成员",
+        "membersActive": "{{count}} 位活跃",
+        "membersInvited": "{{count}} 位待加入",
+        "membersSuspended": "{{count}} 位已停用",
+        "spaces": "空间",
+        "spacesEnterprise": "企业 {{count}}",
+        "spacesTeam": "团队 {{count}}",
+        "spacesPersonal": "个人 {{count}}",
+        "spacesArchived": "已归档 {{count}}",
+        "documents": "文档",
+        "docsIndexed": "{{count}} 份已索引",
+        "docsWaiting": "{{count}} 份待索引",
+        "docsFailed": "{{count}} 份失败",
+        "external": "已连接的外部工具",
+        "externalCalls": "近 7 天调用 {{count}} 次"
+      },
+      "attention": {
+        "title": "需要处理",
+        "go": "去处理",
+        "pending_reviews": "{{count}} 份上传在等待审核",
+        "access_requests": "{{count}} 条空间访问申请待处理",
+        "index_failed": "{{count}} 份文档索引失败",
+        "suspended_owning_spaces": "{{count}} 位已停用的成员名下还有空间没有移交{{names}}",
+        "org_wide_spaces": "{{count}} 个空间对整个企业开放{{names}}"
+      },
+      "trend": {
+        "title": "近 {{days}} 天",
+        "documents": "新增文档",
+        "questions": "提问次数"
+      },
+      "cited": {
+        "title": "近 {{days}} 天被引用最多的文档",
+        "empty": "这段时间还没有文档被回答引用。",
+        "note": "按回答引用的次数统计，同一条回答引用多次只算一次。只列出企业空间的文档，以及你自己能读的文档。"
+      }
+    },
   "myModels": {
     "eyebrow": "我的模型",
     "title": "我的模型",
@@ -378,6 +416,7 @@
   "audit": {
     "recent": {
       "title": "组织脉搏",
+      "showLooks": "显示查看类事件",
       "refresh": "刷新",
       "loading": "加载事件中…",
       "loadError": "加载事件失败。",

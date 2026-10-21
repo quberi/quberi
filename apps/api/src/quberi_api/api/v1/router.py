@@ -26,6 +26,7 @@ from quberi_api.api.v1.organizations.members import router as org_members_router
 from quberi_api.api.v1.organizations.mine import mine_router
 from quberi_api.api.v1.organizations.offboarding import offboarding_router
 from quberi_api.api.v1.organizations.org_units import org_units_router
+from quberi_api.api.v1.organizations.overview import overview_router
 from quberi_api.api.v1.organizations.positions import positions_router
 from quberi_api.api.v1.organizations.settings import organization_settings_router
 from quberi_api.api.v1.platform import router as platform_router
@@ -56,6 +57,7 @@ router.include_router(positions_router)
 router.include_router(organization_settings_router)
 router.include_router(groups_router)
 router.include_router(recent_events_router)
+router.include_router(overview_router)
 router.include_router(document_sources_router)
 router.include_router(ai_providers_router)
 router.include_router(feishu_router)

@@ -13,12 +13,12 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AuditPanel } from '../features/audit/AuditPanel'
-import { LivePulseCard } from '../features/audit/LivePulseCard'
 import { useAuth } from '../features/auth/AuthContext'
 import { IntegrationsPanel } from '../features/integrations/IntegrationsPanel'
 import { MembersPanel } from '../features/members/MembersPanel'
 import { ModelSettingsPanel } from '../features/settings/ModelSettingsPanel'
 import { OrganizationPanel } from '../features/organization/OrganizationPanel'
+import { OverviewDashboard } from '../features/overview/OverviewDashboard'
 import { OrgSpacesPanel } from '../features/spaces/OrgSpacesPanel'
 
 export type AdminView =
@@ -132,16 +132,22 @@ export function AdminConsole({ onExit }: { onExit: () => void }) {
       </header>
 
       <main className="main-content main-content-wide">
-        <AdminViewSwitch view={view} />
+        <AdminViewSwitch onNavigate={setView} view={view} />
       </main>
     </div>
   )
 }
 
-function AdminViewSwitch({ view }: { view: AdminView }): ReactNode {
+function AdminViewSwitch({
+  view,
+  onNavigate,
+}: {
+  view: AdminView
+  onNavigate: (to: AdminView) => void
+}): ReactNode {
   switch (view) {
     case 'overview':
-      return <OverviewPanel />
+      return <OverviewDashboard onNavigate={onNavigate} />
     case 'organization':
       return <OrganizationPanel />
     case 'members':
@@ -155,26 +161,4 @@ function AdminViewSwitch({ view }: { view: AdminView }): ReactNode {
     case 'audit':
       return <AuditPanel />
   }
-}
-
-/**
- * Admin console landing page. Just the org-wide activity feed — everything
- * else that used to live on the workspace's "总览/Overview" (product hero,
- * a duplicate knowledge-space list, and a hard-coded "platform
- * capabilities / what this slice proves" block) was either redundant with
- * other pages or stale developer-milestone copy, not real admin content.
- */
-function OverviewPanel() {
-  const { t } = useTranslation()
-  return (
-    <section className="panel">
-      <div className="panel-heading">
-        <div>
-          <span className="section-label">{t('adminConsole.nav.overview')}</span>
-          <p>{t('adminConsole.overview.description')}</p>
-        </div>
-      </div>
-      <LivePulseCard />
-    </section>
-  )
 }

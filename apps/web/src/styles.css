@@ -421,6 +421,72 @@ button { font: inherit; }
 .chip-preset-collaborative { background: rgba(139, 108, 243, .16); color: var(--purple-700); border-color: rgba(139, 108, 243, .3); }
 .chip-preset-managed       { background: rgba(53, 198, 143, .14); color: #1e8a5f; border-color: rgba(53, 198, 143, .28); }
 
+/* Admin Overview */
+.overview { display: grid; gap: 14px; align-content: start; }
+.overview h3 { margin: 0; font-size: 13px; color: #2a1e57; }
+.overview-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.overview-stat {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(139, 108, 243, .2);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(247, 244, 255, .9), #fff);
+}
+.overview-stat-link { cursor: pointer; transition: border-color .18s ease, box-shadow .18s ease; }
+.overview-stat-link:hover { border-color: rgba(139, 108, 243, .5); box-shadow: 0 4px 14px rgba(139, 108, 243, .12); }
+.overview-stat-warn { border-color: rgba(214, 69, 69, .4); }
+.overview-stat-label { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: #857aab; }
+.overview-stat-value { font-size: 28px; line-height: 1.1; letter-spacing: -.02em; color: #2a1e57; }
+.overview-stat-sub { display: flex; flex-wrap: wrap; gap: 2px 10px; color: #6b6b74; font-size: 11.5px; line-height: 1.5; }
+.overview-attention {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(232, 168, 56, .45);
+  border-radius: 12px;
+  background: rgba(249, 213, 92, .12);
+}
+.overview-attention h3 { display: inline-flex; align-items: center; gap: 6px; color: #8a5a00; }
+.overview-attention ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.overview-attention li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 12.5px; }
+.overview-attention .link-button { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.overview-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 12px 14px;
+  border: 1px solid rgba(139, 108, 243, .2);
+  border-radius: 12px;
+  background: #fff;
+}
+.overview-trends { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.trend-bars { margin: 0; display: grid; gap: 6px; }
+.trend-bars figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 11.5px; color: #6b6b74; }
+.trend-bars figcaption strong { font-size: 18px; color: #2a1e57; }
+.trend-bars-plot { display: flex; align-items: flex-end; gap: 3px; height: 64px; }
+.trend-bar { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background: rgba(139, 108, 243, .55); }
+.trend-bar-zero { background: rgba(139, 108, 243, .18); }
+.trend-bar-today { background: #7356e8; }
+.trend-bars-axis { display: flex; justify-content: space-between; font-size: 10.5px; color: #a4a1b4; }
+.overview-cited { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.overview-cited li { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 10px; align-items: center; }
+.overview-cited-name { display: grid; min-width: 0; }
+.overview-cited-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.overview-cited-name small { color: #857aab; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-cited-count { display: flex; align-items: center; gap: 8px; }
+.overview-cited-bar { flex: 1; height: 6px; border-radius: 999px; background: rgba(139, 108, 243, .14); overflow: hidden; }
+.overview-cited-bar span { display: block; height: 100%; border-radius: 999px; background: #7356e8; }
+.overview-cited-count b { min-width: 22px; text-align: right; font-size: 12.5px; color: #2a1e57; }
+.overview-empty, .overview-note { margin: 0; color: #857aab; font-size: 11.5px; line-height: 1.5; }
+.live-pulse-toggle { margin-left: auto; margin-right: 6px; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #857aab; cursor: pointer; }
+.live-pulse-toggle input { width: auto; margin: 0; }
+@media (max-width: 640px) { .overview-trends { grid-template-columns: 1fr; } }
+
 /* Live pulse card */
 .live-pulse-card {
   display: flex;
