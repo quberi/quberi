@@ -12,6 +12,7 @@ be sent to a web address someone controls.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -58,6 +59,18 @@ CLIENTS: dict[str, OAuthClient] = {
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1"})
 _CALLBACK_PATH = "/callback"
+# Some MCP clients (observed with Codex's rmcp-client) append an opaque,
+# per-server "callback ID" segment to the loopback path instead of using a
+# bare ``/callback`` — this is how they disambiguate which locally-running
+# OAuth flow a redirect belongs to when more than one is in flight, and it
+# is independent of whether the authorization server implements RFC 9207
+# issuer-bound callbacks (the id is generated client-side either way).
+# Accepting this shape (rather than only the bare path) means a new MCP
+# client that uses the same pattern works without a code change here; it
+# is not a Codex-specific carve-out. The suffix itself stays tightly
+# bounded — URL-safe characters only, short — so this still only ever
+# matches "loopback callback plus an opaque id", never an arbitrary path.
+_CALLBACK_ID_RE = re.compile(r"^/callback/[A-Za-z0-9_-]{1,64}$")
 
 
 def get_client(client_id: str) -> OAuthClient | None:
@@ -65,7 +78,7 @@ def get_client(client_id: str) -> OAuthClient | None:
 
 
 def is_valid_redirect_uri(uri: str) -> bool:
-    """Only ``http://127.0.0.1:<port>/callback`` (or ``[::1]``) is accepted.
+    """Only a loopback ``/callback`` (optionally ``/callback/<opaque-id>``) is accepted.
 
     The port is chosen by the tool at run time (RFC 8252), so it is not
     pinned; everything else about the address must match exactly.
@@ -83,7 +96,7 @@ def is_valid_redirect_uri(uri: str) -> bool:
         and parts.hostname in _LOOPBACK_HOSTS
         and port is not None
         and 1024 <= port <= 65535
-        and parts.path == _CALLBACK_PATH
+        and (parts.path == _CALLBACK_PATH or bool(_CALLBACK_ID_RE.match(parts.path)))
         and not parts.query
         and not parts.fragment
         and not parts.username

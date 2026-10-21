@@ -152,6 +152,22 @@ def _error_code(exc_info) -> str:
         ("http://127.0.0.1:99999/callback", False),
         ("", False),
         ("http://127.0.0.1:53682/callback" + "a" * 300, False),
+        # An opaque per-server callback id segment (observed with Codex's
+        # rmcp-client: it appends one whenever the authorization server
+        # does not advertise RFC 9207 issuer-bound callbacks) is accepted
+        # for any MCP client that uses this same loopback-plus-opaque-id
+        # shape, not only Codex.
+        ("http://127.0.0.1:53682/callback/A1VfCm6C2hld", True),
+        ("http://[::1]:53682/callback/abc-DEF_123", True),
+        ("http://127.0.0.1:53682/callback/" + "a" * 64, True),
+        ("http://127.0.0.1:53682/callback/" + "a" * 65, False),
+        ("http://127.0.0.1:53682/callback/", False),
+        ("http://127.0.0.1:53682/callback/..", False),
+        ("http://127.0.0.1:53682/callback/with slash", False),
+        ("http://127.0.0.1:53682/callback/sub/path", False),
+        ("https://127.0.0.1:53682/callback/abc123", False),
+        ("http://evil.com:53682/callback/abc123", False),
+        ("http://127.0.0.1:53682/callback/abc123?x=1", False),
     ],
 )
 def test_redirect_must_be_a_loopback_callback(uri, ok):
