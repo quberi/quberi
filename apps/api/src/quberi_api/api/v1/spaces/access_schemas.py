@@ -82,3 +82,43 @@ class EffectiveMemberView(BaseModel):
 class EffectiveMemberList(BaseModel):
     items: list[EffectiveMemberView] = Field(default_factory=list)
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Access-summary contract (the one-glance "who can see this" cards)
+# ---------------------------------------------------------------------------
+
+
+class AccessSourceView(BaseModel):
+    """Something a space is open to: a department, position, group, person or everyone."""
+
+    subject_type: SubjectType
+    subject_id: uuid.UUID
+    name: str
+    role_code: SpaceRoleCode
+
+
+class SpaceAccessSummaryView(BaseModel):
+    space_id: uuid.UUID
+    status: str
+    people: int
+    by_role: dict[str, int] = Field(default_factory=dict)
+    sources: list[AccessSourceView] = Field(default_factory=list)
+    documents: int
+    documents_with_exceptions: int
+    allow_rules: int
+    deny_rules: int
+
+
+class DocumentAccessSummaryView(BaseModel):
+    document_id: uuid.UUID
+    space_id: uuid.UUID
+    review_state: str
+    space_people: int
+    # ``None``: the document is not approved yet, or the organisation is too large to count.
+    readers: Optional[int] = None
+    shared_only: int
+    hidden: int
+    allow_rules: int
+    deny_rules: int
+    sources: list[AccessSourceView] = Field(default_factory=list)

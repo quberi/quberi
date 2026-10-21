@@ -5,6 +5,7 @@ Endpoints
 * GET    /api/v1/spaces/{space_id}/access-bindings
 * POST   /api/v1/spaces/{space_id}/access-bindings
 * DELETE /api/v1/spaces/{space_id}/access-bindings/{binding_id}
+* GET    /api/v1/spaces/{space_id}/access-summary
 
 Write policy: either the space owner (``Space.owner_type='user'`` AND
 ``owner_id=caller``) *or* an org owner/admin may grant/revoke access. All
@@ -27,7 +28,10 @@ from quberi_api.api.v1.spaces.access_schemas import (
     EffectiveHitPathView,
     EffectiveMemberList,
     EffectiveMemberView,
+    AccessSourceView,
+    SpaceAccessSummaryView,
 )
+from quberi_api.services import access_summary
 from quberi_api.services import space_bindings as bindings_service
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.authz import (
@@ -219,6 +223,46 @@ async def list_effective_members(
         for v in views
     ]
     return EffectiveMemberList(items=items, total=len(items))
+
+
+
+@router.get(
+    "/{space_id}/access-summary",
+    response_model=SpaceAccessSummaryView,
+    summary="Who can read a space and how many documents carry exceptions, at a glance",
+)
+async def get_space_access_summary(
+    space_id: uuid.UUID,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> SpaceAccessSummaryView:
+    """Counts and names only, worked out live. Same visibility gate as ``effective-members``."""
+
+    result = await access_summary.space_summary(
+        session,
+        organization_id=caller.organization.id,
+        actor_user_id=caller.user.id,
+        space_id=space_id,
+    )
+    return SpaceAccessSummaryView(
+        space_id=result.space_id,
+        status=result.status,
+        people=result.people,
+        by_role=result.by_role,
+        sources=[
+            AccessSourceView(
+                subject_type=s.subject_type,  # type: ignore[arg-type]
+                subject_id=s.subject_id,
+                name=s.name,
+                role_code=s.role_code,  # type: ignore[arg-type]
+            )
+            for s in result.sources
+        ],
+        documents=result.documents,
+        documents_with_exceptions=result.documents_with_exceptions,
+        allow_rules=result.allow_rules,
+        deny_rules=result.deny_rules,
+    )
 
 
 space_access_router = router

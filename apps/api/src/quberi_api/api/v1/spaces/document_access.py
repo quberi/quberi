@@ -6,6 +6,7 @@ Endpoints
 * POST   /api/v1/spaces/{space_id}/documents/{document_id}/access-rules
 * DELETE /api/v1/spaces/{space_id}/documents/{document_id}/access-rules/{rule_id}
 * GET    /api/v1/spaces/{space_id}/documents/{document_id}/access-check?user_id=...
+* GET    /api/v1/spaces/{space_id}/documents/{document_id}/access-summary
 
 ``allow`` lets the subject read this one document without reading its space; ``deny``
 hides it from the subject even if they can read the space, and wins over every ``allow``.
@@ -25,6 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import CallerContext, require_caller
+from quberi_api.api.v1.spaces.access_schemas import AccessSourceView, DocumentAccessSummaryView
+from quberi_api.services import access_summary
 from quberi_api.services.documents import access_explain
 from quberi_api.services.documents import access_rules as rules_service
 from quberi_api.services.documents.errors import DocumentPermissionError
@@ -333,3 +336,48 @@ async def delete_access_rule(
 
 
 document_access_router = router
+
+
+@router.get(
+    "/{space_id}/documents/{document_id}/access-summary",
+    response_model=DocumentAccessSummaryView,
+    summary="How many people can read a document, and how many exceptions it has (space managers only)",
+)
+async def get_document_access_summary(
+    space_id: uuid.UUID,
+    document_id: uuid.UUID,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentAccessSummaryView:
+    """Counts and the names the space is open to, worked out live from the real read gate."""
+
+    try:
+        result = await access_summary.document_summary(
+            session,
+            organization_id=caller.organization.id,
+            actor_user_id=caller.user.id,
+            space_id=space_id,
+            document_id=document_id,
+        )
+    except DocumentPermissionError as exc:
+        raise _forbidden(exc) from exc
+    return DocumentAccessSummaryView(
+        document_id=result.document_id,
+        space_id=result.space_id,
+        review_state=result.review_state,
+        space_people=result.space_people,
+        readers=result.readers,
+        shared_only=result.shared_only,
+        hidden=result.hidden,
+        allow_rules=result.allow_rules,
+        deny_rules=result.deny_rules,
+        sources=[
+            AccessSourceView(
+                subject_type=s.subject_type,  # type: ignore[arg-type]
+                subject_id=s.subject_id,
+                name=s.name,
+                role_code=s.role_code,  # type: ignore[arg-type]
+            )
+            for s in result.sources
+        ],
+    )
