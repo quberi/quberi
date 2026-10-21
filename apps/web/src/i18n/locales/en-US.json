@@ -53,16 +53,27 @@
         "docsWaiting": "{{count}} waiting",
         "docsFailed": "{{count}} failed",
         "external": "Connected outside tools",
-        "externalCalls": "{{count}} calls in the last 7 days"
+        "externalCalls_one": "{{count}} call in the last 7 days",
+        "externalCalls_other": "{{count}} calls in the last 7 days"
       },
       "attention": {
         "title": "Needs attention",
         "go": "Take a look",
-        "pending_reviews": "{{count}} uploads are waiting for review",
-        "access_requests": "{{count}} space access requests are waiting",
-        "index_failed": "{{count}} documents failed to index",
-        "suspended_owning_spaces": "{{count}} deactivated members still own spaces nobody has taken over{{names}}",
-        "org_wide_spaces": "{{count}} spaces are open to the whole organisation{{names}}"
+        "go_pending_reviews": "Review them",
+        "go_access_requests": "Open the requests",
+        "go_index_failed": "See the spaces",
+        "go_suspended_owning_spaces": "Hand them over",
+        "go_org_wide_spaces": "Check access",
+        "pending_reviews_one": "{{count}} upload is waiting for review",
+        "pending_reviews_other": "{{count}} uploads are waiting for review",
+        "access_requests_one": "{{count}} space access request is waiting",
+        "access_requests_other": "{{count}} space access requests are waiting",
+        "index_failed_one": "{{count}} document failed to index",
+        "index_failed_other": "{{count}} documents failed to index",
+        "suspended_owning_spaces_one": "{{count}} deactivated member still owns spaces nobody has taken over{{names}}",
+        "suspended_owning_spaces_other": "{{count}} deactivated members still own spaces nobody has taken over{{names}}",
+        "org_wide_spaces_one": "{{count}} space is open to the whole organisation{{names}}",
+        "org_wide_spaces_other": "{{count}} spaces are open to the whole organisation{{names}}"
       },
       "trend": {
         "title": "Last {{days}} days",
@@ -1135,8 +1146,9 @@
         "wholeOrg": "Whole organisation",
         "nobody": "Not open to anyone yet (only the owner)",
         "moreUsers": "and {{count}} more",
-        "noExceptions": "{{count}} documents, no exception rules",
-        "someExceptions": "{{documents}} documents, {{count}} with exception rules ({{allow}} allow, {{deny}} deny)"
+        "noExceptions_one": "{{count}} document, no exception rules",
+      "noExceptions_other": "{{count}} documents, no exception rules",
+        "someExceptions": "Documents: {{documents}}; with exception rules: {{count}} ({{allow}} allow, {{deny}} deny)"
       },
     "title": "Space access",
     "description": "Direct role grants on this space. Members who inherit access via groups, positions, or org units are not listed here.",

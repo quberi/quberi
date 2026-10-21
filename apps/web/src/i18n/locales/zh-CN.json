@@ -58,6 +58,11 @@
       "attention": {
         "title": "需要处理",
         "go": "去处理",
+        "go_pending_reviews": "去审核",
+        "go_access_requests": "去处理申请",
+        "go_index_failed": "查看空间",
+        "go_suspended_owning_spaces": "去移交",
+        "go_org_wide_spaces": "检查权限",
         "pending_reviews": "{{count}} 份上传在等待审核",
         "access_requests": "{{count}} 条空间访问申请待处理",
         "index_failed": "{{count}} 份文档索引失败",

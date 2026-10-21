@@ -74,7 +74,7 @@ describe('OverviewDashboard', () => {
     render(<OverviewDashboard onNavigate={go} />)
     expect(await screen.findByText('overview.attention.pending_reviews#3')).toBeTruthy()
     expect(screen.getByText(/overview\.attention\.suspended_owning_spaces#1\|.*Old Ben/)).toBeTruthy()
-    const buttons = screen.getAllByText('overview.attention.go')
+    const buttons = screen.getAllByText(/overview\.attention\.go_/)
     fireEvent.click(buttons[0].closest('button') as HTMLButtonElement)
     fireEvent.click(buttons[1].closest('button') as HTMLButtonElement)
     expect(go.mock.calls.map((c) => c[0])).toEqual(['spaces', 'members'])

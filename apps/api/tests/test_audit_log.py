@@ -318,3 +318,86 @@ def test_csv_safe_prefixes_every_formula_starter():
         assert audit_api.csv_safe(s).startswith("'")
     assert audit_api.csv_safe("plain") == "plain"
     assert audit_api.csv_safe(None) == ""
+
+
+# ---------------------------------------------------------------------------
+# Names of documents and outside-tool grants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_document_event_names_the_document_and_keeps_the_name_after_it_is_deleted(
+    db_session, org_and_owner
+):
+    org = org_and_owner
+    await db_session.commit()
+    space = (
+        await spaces_service.create_collaborative_space(
+            db_session, organization_id=org.organization_id, creator_user_id=org.user_id,
+            name="Wiki", slug=f"w-{uuid.uuid4().hex[:6]}",
+        )
+    ).space
+    local = await sources_service.ensure_local_source(db_session, organization_id=org.organization_id)
+    await db_session.commit()
+    doc = Document(
+        organization_id=org.organization_id, space_id=space.id, source_id=local.id,
+        name="handbook.pdf", mime_type="application/pdf", size_bytes=1,
+        storage_key=f"k/{uuid.uuid4()}", checksum_sha256="a" * 64, external_ref={},
+    )
+    db_session.add(doc)
+    await db_session.flush()
+    live = _event(org.organization_id, action="document.access_checked", minutes=2,
+                  resource_type="document", resource_id=doc.id, payload={"outcome": "x"})
+    gone_id = uuid.uuid4()
+    deleted = _event(org.organization_id, action="document.deleted", minutes=1,
+                     resource_type="document", resource_id=gone_id, payload={"name": "old.docx"})
+    await _add(db_session, live, deleted)
+
+    views = await audit_service.list_recent_events(db_session, organization_id=org.organization_id, limit=10)
+
+    names = {v.action: v.resource_display_name for v in views}
+    assert names["document.access_checked"] == "handbook.pdf"  # looked up live
+    assert names["document.deleted"] == "old.docx"  # no longer exists: the recorded name
+
+
+@pytest.mark.asyncio
+async def test_a_grant_event_shows_the_tool_name_recorded_in_the_event(db_session, org_and_owner):
+    org = org_and_owner
+    ev = _event(org.organization_id, action="external_access.revoked", resource_type="oauth_grant",
+                resource_id=uuid.uuid4(), payload={"client_name": "Claude Desktop"})
+    await _add(db_session, ev)
+
+    views = await audit_service.list_recent_events(db_session, organization_id=org.organization_id, limit=50)
+    view = next(v for v in views if v.action == "external_access.revoked")
+
+    assert view.resource_display_name == "Claude Desktop"
+
+
+@pytest.mark.asyncio
+async def test_another_organizations_document_is_never_named(db_session, org_and_owner):
+    org = org_and_owner
+    other = await _other_org(db_session)
+    await db_session.commit()
+    space = (
+        await spaces_service.create_collaborative_space(
+            db_session, organization_id=other.organization_id, creator_user_id=other.user_id,
+            name="Secret", slug=f"s-{uuid.uuid4().hex[:6]}",
+        )
+    ).space
+    local = await sources_service.ensure_local_source(db_session, organization_id=other.organization_id)
+    await db_session.commit()
+    foreign = Document(
+        organization_id=other.organization_id, space_id=space.id, source_id=local.id,
+        name="their-secret.pdf", mime_type="application/pdf", size_bytes=1,
+        storage_key=f"k/{uuid.uuid4()}", checksum_sha256="b" * 64, external_ref={},
+    )
+    db_session.add(foreign)
+    await db_session.flush()
+    ev = _event(org.organization_id, action="document.access_checked",
+                resource_type="document", resource_id=foreign.id)
+    await _add(db_session, ev)
+
+    views = await audit_service.list_recent_events(db_session, organization_id=org.organization_id, limit=50)
+    view = next(v for v in views if v.action == "document.access_checked")
+
+    assert view.resource_display_name == ""

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import ServiceAccount, User
+from quberi_api.domain.oauth.models import OAuthGrant
 from quberi_api.domain.org.models import Group, OrganizationUnit
 from quberi_api.domain.positions.models import Position
 from quberi_api.domain.spaces.models import Space
@@ -67,6 +68,19 @@ _RESOURCE_TABLES: dict[str, tuple[type, str]] = {
     "organization_unit": (OrganizationUnit, "name"),
     "space": (Space, "name"),
     "service_account": (ServiceAccount, "name"),
+    # These two are looked up inside the caller's organisation only (see ``_ORG_SCOPED``).
+    "document": (Document, "name"),
+    "oauth_grant": (OAuthGrant, "client_name"),
+}
+
+# Resources whose names are only ever looked up within the caller's own organisation.
+_ORG_SCOPED = frozenset({"document", "oauth_grant"})
+
+# When the thing no longer exists (a deleted document, a revoked grant) its name is kept in
+# the event itself; these are the payload keys that carry it, by resource type.
+_PAYLOAD_NAME_KEYS: dict[str, tuple[str, ...]] = {
+    "document": ("name", "document_name"),
+    "oauth_grant": ("client_name",),
 }
 
 
@@ -163,6 +177,8 @@ async def enrich_events(
         model, name_attr = table
         col = getattr(model, name_attr)
         stmt = select(model.id, col).where(model.id.in_(ids))
+        if rtype in _ORG_SCOPED:
+            stmt = stmt.where(model.organization_id == organization_id)
         # Some resources (Position, Group, OrganizationUnit, Space) are
         # tenant-scoped and always match on organization_id, but we don't
         # filter here on purpose — an audit row must survive a leaky ORM.
@@ -221,6 +237,13 @@ async def enrich_events(
                 resource_name = resource_names.get(
                     (r.resource_type, r.resource_id), ""
                 )
+                if not resource_name:
+                    # Gone since (deleted, revoked): fall back to the name the event recorded.
+                    for key in _PAYLOAD_NAME_KEYS.get(r.resource_type, ()):
+                        recorded = (r.payload or {}).get(key)
+                        if isinstance(recorded, str) and recorded:
+                            resource_name = recorded
+                            break
 
         space_name = (
             space_names.get(r.space_id, "") if r.space_id is not None else None

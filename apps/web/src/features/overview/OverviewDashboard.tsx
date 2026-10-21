@@ -216,7 +216,10 @@ function AttentionList({
               </span>
               {target && (
                 <button className="link-button" onClick={() => onNavigate(target)} type="button">
-                  {t('overview.attention.go')} <ArrowRight size={12} />
+                  {t(`overview.attention.go_${a.code}`, {
+                    defaultValue: t('overview.attention.go'),
+                  })}{' '}
+                  <ArrowRight size={12} />
                 </button>
               )}
             </li>
@@ -234,7 +237,7 @@ function TrendCard({ overview }: { overview: Overview }) {
   const sum = (pick: (p: Overview['trend'][number]) => number) =>
     overview.trend.reduce((acc, p) => acc + pick(p), 0)
   return (
-    <div className="overview-card">
+    <div className="overview-card overview-card-trend">
       <h3>{t('overview.trend.title', { days: overview.trend.length })}</h3>
       <div className="overview-trends">
         <TrendBars
