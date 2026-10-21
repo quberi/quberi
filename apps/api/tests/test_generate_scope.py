@@ -50,7 +50,7 @@ def fake_resolve_chat(monkeypatch):
     """Patch ``_resolve_chat`` so no real provider/DB lookup happens."""
 
     def _install(answer: str = "巴黎是法国的首都。"):
-        async def _fake(session, *, organization_id, model_id, binding_id):
+        async def _fake(session, *, organization_id, identity_id=None, model_id, binding_id):
             return types.SimpleNamespace(
                 provider=_FakeProvider(answer),
                 model=types.SimpleNamespace(model_id="fake-model"),
