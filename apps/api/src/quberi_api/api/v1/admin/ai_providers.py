@@ -93,6 +93,8 @@ class ModelCatalogEntry(BaseModel):
     vendor_display_name: str = ""
     context_window: int
     notes: str
+    # Whether the model reads pictures (it can then be offered as a vision model).
+    supports_vision: bool = False
 
 
 class PlatformModelVisibilityView(BaseModel):
@@ -206,6 +208,7 @@ async def list_model_catalog() -> list[ModelCatalogEntry]:
             vendor_display_name=vendor_display_name(m.vendor),
             context_window=m.context_window,
             notes=m.notes,
+            supports_vision=m.supports_vision,
         )
         for m in MODEL_REGISTRY.values()
     ]

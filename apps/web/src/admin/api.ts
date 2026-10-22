@@ -245,6 +245,8 @@ export interface ModelCatalogEntry {
   vendor_display_name: string
   context_window: number
   notes: string
+  /** Whether the model reads pictures, so it can be offered as a vision model. */
+  supports_vision?: boolean
 }
 
 export function getModelCatalog(token: string): Promise<ModelCatalogEntry[]> {

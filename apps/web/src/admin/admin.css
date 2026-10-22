@@ -744,3 +744,26 @@ code {
   resize: vertical;
 }
 button.admin-chip { cursor: pointer; border: 0; font: inherit; }
+
+/* Text models / Vision models tabs on the platform models page */
+.admin-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 10px;
+  border-bottom: 1px solid var(--admin-border, #e4e4ea);
+}
+.admin-tabs button {
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #6b6b74;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.admin-tabs button:hover { color: #1a1a24; }
+.admin-tabs button.active {
+  color: #3b2a8c;
+  border-bottom-color: #3b2a8c;
+}

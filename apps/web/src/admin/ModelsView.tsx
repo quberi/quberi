@@ -42,6 +42,10 @@ export function ModelsView({
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [editing, setEditing] = useState<PlatformBindingDetail | 'new' | null>(null)
+  // "Text models" is the page as it always was. "Vision models" shows the same keys, but only
+  // the models on them that read pictures, so an administrator can see which keys can serve a
+  // vision model and add one (an organisation then chooses it in its own model settings).
+  const [tab, setTab] = useState<'text' | 'vision'>('text')
 
   const load = async (isRefresh: boolean) => {
     isRefresh ? setRefreshing(true) : setLoading(true)
@@ -78,6 +82,16 @@ export function ModelsView({
 
   const chatModels = modelCatalog.filter((m) => m.purpose === 'chat')
   const embeddingModels = modelCatalog.filter((m) => m.purpose === 'embedding')
+  const visionModels = modelCatalog.filter((m) => m.supports_vision === true)
+  const visionIds = new Set(visionModels.map((m) => m.model_id))
+  // Only a key that speaks the OpenAI-style protocol can carry a vision model (a local
+  // embedding key cannot).
+  const shownGroups = [...groups.entries()]
+    .map(([key, list]): [string, PlatformBindingDetail[]] => [
+      key,
+      tab === 'vision' ? list.filter((b) => b.provider_kind === 'openai_compat') : list,
+    ])
+    .filter(([, list]) => list.length > 0)
 
   return (
     <section className="admin-section">
@@ -101,6 +115,28 @@ export function ModelsView({
         used; pause a key to take it out of rotation without deleting it.
       </p>
 
+      <div className="admin-tabs" role="tablist">
+        {(['text', 'vision'] as const).map((id) => (
+          <button
+            aria-selected={tab === id}
+            className={tab === id ? 'active' : ''}
+            key={id}
+            onClick={() => setTab(id)}
+            role="tab"
+            type="button"
+          >
+            {id === 'text' ? 'Text models' : 'Vision models'}
+          </button>
+        ))}
+      </div>
+      {tab === 'vision' && (
+        <p className="admin-section-hint">
+          Models that read pictures, on the same keys. An organisation chooses one of them in its
+          own model settings and turns picture descriptions on; nothing is sent until it does. A
+          model a key serves is available for chat and for pictures alike, so removing one here
+          removes it everywhere. Add <code>deepseek-flash</code> to a DeepSeek key to offer it.
+        </p>
+      )}
       {loading && <div className="admin-state">Loading…</div>}
       {error && !loading && (
         <div className="admin-state admin-state-error">{error}</div>
@@ -108,7 +144,7 @@ export function ModelsView({
 
       {!loading && !error && (
         <div className="admin-vendor-groups">
-          {[...groups.entries()].map(([key, list]) => (
+          {shownGroups.map(([key, list]) => (
             <div className="admin-vendor-group" key={key}>
               <h3>{list[0].vendor_display_name || list[0].provider_kind}</h3>
               <div className="admin-table-wrap">
@@ -137,7 +173,7 @@ export function ModelsView({
                             {b.status}
                           </span>
                         </td>
-                        <td>{b.models.length > 0 ? b.models.join(', ') : '—'}</td>
+                        <td>{shownModels(b.models, tab, visionIds)}</td>
                         <td className="admin-table-row-actions">
                           <button onClick={() => setEditing(b)} type="button" title="Edit">
                             <Pencil size={13} />
@@ -170,6 +206,8 @@ export function ModelsView({
           binding={editing === 'new' ? null : editing}
           chatModels={chatModels}
           embeddingModels={embeddingModels}
+          visionModels={visionModels}
+          mode={tab}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -193,11 +231,23 @@ export function ModelsView({
   }
 }
 
+/** The models of a key as the tab shows them: all of them, or only those that read pictures. */
+export function shownModels(
+  models: string[],
+  tab: 'text' | 'vision',
+  visionIds: Set<string>,
+): string {
+  const shown = tab === 'vision' ? models.filter((id) => visionIds.has(id)) : models
+  return shown.length > 0 ? shown.join(', ') : '—'
+}
+
 function BindingEditorDialog({
   token,
   binding,
   chatModels,
   embeddingModels,
+  visionModels,
+  mode,
   onClose,
   onSaved,
 }: {
@@ -205,6 +255,8 @@ function BindingEditorDialog({
   binding: PlatformBindingDetail | null
   chatModels: ModelCatalogEntry[]
   embeddingModels: ModelCatalogEntry[]
+  visionModels: ModelCatalogEntry[]
+  mode: 'text' | 'vision'
   onClose: () => void
   onSaved: () => void
 }) {
@@ -349,14 +401,18 @@ function BindingEditorDialog({
           )}
           <div className="admin-field">
             <span>
-              {binding?.provider_kind === 'local_embedding' 
-                ? 'Embedding models this key serves' 
-                : 'Chat models this key serves'}
+              {mode === 'vision'
+                ? 'Models that read pictures this key serves'
+                : binding?.provider_kind === 'local_embedding'
+                  ? 'Embedding models this key serves'
+                  : 'Chat models this key serves'}
             </span>
             <div className="admin-model-allowlist">
-              {(binding?.provider_kind === 'local_embedding' 
-                ? embeddingModels 
-                : chatModels
+              {(mode === 'vision'
+                ? visionModels
+                : binding?.provider_kind === 'local_embedding'
+                  ? embeddingModels
+                  : chatModels
               ).map((m) => (
                 <label className="admin-checkbox-option" key={m.model_id}>
                   <input
