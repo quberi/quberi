@@ -291,11 +291,25 @@ def _related_picture_lines(query: str, result: SearchResponse) -> list[str]:
     ]
 
 
-def _page_note(p) -> str:
-    """"page 3", "pages 2-4", with a warning if the text was recognised from a picture.
+def _version_note(p) -> str:
+    """"version 2 (latest)" / "version 1 (older, replaced by version 2)"; empty for a file
+    that has only ever had one version."""
 
-    Empty when the passage has no recorded page and is the file's own text, which leaves the
-    line exactly as it was before pages were recorded.
+    latest = getattr(p, "latest_version", None)
+    number = getattr(p, "version_number", 1)
+    if latest is None or latest <= 1:
+        return ""
+    if number >= latest:
+        return f"version {number} (latest)"
+    return f"version {number} (older, replaced by version {latest})"
+
+
+def _page_note(p) -> str:
+    """"page 3", "pages 2-4", with a warning if the text was recognised from a picture,
+    then the version when the file has more than one.
+
+    Empty when the passage has no recorded page, is the file's own text and the file has one
+    version, which leaves the line exactly as it was before pages were recorded.
     """
 
     if p.page_start is None:
@@ -306,7 +320,10 @@ def _page_note(p) -> str:
         place = f"pages {p.page_start}-{p.page_end}"
     if p.unit_label == "ocr_block" or p.source_kind == "image_ocr":
         note = "recognised from a scan, may contain errors"
-        return f"{place} ({note})" if place else note
+        place = f"{place} ({note})" if place else note
+    version = _version_note(p)
+    if version:
+        place = f"{place}, {version}" if place else version
     return place
 
 

@@ -169,6 +169,8 @@ class SearchKnowledgeTool(Tool):
                 "page_end": c.page_end,
                 "unit_label": c.unit_label,
                 "source_kind": c.source_kind,
+                "version_number": c.version_number,
+                "latest_version": c.latest_version,
             }
             for c in result.chunks
         ]

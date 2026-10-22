@@ -161,6 +161,14 @@ Two things worth passing on to the person reading the answer:
   when it relies on one.
 - Only PDF pages have page numbers for now. For other file types the fields are
   empty, and the passage is described exactly as before.
+- A file can have several versions: someone uploads a new version of a document
+  and the earlier ones are kept. A passage says which version it was read from
+  (`version_number`) and which is the newest (`latest_version`; null when the
+  file has no version record). When the file has more than one version the text
+  line says so too, for example `version 1 (older, replaced by version 2)`. A
+  passage from an older version should be quoted as such, and the newest version
+  is the one to rely on when they disagree. A file that has only one version is
+  described exactly as before.
 
 A search can also find a part number or dimension exactly. A question that
 contains one (`Φ520`, `HZ-8800B`, `6205-2RS`) is looked up by that value as well

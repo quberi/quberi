@@ -51,6 +51,11 @@ class Passage(BaseModel):
     unit_label: str = ""
     # "image_ocr" for text read out of a picture, otherwise "text".
     source_kind: str = "text"
+    # Which version of the file the passage was read from, and the file's newest version
+    # (null when it has no version record). A passage whose number is lower than the
+    # newest comes from a version that has since been replaced.
+    version_number: int = 1
+    latest_version: Optional[int] = None
 
 
 class PendingDocument(BaseModel):

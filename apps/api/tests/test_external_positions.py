@@ -45,7 +45,9 @@ def test_the_original_seven_fields_are_unchanged_and_first():
     assert fields[:7] == [
         "document_id", "document_name", "space_id", "space_name", "chunk_index", "text", "score",
     ]
-    assert fields[7:] == ["page_start", "page_end", "unit_label", "source_kind"]
+    assert fields[7:] == [
+        "page_start", "page_end", "unit_label", "source_kind", "version_number", "latest_version",
+    ]
 
 
 def test_the_added_fields_are_optional_so_old_callers_and_old_data_still_validate():
