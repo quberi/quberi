@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     # pictures the hourly catch-up queues per run (0 turns the catch-up off; new pictures are
     # still described when they are uploaded). Each description is a paid call.
     vision_daily_limit: int = 200
+    # Documents indexed before passages recorded their place (page, slide, sheet row, paragraph,
+    # line) are indexed again, this many per hour. 0 turns it off; such documents then show a
+    # chunk number until someone re-indexes them.
+    reindex_positions_batch: int = 20
     vision_backfill_batch: int = 10
     ocr_provider: str = "local"
     # Longest side the text detector sees. Raised from the model's 960 because small

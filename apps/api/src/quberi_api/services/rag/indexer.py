@@ -67,6 +67,13 @@ EMBED_BATCH_SIZE = 32
 IMAGE_INDEX_MODEL_KEY = "image_index_model"
 LEGACY_IMAGE_MODEL = "bge-vl-base"
 
+# ``documents.attributes[POSITIONS_KEY]`` says the document was indexed with the place of each
+# passage (page, slide, sheet row, paragraph, line). A document indexed before that has none, so
+# its sources show only a chunk number until it is indexed again; the hourly catch-up finds
+# them by the missing key. Raise the number when the places recorded change meaning.
+POSITIONS_KEY = "index_positions"
+POSITIONS_FORMAT = 1
+
 
 # ---------------------------------------------------------------------------
 # Result payload
@@ -541,6 +548,8 @@ async def _finalise_index_from_text(
     doc.chunk_count = len(chunks)
     doc.last_indexed_at = datetime.now(timezone.utc)
     doc.indexing_error = None
+    if units:
+        doc.attributes = {**(doc.attributes or {}), POSITIONS_KEY: POSITIONS_FORMAT}
     await session.commit()
     _log.info(
         "indexed %s: %d chunks in %s (model=%s)",

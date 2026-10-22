@@ -30,7 +30,12 @@ from quberi_api.domain.spaces.models import Space
 from quberi_api.services.ai.ocr.models import ENGINE_VERSION
 from quberi_api.services.rag.image_caption import IMAGE_CAPTION_KEY
 from quberi_api.services.rag.image_text import IMAGE_TEXT_KEY
-from quberi_api.services.rag.indexer import IMAGE_INDEX_MODEL_KEY, LEGACY_IMAGE_MODEL
+from quberi_api.services.rag.indexer import (
+    IMAGE_INDEX_MODEL_KEY,
+    LEGACY_IMAGE_MODEL,
+    POSITIONS_FORMAT,
+    POSITIONS_KEY,
+)
 
 DEFAULT_BATCH = 200
 
@@ -62,6 +67,36 @@ async def pictures_needing_index(
                     recorded_model != model_id,
                 ),
             ),
+        )
+        .order_by(Document.created_at.asc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def documents_needing_positions(
+    session: AsyncSession, *, limit: int
+) -> list[uuid.UUID]:
+    """Indexed documents that were indexed before their passages recorded a place.
+
+    Oldest first. A document with no stored file (a page pulled from Feishu), a picture, one
+    that is not approved, archived, in an inactive space, or that failed to index is not
+    listed: the first two have no place to record, the rest must not be touched, and a failure
+    would only fail again. Whether to index it again is settled by one attribute, so each
+    document is done once.
+    """
+
+    stmt = (
+        select(Document.id)
+        .join(Space, Space.id == Document.space_id)
+        .where(
+            Document.storage_key.is_not(None),
+            ~func.lower(Document.mime_type).like("image/%"),
+            Document.status != "archived",
+            Document.review_state == "approved",
+            Document.indexing_state == "indexed",
+            Space.status == "active",
+            func.coalesce(Document.attributes[POSITIONS_KEY].astext, "") != str(POSITIONS_FORMAT),
         )
         .order_by(Document.created_at.asc())
         .limit(limit)

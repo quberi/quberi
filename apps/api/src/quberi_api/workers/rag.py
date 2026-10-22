@@ -257,6 +257,32 @@ async def backfill_picture_captions(ctx: dict) -> int:
     return queued
 
 
+async def backfill_positions(ctx: dict) -> int:
+    """Index again, a few an hour, the documents indexed before passages had a place.
+
+    Each is the normal indexing job (so the same checks and the same result), found by the
+    attribute that records it was done. Returns how many were queued.
+    """
+
+    settings = get_settings()
+    if settings.reindex_positions_batch <= 0:
+        return 0
+    from quberi_api.services.rag.image_backfill import documents_needing_positions
+
+    async with ctx["session_factory"]() as session:
+        ids = await documents_needing_positions(session, limit=settings.reindex_positions_batch)
+        await session.commit()
+    queued = 0
+    for document_id in ids:
+        job = await ctx["redis"].enqueue_job(
+            "index_document", str(document_id), _job_id=f"reindex-positions-{document_id}"
+        )
+        queued += 1 if job is not None else 0
+    if queued:
+        _log.info("position backfill: queued %d document(s) for indexing again", queued)
+    return queued
+
+
 async def purge_revoked_sessions(ctx: dict) -> int:
     """Drop signed-out session records whose token has expired anyway."""
 
@@ -285,6 +311,8 @@ class WorkerSettings:
         cron(backfill_picture_text, minute=37, run_at_startup=True),
         # Pictures to describe for organisations that turned descriptions on, a few per hour.
         cron(backfill_picture_captions, minute=47, run_at_startup=True),
+        # Documents indexed before their passages had a page / slide / row / paragraph / line.
+        cron(backfill_positions, minute=17, run_at_startup=True),
         cron(purge_revoked_sessions, minute=30),
     ]
     on_startup = on_startup
