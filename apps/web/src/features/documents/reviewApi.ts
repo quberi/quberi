@@ -69,3 +69,47 @@ export function decideReview(
 export function listPendingSpaces(credentials: DevCredentials): Promise<PendingSpaceList> {
   return apiFetch<PendingSpaceList>('/api/v1/document-reviews/pending', { credentials })
 }
+
+/** A new version of a document waiting for a reviewer (or refused). */
+export interface VersionReviewItem {
+  document_id: string
+  document_name: string
+  version_number: number
+  filename: string
+  mime_type: string
+  size_bytes: number
+  uploader_name: string
+  created_at: string
+  /** What the uploader said changed. */
+  note: string | null
+  review_state: 'pending' | 'rejected'
+  review_note: string | null
+  reviewed_by_name: string | null
+}
+
+export interface VersionTarget {
+  document_id: string
+  version_number: number
+}
+
+export function listReviewVersions(
+  credentials: DevCredentials,
+  spaceId: string,
+  state: 'pending' | 'rejected',
+): Promise<{ items: VersionReviewItem[]; total: number }> {
+  return apiFetch(`/api/v1/spaces/${spaceId}/review/versions?state=${state}`, { credentials })
+}
+
+export function decideVersions(
+  credentials: DevCredentials,
+  spaceId: string,
+  versions: VersionTarget[],
+  action: 'approve' | 'reject',
+  note: string,
+): Promise<{ changed: VersionTarget[] }> {
+  return apiFetch(`/api/v1/spaces/${spaceId}/review/versions/decide`, {
+    method: 'POST',
+    body: { versions, action, note },
+    credentials,
+  })
+}

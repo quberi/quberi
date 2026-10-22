@@ -6,12 +6,20 @@ import { useAuth } from '../auth/AuthContext'
 import { useFormatDate } from '../../i18n/formatDate'
 import { formatBytes } from './DocumentRow'
 import { useDocuments } from './DocumentsContext'
+import { downloadDocumentVersion } from './api'
 import {
   decideReview,
+  decideVersions,
   listReviewDocuments,
+  listReviewVersions,
   setUploadReview,
   type ReviewItem,
+  type VersionReviewItem,
 } from './reviewApi'
+
+function versionKey(v: { document_id: string; version_number: number }): string {
+  return `${v.document_id}:${v.version_number}`
+}
 
 function messageOf(err: unknown): string {
   return err instanceof ApiError ? err.detail || `HTTP ${err.status}` : String(err)
@@ -87,6 +95,10 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
   const { download, reloadPage, reloadStats } = useDocuments()
   const [tab, setTab] = useState<'pending' | 'rejected'>('pending')
   const [items, setItems] = useState<ReviewItem[]>([])
+  // New versions of existing documents waiting for (or refused by) a reviewer, listed beside
+  // the new documents and decided the same way.
+  const [versionItems, setVersionItems] = useState<VersionReviewItem[]>([])
+  const [selectedVersions, setSelectedVersions] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [note, setNote] = useState('')
@@ -97,9 +109,14 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
     if (!credentials) return
     setLoading(true)
     try {
-      const list = await listReviewDocuments(credentials, spaceId, tab)
+      const [list, versions] = await Promise.all([
+        listReviewDocuments(credentials, spaceId, tab),
+        listReviewVersions(credentials, spaceId, tab),
+      ])
       setItems(list.items)
+      setVersionItems(versions.items)
       setSelected(new Set())
+      setSelectedVersions(new Set())
     } catch (err) {
       setError(messageOf(err))
     } finally {
@@ -111,8 +128,10 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
     void load()
   }, [load])
 
+  const nothingChosen = selected.size === 0 && selectedVersions.size === 0
+
   const decide = async (action: 'approve' | 'reject') => {
-    if (!credentials || busy || selected.size === 0) return
+    if (!credentials || busy || nothingChosen) return
     if (action === 'reject' && !note.trim()) {
       setError(t('uploadReview.needReason'))
       return
@@ -120,7 +139,20 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
     setBusy(true)
     setError(null)
     try {
-      await decideReview(credentials, spaceId, [...selected], action, note.trim())
+      if (selected.size > 0) {
+        await decideReview(credentials, spaceId, [...selected], action, note.trim())
+      }
+      if (selectedVersions.size > 0) {
+        await decideVersions(
+          credentials,
+          spaceId,
+          versionItems
+            .filter((v) => selectedVersions.has(versionKey(v)))
+            .map((v) => ({ document_id: v.document_id, version_number: v.version_number })),
+          action,
+          note.trim(),
+        )
+      }
       setNote('')
       await Promise.all([load(), reloadPage(), reloadStats()])
       onDecided?.()
@@ -130,6 +162,36 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
       setBusy(false)
     }
   }
+
+  const saveVersion = async (v: VersionReviewItem) => {
+    if (!credentials) return
+    try {
+      const { blob, filename } = await downloadDocumentVersion(
+        credentials,
+        spaceId,
+        v.document_id,
+        v.version_number,
+      )
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename || v.filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch (err) {
+      setError(messageOf(err))
+    }
+  }
+
+  const toggleVersion = (key: string) =>
+    setSelectedVersions((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
 
   const toggleOne = (id: string) =>
     setSelected((prev) => {
@@ -156,7 +218,7 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
         ))}
       </div>
       {loading && <Loader2 className="spin" size={14} />}
-      {!loading && items.length === 0 && (
+      {!loading && items.length === 0 && versionItems.length === 0 && (
         <div className="state-panel">{t(`uploadReview.empty.${tab}`)}</div>
       )}
       {items.length > 0 && (
@@ -191,8 +253,49 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
           ))}
         </ul>
       )}
+      {versionItems.length > 0 && (
+        <>
+          <h4 className="upload-review-subhead">{t('uploadReview.versions.heading')}</h4>
+          <ul className="space-access-list">
+            {versionItems.map((v) => (
+              <li className="space-access-row" key={versionKey(v)}>
+                <label className="space-access-subject">
+                  <input
+                    checked={selectedVersions.has(versionKey(v))}
+                    onChange={() => toggleVersion(versionKey(v))}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>
+                      {t('uploadReview.versions.line', {
+                        name: v.document_name,
+                        number: v.version_number,
+                      })}
+                    </strong>
+                    <small>
+                      {v.uploader_name || t('documents.unknownUploader')} ·{' '}
+                      {formatBytes(v.size_bytes)} · {formatDate(v.created_at)}
+                      {v.note ? ` · ${v.note}` : ''}
+                      {v.review_note ? ` · ${v.review_note}` : ''}
+                    </small>
+                  </span>
+                </label>
+                <button
+                  aria-label={t('documents.download')}
+                  className="secondary-button icon-button"
+                  onClick={() => void saveVersion(v)}
+                  title={t('uploadReview.openToJudge')}
+                  type="button"
+                >
+                  <Download size={13} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {error && <div className="dialog-error">{error}</div>}
-      {items.length > 0 && (
+      {(items.length > 0 || versionItems.length > 0) && (
         <div className="upload-review-actions">
           <input
             aria-label={t('uploadReview.note')}
@@ -204,7 +307,7 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
           {tab === 'pending' && (
             <button
               className="secondary-button"
-              disabled={busy || selected.size === 0}
+              disabled={busy || nothingChosen}
               onClick={() => void decide('reject')}
               type="button"
             >
@@ -213,7 +316,7 @@ function ReviewList({ spaceId, onDecided }: { spaceId: string; onDecided?: () =>
           )}
           <button
             className="primary-button"
-            disabled={busy || selected.size === 0}
+            disabled={busy || nothingChosen}
             onClick={() => void decide('approve')}
             type="button"
           >

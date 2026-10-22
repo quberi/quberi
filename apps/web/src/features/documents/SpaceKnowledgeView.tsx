@@ -107,14 +107,9 @@ function SpaceKnowledgeViewInner({
   const needsLogin = isGuest && !guestCanUpload
   // A reader of the space is not offered adding or deleting: the server would refuse them.
   const readOnly = isReadOnlySpace(space, isGuest)
-  // A new version is added by an editor or better; in a space that approves uploads only by
-  // an owner or admin (the server refuses the others, so the button is not offered to them).
-  const canAddVersion =
-    !readOnly &&
-    !isGuest &&
-    (space?.require_upload_approval !== true ||
-      space?.caller_role === 'owner' ||
-      space?.caller_role === 'admin')
+  // A new version is added by an editor or better. In a space that approves uploads an
+  // editor's version waits for an owner or admin; the server decides which.
+  const canAddVersion = !readOnly && !isGuest
 
   return (
     <>
@@ -639,6 +634,11 @@ function DocumentsTable({
           >
             <td>
               <strong>{doc.name}</strong>
+              {doc.pending_version_number != null && (
+                <span className="badge badge-pending">
+                  {t('knowledge.versions.waitingBadge', { number: doc.pending_version_number })}
+                </span>
+              )}
               {(doc.version_count ?? 0) > 1 && (
                 <span
                   className="chip chip-inline"

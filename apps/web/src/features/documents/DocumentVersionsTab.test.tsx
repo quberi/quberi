@@ -123,4 +123,41 @@ describe('VersionsTab', () => {
       expect(api.downloadDocumentVersion).toHaveBeenCalledWith({ sessionToken: 't' }, 's1', 'd1', 1),
     )
   })
+
+  it('says a new version is waiting and keeps the current file as the current one', async () => {
+    api.listDocumentVersions.mockResolvedValue({
+      document_id: 'd1',
+      versions: [
+        version(2, { review_state: 'pending' }),
+        version(1, { is_current: true, review_state: 'approved' }),
+      ],
+    })
+    render(<VersionsTab canAdd doc={{ ...doc, pending_version_number: 2 } as DocumentSummary} />)
+
+    expect(await screen.findByText('knowledge.versions.pending')).toBeTruthy()
+    // One at a time: the button is off and says why.
+    expect((screen.getByText('knowledge.versions.upload').closest('button') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/knowledge.versions.oneWaiting/)).toBeTruthy()
+  })
+
+  it('shows why a version was refused', async () => {
+    api.listDocumentVersions.mockResolvedValue({
+      document_id: 'd1',
+      versions: [version(2, { review_state: 'rejected', review_note: 'wrong figures' })],
+    })
+    render(<VersionsTab canAdd={false} doc={doc} />)
+    expect(await screen.findByText('knowledge.versions.rejected')).toBeTruthy()
+    expect(screen.getByText(/wrong figures/)).toBeTruthy()
+  })
+
+  it('tells the uploader when the version was sent for approval instead of taking effect', async () => {
+    api.uploadNewVersion.mockResolvedValue({ ...doc, version_number: 1, pending_version_number: 2 })
+    const { container } = render(<VersionsTab canAdd doc={doc} />)
+    await screen.findByText('leave-2.md')
+    const file = new File(['x'], 'leave-3.md', { type: 'text/markdown' })
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } })
+
+    expect(await screen.findByText('knowledge.versions.submittedWaiting')).toBeTruthy()
+  })
 })
+

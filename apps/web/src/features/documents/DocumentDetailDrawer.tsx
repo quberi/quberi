@@ -319,6 +319,8 @@ export function VersionsTab({ doc, canAdd }: { doc: DocumentSummary; canAdd: boo
   const [versions, setVersions] = useState<DocumentVersion[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  // After submitting, whether the new version is the document's file now or is waiting.
+  const [submitted, setSubmitted] = useState<'current' | 'waiting' | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -340,12 +342,14 @@ export function VersionsTab({ doc, canAdd }: { doc: DocumentSummary; canAdd: boo
   const onPick = async (file: File | undefined) => {
     if (!file || !credentials) return
     setError(null)
+    setSubmitted(null)
     setProgress(0)
     try {
-      await uploadNewVersion(credentials, doc.space_id, doc.id, file, {
+      const result = await uploadNewVersion(credentials, doc.space_id, doc.id, file, {
         note,
         onProgress: (p) => setProgress(p.total ? p.loaded / p.total : 0),
       })
+      setSubmitted(result.pending_version_number != null ? 'waiting' : 'current')
       setNote('')
       await Promise.all([load(), reloadPage(), reloadStats()])
     } catch (err) {
@@ -397,9 +401,14 @@ export function VersionsTab({ doc, canAdd }: { doc: DocumentSummary; canAdd: boo
             ref={fileInput}
             type="file"
           />
+          {doc.pending_version_number != null && (
+            <small className="settings-hint">
+              {t('knowledge.versions.oneWaiting', { number: doc.pending_version_number })}
+            </small>
+          )}
           <button
             className="secondary-button"
-            disabled={progress !== null}
+            disabled={progress !== null || doc.pending_version_number != null}
             onClick={() => fileInput.current?.click()}
             type="button"
           >
@@ -417,6 +426,11 @@ export function VersionsTab({ doc, canAdd }: { doc: DocumentSummary; canAdd: boo
           {error}
         </p>
       )}
+      {submitted === 'waiting' && (
+        <p className="doc-drawer-note" role="status">
+          {t('knowledge.versions.submittedWaiting')}
+        </p>
+      )}
       {versions === null && !error && <p className="doc-drawer-note">{t('knowledge.versions.loading')}</p>}
       {versions !== null && (
         <ul className="doc-version-list">
@@ -429,6 +443,12 @@ export function VersionsTab({ doc, canAdd }: { doc: DocumentSummary; canAdd: boo
                 <strong>{t('knowledge.versions.number', { number: v.version_number })}</strong>
                 {v.is_current && (
                   <span className="chip chip-inline">{t('knowledge.versions.current')}</span>
+                )}
+                {v.review_state === 'pending' && (
+                  <span className="badge badge-pending">{t('knowledge.versions.pending')}</span>
+                )}
+                {v.review_state === 'rejected' && (
+                  <span className="badge badge-pending">{t('knowledge.versions.rejected')}</span>
                 )}
                 <span title={v.filename}>{v.filename}</span>
               </span>
@@ -453,6 +473,11 @@ export function VersionsTab({ doc, canAdd }: { doc: DocumentSummary; canAdd: boo
                 </code>
               </span>
               {v.note && <span className="doc-version-note">{v.note}</span>}
+              {v.review_state === 'rejected' && v.review_note && (
+                <span className="doc-version-note">
+                  {t('knowledge.versions.rejectedBecause', { reason: v.review_note })}
+                </span>
+              )}
             </li>
           ))}
         </ul>

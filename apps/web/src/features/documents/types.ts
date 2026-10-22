@@ -89,6 +89,11 @@ export interface DocumentSummary {
   /** The version the file columns describe, and how many versions there are (0 = no file). */
   version_number?: number | null
   version_count?: number
+  /**
+   * A new version of this document is waiting for a reviewer. Set only for whoever added it
+   * and for the space's reviewers; the document keeps showing its current file meanwhile.
+   */
+  pending_version_number?: number | null
 }
 
 /** One stored file of a document. Written once, never changed. */
@@ -104,6 +109,9 @@ export interface DocumentVersion {
   created_by_user_id: string | null
   created_by_name: string
   is_current: boolean
+  /** 'pending' while a reviewer has not decided, 'rejected' with ``review_note`` as the reason. */
+  review_state?: 'approved' | 'pending' | 'rejected'
+  review_note?: string | null
 }
 
 export interface DocumentVersionList {

@@ -392,7 +392,13 @@
       "currentOf": "{{number}} of {{count}}",
       "badge": "v{{number}}",
       "versionsTitle": "{{count}} versions",
-      "explain": "Add a newer file of this same document. Earlier versions are kept and stay searchable, marked with their version number.",
+      "explain": "Add a newer file of this same document. Earlier versions are kept and stay searchable, marked with their version number. In a space that approves uploads, an editor's new version waits for an owner or admin before it replaces the current file.",
+      "pending": "Waiting for approval",
+      "rejected": "Rejected",
+      "rejectedBecause": "Rejected: {{reason}}",
+      "waitingBadge": "Version {{number}} waiting",
+      "oneWaiting": "Version {{number}} is waiting for approval. A new one can be added after it is decided.",
+      "submittedWaiting": "Submitted. The new version is waiting for an owner or admin; the document keeps its current file until then.",
       "noteLabel": "What changed",
       "notePlaceholder": "What changed in this version (optional)",
       "upload": "Upload a new version",
@@ -1905,6 +1911,10 @@
     "badge": {
       "pending": "Pending approval",
       "rejected": "Rejected"
+    },
+    "versions": {
+      "heading": "New versions of existing documents",
+      "line": "{{name}} · version {{number}}"
     },
     "inboxTitle": "Uploads waiting for your approval",
     "inboxLine": "{{space}}: {{count}} waiting",

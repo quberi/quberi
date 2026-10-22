@@ -386,7 +386,13 @@
       "currentOf": "第 {{number}} 版（共 {{count}} 版）",
       "badge": "v{{number}}",
       "versionsTitle": "共 {{count}} 个版本",
-      "explain": "为这份文档添加更新的文件。旧版本会保留，仍可被检索，并标注版本号。",
+      "explain": "为这份文档添加更新的文件。旧版本会保留，仍可被检索，并标注版本号。在需要审核的空间里，编辑者提交的新版本要先经所有者或管理员批准，才会替换当前文件。",
+      "pending": "待审批",
+      "rejected": "已拒绝",
+      "rejectedBecause": "拒绝原因:{{reason}}",
+      "waitingBadge": "第 {{number}} 版待审批",
+      "oneWaiting": "第 {{number}} 版正在等待审批，处理后才能再添加新版本。",
+      "submittedWaiting": "已提交。新版本正在等待所有者或管理员审批，在此之前文档仍使用当前文件。",
       "noteLabel": "更新说明",
       "notePlaceholder": "这一版改了什么（选填）",
       "upload": "上传新版本",
@@ -1898,6 +1904,10 @@
     "badge": {
       "pending": "待审批",
       "rejected": "已拒绝"
+    },
+    "versions": {
+      "heading": "已有文档的新版本",
+      "line": "{{name}} · 第 {{number}} 版"
     },
     "inboxTitle": "有上传等你审批",
     "inboxLine": "{{space}}：{{count}} 份待审批",
