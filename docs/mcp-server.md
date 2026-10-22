@@ -142,3 +142,27 @@ that was rejected does not. If a rule hides the existing file from you, the
 answer says an identical file exists without naming it. The check is per space
 and exact: the same picture saved again at a different size or quality is a
 different file.
+
+### Where a passage is in the original file
+
+`search` returns each passage with the page it was found on, so a reader can open
+the original and check it. A PDF passage names its page (`page 3`) or, when the
+passage runs across a page break, a range (`pages 3-4`). The same fields are in
+the structured result: `page_start`, `page_end`, `unit_label` and `source_kind`
+(the REST search response carries them too).
+
+Two things worth passing on to the person reading the answer:
+
+- A scanned page has no text in the file, so Quberi reads it from a picture of the
+  page. That text comes back marked as recognised from a scan (`unit_label` is
+  `ocr_block`) and can contain misread characters, especially in small print.
+  Text read out of a picture that is not a PDF page is marked the same way
+  (`source_kind` is `image_ocr`). The text in the result tells the model to say so
+  when it relies on one.
+- Only PDF pages have page numbers for now. For other file types the fields are
+  empty, and the passage is described exactly as before.
+
+A search can also find a part number or dimension exactly. A question that
+contains one (`Φ520`, `HZ-8800B`, `6205-2RS`) is looked up by that value as well
+as by meaning, and passages that contain it are listed first. Variant spellings of
+the diameter sign (`Φ`, `Ø`, `⌀`) count as the same value.

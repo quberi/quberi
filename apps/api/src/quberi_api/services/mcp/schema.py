@@ -124,7 +124,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         name="search",
         description=(
             "Search the knowledge the signed-in person can read: the documents' text, "
-            "pictures that might be related, or both. Returns quoted passages as data."
+            "pictures that might be related, or both. Returns quoted passages as data, with the "
+            "page of the original file when it is known."
         ),
         input_schema=_SEARCH_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,

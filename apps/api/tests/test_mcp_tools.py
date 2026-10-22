@@ -137,15 +137,17 @@ async def test_search_returns_formatted_text_and_structured_content(
 ):
     from quberi_api.services.doc_acl import NO_DOC_ACCESS
     from quberi_api.services.mcp import adapters
+    from quberi_api.services.rag.vector_store import RetrievedChunk
+
 
     doc, space = uuid.uuid4(), uuid.uuid4()
 
     async def fake_retrieve(
         session, *, qdrant, organization_id, caller_user_id, query, top_k, **_more
     ):
-        chunk = SimpleNamespace(
+        chunk = RetrievedChunk(
             document_id=doc, space_id=space, document_name="Handbook.md",
-            chunk_index=0, text="Remote work is allowed.", score=0.9,
+            chunk_index=0, text="Remote work is allowed.", score=0.9, char_start=0, char_end=23,
         )
         return SimpleNamespace(chunks=[chunk], space_ids=[space], doc_access=NO_DOC_ACCESS)
 

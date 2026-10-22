@@ -118,7 +118,8 @@ class SearchKnowledgeTool(Tool):
         "current user can access (company docs, wikis, synced Feishu files, "
         "uploads). Use this for any question about *content* — policies, "
         "how-tos, meeting notes, specs, reports. Returns the most relevant "
-        "text passages with their source document ids and a relevance score. "
+        "text passages with their source document ids, the page of the original "
+        "when it is known, and a relevance score. "
         "Not for questions about people, org structure, or access — use the "
         "org tools for those."
     )
@@ -164,6 +165,10 @@ class SearchKnowledgeTool(Tool):
                 "chunk_index": c.chunk_index,
                 "text": c.text,
                 "score": round(float(c.score), 4),
+                "page_start": c.page_start,
+                "page_end": c.page_end,
+                "unit_label": c.unit_label,
+                "source_kind": c.source_kind,
             }
             for c in result.chunks
         ]

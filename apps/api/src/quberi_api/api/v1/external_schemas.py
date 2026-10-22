@@ -42,6 +42,15 @@ class Passage(BaseModel):
     chunk_index: int
     text: str
     score: float
+    # Where in the file the passage is, so a person can open the original and check it.
+    # Null for formats that do not record a page yet.
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+    # "ocr_block" when any of the passage was recognised from a scan (it may contain
+    # errors), "text_block" when it is the file's own text, "" when not recorded.
+    unit_label: str = ""
+    # "image_ocr" for text read out of a picture, otherwise "text".
+    source_kind: str = "text"
 
 
 class PendingDocument(BaseModel):

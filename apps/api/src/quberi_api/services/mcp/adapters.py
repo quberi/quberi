@@ -549,6 +549,10 @@ async def do_search(
                 chunk_index=c.chunk_index,
                 text=c.text[:MAX_PASSAGE_CHARS],
                 score=c.score,
+                page_start=c.page_start,
+                page_end=c.page_end,
+                unit_label=c.unit_label,
+                source_kind=c.source_kind,
             )
             for c in chunks
         ],

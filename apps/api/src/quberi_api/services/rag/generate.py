@@ -141,6 +141,17 @@ class Citation:
     # the UI jump to and highlight the exact source span.
     char_start: int
     char_end: int
+    # Where in the file the passage sits, when the extractor recorded it: the first and last
+    # page and block. ``None`` for formats that do not have positions yet.
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+    unit_start: Optional[int] = None
+    unit_end: Optional[int] = None
+    # "ocr_block" when any of it was recognised from a picture of the page (so it may
+    # contain errors), "text_block" when it is the file's own text, "" when unknown.
+    unit_label: str = ""
+    # "image_ocr" for text read out of a picture; "text" otherwise.
+    source_kind: str = "text"
 
 
 @dataclass(frozen=True)
@@ -294,21 +305,7 @@ async def generate_answer(
     # in the answer. This trims down the citations list rendered under
     # the message bubble to what the model actually leveraged.
     used_indices = _extract_used_indices(answer)
-    citations = [
-        Citation(
-            index=c.index,
-            document_id=c.document_id,
-            space_id=c.space_id,
-            document_name=c.document_name,
-            chunk_index=c.chunk_index,
-            text=c.text,
-            score=c.score,
-            used=c.index in used_indices,
-            char_start=c.char_start,
-            char_end=c.char_end,
-        )
-        for c in citations
-    ]
+    citations = [replace(c, used=c.index in used_indices) for c in citations]
 
     return GenerationResult(
         answer=answer,
@@ -337,9 +334,35 @@ def _build_citations(chunks: List[RetrievedChunk]) -> List[Citation]:
             used=False,
             char_start=c.char_start,
             char_end=c.char_end,
+            page_start=c.page_start,
+            page_end=c.page_end,
+            unit_start=c.unit_start,
+            unit_end=c.unit_end,
+            unit_label=c.unit_label,
+            source_kind=c.source_kind,
         )
         for i, c in enumerate(chunks)
     ]
+
+
+def _where(c: Citation) -> str:
+    """Where in the file a reference is, in words a reader can check against the original.
+
+    A PDF passage names its page ("第3页", "第2-4页"). A passage with no recorded page keeps
+    the wording it always had ("chunk N"), byte for byte, so nothing changes for the formats
+    that do not have positions yet. Text recognised from a picture says so, because it may
+    contain errors. The caller passes the result through ``_fence_safe`` like every other
+    part of the line; nothing here is user text today, and that must not be what decides it.
+    """
+
+    recognised = c.unit_label == "ocr_block" or c.source_kind == "image_ocr"
+    if c.page_start is None:
+        base = f"chunk {c.chunk_index}"
+    elif c.page_end is None or c.page_end == c.page_start:
+        base = f"第{c.page_start}页"
+    else:
+        base = f"第{c.page_start}-{c.page_end}页"
+    return base + "（扫描识别，可能有误）" if recognised else base
 
 
 def _assemble_messages(
@@ -360,7 +383,8 @@ def _assemble_messages(
     trimmed_history = history[-HISTORY_LIMIT:] if history else []
 
     references_block = "\n\n".join(
-        f"[{c.index}] 文件：{_fence_safe(c.document_name or '未命名文件')} · chunk {c.chunk_index}\n"
+        f"[{c.index}] 文件：{_fence_safe(c.document_name or '未命名文件')}"
+        f" · {_fence_safe(_where(c))}\n"
         f"{_fence_safe(_trim_chunk(c.text))}"
         for c in citations
     )
@@ -483,21 +507,9 @@ class StreamedGeneration:
         """Freeze into a :class:`GenerationResult` — used at stream end."""
 
         used = _extract_used_indices(self.answer)
-        finalised = [
-            Citation(
-                index=c.index,
-                document_id=c.document_id,
-                space_id=c.space_id,
-                document_name=c.document_name,
-                chunk_index=c.chunk_index,
-                text=c.text,
-                score=c.score,
-                used=c.index in used,
-                char_start=c.char_start,
-                char_end=c.char_end,
-            )
-            for c in self.citations
-        ]
+        # ``replace`` keeps every field but the one named, so a field added to Citation
+        # later cannot be lost here the way it would be by copying them one at a time.
+        finalised = [replace(c, used=c.index in used) for c in self.citations]
         return GenerationResult(
             answer=self.answer,
             citations=finalised,
@@ -575,7 +587,7 @@ async def generate_answer_stream(
         kind="retrieved",
         data={
             "model_id": model_id,
-            "citations": [_citation_to_dict(c) for c in accumulator.citations],
+            "citations": [citation_to_dict(c) for c in accumulator.citations],
         },
     )
 
@@ -662,7 +674,9 @@ async def generate_answer_stream(
     yield StreamEvent(kind="done", data=_finalise_payload(accumulator))
 
 
-def _citation_to_dict(c: Citation) -> dict:
+def citation_to_dict(c: Citation) -> dict:
+    """A citation as plain JSON: what the page shows and what the chat history stores."""
+
     return {
         "index": c.index,
         "document_id": str(c.document_id),
@@ -674,6 +688,12 @@ def _citation_to_dict(c: Citation) -> dict:
         "used": c.used,
         "char_start": c.char_start,
         "char_end": c.char_end,
+        "page_start": c.page_start,
+        "page_end": c.page_end,
+        "unit_start": c.unit_start,
+        "unit_end": c.unit_end,
+        "unit_label": c.unit_label,
+        "source_kind": c.source_kind,
     }
 
 
@@ -681,7 +701,7 @@ def _finalise_payload(acc: StreamedGeneration) -> dict:
     result = acc.snapshot()
     return {
         "answer": result.answer,
-        "citations": [_citation_to_dict(c) for c in result.citations],
+        "citations": [citation_to_dict(c) for c in result.citations],
         "model_id": result.model_id,
         "prompt_tokens": result.prompt_tokens,
         "completion_tokens": result.completion_tokens,

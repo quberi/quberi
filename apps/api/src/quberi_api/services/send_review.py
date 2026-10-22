@@ -92,10 +92,18 @@ def chunk_to_dict(c: RetrievedChunk) -> dict:
         "score": c.score,
         "char_start": c.char_start,
         "char_end": c.char_end,
+        "source_kind": c.source_kind,
+        "page_start": c.page_start,
+        "page_end": c.page_end,
+        "unit_start": c.unit_start,
+        "unit_end": c.unit_end,
+        "unit_label": c.unit_label,
     }
 
 
 def chunk_from_dict(d: dict) -> RetrievedChunk:
+    # A review held in Redis before positions existed has none of the last six keys; it
+    # reads back as plain text with no page, exactly as it was when it was held.
     return RetrievedChunk(
         document_id=uuid.UUID(d["document_id"]),
         space_id=uuid.UUID(d["space_id"]),
@@ -105,6 +113,12 @@ def chunk_from_dict(d: dict) -> RetrievedChunk:
         score=d["score"],
         char_start=d["char_start"],
         char_end=d["char_end"],
+        source_kind=d.get("source_kind", "text"),
+        page_start=d.get("page_start"),
+        page_end=d.get("page_end"),
+        unit_start=d.get("unit_start"),
+        unit_end=d.get("unit_end"),
+        unit_label=d.get("unit_label") or "",
     )
 
 

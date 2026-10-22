@@ -29,6 +29,7 @@ from redis.asyncio import Redis
 from sqlalchemy import select, text
 
 from quberi_api.services.doc_acl import NO_DOC_ACCESS
+from quberi_api.services.rag.vector_store import RetrievedChunk
 from quberi_api.api import dependencies
 from quberi_api.api.v1 import external as external_api
 from quberi_api.services.mcp import adapters
@@ -648,9 +649,9 @@ async def test_full_login_over_http_then_search_as_the_granting_person(
 
     async def fake_retrieve(session, *, qdrant, organization_id, caller_user_id, query, top_k, **_more):
         seen.update(org=organization_id, user=caller_user_id, query=query, top_k=top_k)
-        chunk = SimpleNamespace(
+        chunk = RetrievedChunk(
             document_id=doc, space_id=space, document_name="Handbook.md",
-            chunk_index=0, text="Remote work is allowed.", score=0.9,
+            chunk_index=0, text="Remote work is allowed.", score=0.9, char_start=0, char_end=23,
         )
         return SimpleNamespace(chunks=[chunk], space_ids=[space], doc_access=NO_DOC_ACCESS)
 

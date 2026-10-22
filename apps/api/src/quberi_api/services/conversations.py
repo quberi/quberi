@@ -56,6 +56,7 @@ from quberi_api.services.errors import (
 from quberi_api.services.rag.generate import (
     GenerationResult,
     StreamEvent,
+    citation_to_dict,
     describe_chat_model,
     generate_answer,
     generate_answer_stream,
@@ -586,21 +587,8 @@ async def send_message(
                 binding_id=ov_binding,
                 scope_is_empty=len(retrieved.space_ids) == 0,
             )
-            citations_payload = [
-                {
-                    "index": c.index,
-                    "document_id": str(c.document_id),
-                    "space_id": str(c.space_id),
-                    "document_name": c.document_name,
-                    "chunk_index": c.chunk_index,
-                    "text": c.text,
-                    "score": c.score,
-                    "used": c.used,
-                    "char_start": c.char_start,
-                    "char_end": c.char_end,
-                }
-                for c in generation.citations
-            ]
+            # The same serialiser the streaming path uses, so the two cannot drift apart.
+            citations_payload = [citation_to_dict(c) for c in generation.citations]
             assistant_meta = {
                 "model_id": generation.model_id,
                 "prompt_tokens": generation.prompt_tokens,
