@@ -36,7 +36,7 @@ export interface MessageCitation {
   unit_end?: number | null
   /** 'ocr_block' when any of it was read from a picture of the page (it may contain errors). */
   unit_label?: string
-  /** 'image_ocr' for text read out of a picture; 'text' otherwise. */
+  /** 'image_ocr' for text read out of a picture, 'image_caption' for a model's description of one; 'text' otherwise. */
   source_kind?: string
   /**
    * Which version of the file the passage was read from, and the file's newest version

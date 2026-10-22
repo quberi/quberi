@@ -42,6 +42,8 @@ export interface ModelSelections {
   chat: ModelSelectionSlot
   embedding: ModelSelectionSlot
   reranker: ModelSelectionSlot
+  /** The model that describes pictures; empty until an owner/admin chooses one. */
+  vision: ModelSelectionSlot
 }
 
 const BASE = '/api/v1/organizations/current'
@@ -110,6 +112,8 @@ export interface UsableChatModel {
    * now that several platform models can coexist. */
   is_default: boolean
   is_private: boolean
+  /** Whether the model reads pictures: only those can be chosen as the vision model. */
+  supports_vision?: boolean
 }
 
 export function listUsableChatModels(
@@ -197,7 +201,7 @@ export function getModelSelections(
 
 export function setModelSelection(
   credentials: DevCredentials,
-  purpose: 'chat' | 'embedding' | 'reranker',
+  purpose: 'chat' | 'embedding' | 'reranker' | 'vision',
   modelId: string,
   bindingId: string,
 ): Promise<void> {
@@ -210,7 +214,7 @@ export function setModelSelection(
 
 export function clearModelSelection(
   credentials: DevCredentials,
-  purpose: 'chat' | 'embedding' | 'reranker',
+  purpose: 'chat' | 'embedding' | 'reranker' | 'vision',
 ): Promise<void> {
   return apiFetch<void>(`${BASE}/ai-model-selections/${purpose}`, {
     method: 'DELETE',
@@ -222,6 +226,8 @@ export interface OrganizationSettings {
   allow_byok: boolean
   /** Outside tools (e.g. DeepSeek Harness) may read this organisation's knowledge. */
   allow_external_tools: boolean
+  /** Pictures may be sent to the chosen vision model to be described. Off by default. */
+  image_vision_enabled?: boolean
 }
 
 export function getOrganizationSettings(
@@ -232,7 +238,11 @@ export function getOrganizationSettings(
 
 export function updateOrganizationSettings(
   credentials: DevCredentials,
-  input: { allow_byok?: boolean; allow_external_tools?: boolean },
+  input: {
+    allow_byok?: boolean
+    allow_external_tools?: boolean
+    image_vision_enabled?: boolean
+  },
 ): Promise<OrganizationSettings> {
   return apiFetch<OrganizationSettings>(`${BASE}/settings`, {
     method: 'PATCH',

@@ -17,6 +17,7 @@ import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { SearchableMultiSelect } from '../../components/SearchableMultiSelect'
 import { describeModel } from './modelDescriptions'
+import { VisionModelTab } from './VisionModelTab'
 
 import {
   clearModelSelection,
@@ -133,6 +134,9 @@ export function ModelSettingsPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // "Text models" is the page as it always was; "Vision models" is the separate choice of the
+  // model that describes pictures.
+  const [tab, setTab] = useState<'text' | 'vision'>('text')
 
   const load = useCallback(async () => {
     if (!credentials) return
@@ -190,6 +194,31 @@ export function ModelSettingsPanel() {
       {error && !loading && <div className="state-panel error-state">{error}</div>}
 
       {!loading && !error && selections && (
+        <div className="settings-tabs" role="tablist">
+          {(['text', 'vision'] as const).map((id) => (
+            <button
+              aria-selected={tab === id}
+              className={tab === id ? 'active' : ''}
+              key={id}
+              onClick={() => setTab(id)}
+              role="tab"
+              type="button"
+            >
+              {t(`modelSettings.tabs.${id}`)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!loading && !error && selections && tab === 'vision' && (
+        <VisionModelTab
+          onChanged={load}
+          selection={selections.vision ?? { model_id: null, binding_id: null }}
+          usable={usable}
+        />
+      )}
+
+      {!loading && !error && selections && tab === 'text' && (
         <>
           <DefaultModelCard
             usable={usable}

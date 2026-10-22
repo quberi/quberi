@@ -28,6 +28,7 @@ describe('describeCitation', () => {
     expect(describeCitation(cite(), t)).toEqual({
       place: 'chat.citations.chunk:{"index":5}',
       scanned: false,
+      described: false,
       version: null,
     })
   })
@@ -50,6 +51,13 @@ describe('describeCitation', () => {
     expect(describeCitation(cite({ unit_label: 'text_block', source_kind: 'text' }), t).scanned).toBe(
       false,
     )
+  })
+
+  it('marks a model description as a guide, not a scan', () => {
+    const described = describeCitation(cite({ source_kind: 'image_caption' }), t)
+    expect(described.described).toBe(true)
+    expect(described.scanned).toBe(false)
+    expect(describeCitation(cite({ source_kind: 'image_ocr' }), t).described).toBe(false)
   })
 
   it('says nothing about versions for a file that has only one', () => {

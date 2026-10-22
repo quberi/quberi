@@ -7,6 +7,8 @@ export interface CitationPlace {
   place: string
   /** The text was read from a picture of the page, so it may contain errors. */
   scanned: boolean
+  /** A model's description of a picture: a guide to what it shows, not a transcript. */
+  described: boolean
   /**
    * Which version of the file this is, shown only when the file has more than one.
    * ``older`` is true when a newer version has replaced it.
@@ -30,6 +32,7 @@ export function describeCitation(c: MessageCitation, t: Translate): CitationPlac
     place = t('chat.citations.pages', { from: start, to: c.page_end })
   }
   const scanned = c.unit_label === 'ocr_block' || c.source_kind === 'image_ocr'
+  const described = c.source_kind === 'image_caption'
 
   const latest = c.latest_version
   const number = c.version_number ?? 1
@@ -40,5 +43,5 @@ export function describeCitation(c: MessageCitation, t: Translate): CitationPlac
         ? { text: t('chat.citations.versionLatest', { number }), older: false }
         : { text: t('chat.citations.versionOlder', { number, latest }), older: true }
   }
-  return { place, scanned, version }
+  return { place, scanned, described, version }
 }

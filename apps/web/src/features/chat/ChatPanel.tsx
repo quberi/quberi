@@ -1449,13 +1449,18 @@ function CitationsRail({
 /** "page 3", the scan warning and the version, for the line under a source's name. */
 function CitationPlaceLabel({ citation }: { citation: MessageCitation }) {
   const { t } = useTranslation()
-  const { place, scanned, version } = describeCitation(citation, t)
+  const { place, scanned, described, version } = describeCitation(citation, t)
   return (
     <>
       <span>{place}</span>
       {scanned && (
         <span className="chat-citation-scan-note" title={t('chat.citations.scannedHint')}>
           {t('chat.citations.scanned')}
+        </span>
+      )}
+      {described && (
+        <span className="chat-citation-scan-note" title={t('chat.citations.describedHint')}>
+          {t('chat.citations.described')}
         </span>
       )}
       {version && (
