@@ -159,6 +159,49 @@ async def test_a_member_cannot_pick_or_clear_the_vision_model(db_session, web, w
     assert chosen["model_id"] == "deepseek-flash"  # untouched
 
 
+@pytest.mark.parametrize(
+    "purpose,model", [("chat", "deepseek-chat"), ("reranker", "bge-reranker-v2-m3")]
+)
+async def test_only_an_admin_changes_which_model_the_organisation_uses_for_anything(
+    db_session, web, world, purpose, model
+):
+    """A member used to be able to change (or clear) the organisation's chat model."""
+    if purpose == "chat":
+        binding = world.binding
+    else:
+        binding = await _binding(db_session, platform=True, kind="local_reranker")
+    path = f"{BASE}/ai-model-selections/{purpose}"
+    body = {"model_id": model, "binding_id": str(binding)}
+
+    await _as(web, db_session, world.boot, world.member.id)
+    assert (await web.put(path, json=body)).status_code == 403
+    assert (await web.delete(path)).status_code == 403
+    await _as(web, db_session, world.boot, world.boot.user_id)
+    assert (await web.get(f"{BASE}/ai-model-selections")).json()[purpose]["model_id"] is None
+
+    assert (await web.put(path, json=body)).status_code == 204
+    assert (await web.get(f"{BASE}/ai-model-selections")).json()[purpose]["model_id"] == model
+    await _as(web, db_session, world.boot, world.member.id)
+    assert (await web.delete(path)).status_code == 403
+    await _as(web, db_session, world.boot, world.boot.user_id)
+    assert (await web.get(f"{BASE}/ai-model-selections")).json()[purpose]["model_id"] == model
+    assert (await web.delete(path)).status_code == 204
+    assert (await web.get(f"{BASE}/ai-model-selections")).json()[purpose]["model_id"] is None
+
+
+async def test_the_embedding_model_is_admin_only_too(db_session, web, world):
+    local = await _binding(db_session, platform=True, kind="local_embedding")
+    body = {"model_id": "bge-m3", "binding_id": str(local)}
+    await _as(web, db_session, world.boot, world.member.id)
+    assert (
+        await web.put(f"{BASE}/ai-model-selections/embedding", json=body)
+    ).status_code == 403
+    await _as(web, db_session, world.boot, world.boot.user_id)
+    assert (
+        await web.put(f"{BASE}/ai-model-selections/embedding", json=body)
+    ).status_code == 204
+
+
 async def test_the_model_lists_say_which_models_read_pictures(web, world):
     catalog = {m["model_id"]: m for m in (await web.get(f"{BASE}/ai-models")).json()}
     assert catalog["deepseek-flash"]["supports_vision"] is True

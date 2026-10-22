@@ -520,9 +520,10 @@ async def put_model_selection(
 ) -> Response:
     if purpose not in ("chat", "embedding", "reranker", "vision"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid purpose")
-    if purpose == "vision":
-        # Describing pictures sends them to the model's company: an owner or admin decides.
-        await _require_org_admin(session, caller)
+    # Which model answers chats, embeds the organisation's text, or describes its pictures is
+    # the organisation's decision, not any member's: changing the embedding model alone makes
+    # every existing document unsearchable until it is re-indexed.
+    await _require_org_admin(session, caller)
     try:
         await ai_providers_service.set_selection(
             session,
@@ -548,8 +549,7 @@ async def delete_model_selection(
 ) -> Response:
     if purpose not in ("chat", "embedding", "reranker", "vision"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid purpose")
-    if purpose == "vision":
-        await _require_org_admin(session, caller)
+    await _require_org_admin(session, caller)
     await ai_providers_service.clear_selection(
         session, organization_id=caller.organization.id, purpose=purpose
     )
