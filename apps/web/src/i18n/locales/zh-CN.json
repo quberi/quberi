@@ -782,22 +782,27 @@
     "copy": "复制",
     "copied": "已复制",
     "claude": {
+      "tab": "Claude",
       "title": "Claude（网页版和桌面版）",
       "steps": "设置 → 连接器 → 添加自定义连接器。粘贴上面的服务器地址，按提示登录 Quberi。"
     },
     "chatgpt": {
+      "tab": "ChatGPT",
       "title": "ChatGPT",
       "steps": "插件 → 添加 → 添加自定义 MCP 服务器。粘贴上面的服务器地址（不要加 /mcp），认证方式选 OAuth，“高级 OAuth 设置”保持默认。按提示登录 Quberi。"
     },
     "codex": {
+      "tab": "Codex",
       "title": "Codex",
       "steps": "在终端依次运行下面两条命令，第二条会打开浏览器让你登录。"
     },
     "claudeCode": {
+      "tab": "Claude Code",
       "title": "Claude Code",
       "steps": "运行下面的命令，然后在 Claude Code 里输入 /mcp，选择 quberi 登录。如果提示不认识这个客户端，在命令末尾加上 --client-id quberi-mcp。"
     },
     "cursor": {
+      "tab": "Cursor",
       "title": "Cursor（桌面版）",
       "steps": "把下面的内容加到 ~/.cursor/mcp.json（和已有内容合并），重启 Cursor，然后打开 设置 → MCP，点击 quberi 旁的 Connect。"
     },

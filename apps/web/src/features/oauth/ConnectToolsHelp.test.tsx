@@ -43,25 +43,34 @@ describe('snippets', () => {
 })
 
 describe('ConnectToolsHelp', () => {
-  it('is collapsed by default and lists every tool when opened', () => {
+  it('is collapsed by default and offers one tab per tool', () => {
     const { container } = render(<ConnectToolsHelp />)
     const details = container.querySelector('details') as HTMLDetailsElement
     expect(details.open).toBe(false)
-    for (const k of ['claude', 'chatgpt', 'codex', 'claudeCode', 'cursor']) {
-      expect(screen.getByText(`connectTools.${k}.title`)).toBeTruthy()
-    }
+    expect(screen.getAllByRole('tab')).toHaveLength(5)
     expect(container.textContent).toContain(MCP_URL)
   })
 
-  it('copies the text beside the button that was clicked', async () => {
+  it('shows one tool at a time, starting with Claude', () => {
+    render(<ConnectToolsHelp />)
+    expect(screen.getByRole('tab', { name: 'connectTools.claude.tab' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('connectTools.claude.title')).toBeTruthy()
+    expect(screen.queryByText('connectTools.cursor.title')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: 'connectTools.cursor.tab' }))
+    expect(screen.getByText('connectTools.cursor.title')).toBeTruthy()
+    expect(screen.queryByText('connectTools.claude.title')).toBeNull()
+  })
+
+  it('copies the address, and the snippet of the chosen tool', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     render(<ConnectToolsHelp />)
-    const buttons = screen.getAllByRole('button', { name: /connectTools.copy/ })
-    expect(buttons).toHaveLength(4)
-    fireEvent.click(buttons[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /connectTools.copy/ }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(MCP_URL))
-    fireEvent.click(buttons[3]!)
+    fireEvent.click(screen.getByRole('tab', { name: 'connectTools.cursor.tab' }))
+    const buttons = screen.getAllByRole('button', { name: /connectTools.cop/ })
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[1]!)
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(CURSOR_CONFIG))
     expect(await screen.findAllByText('connectTools.copied')).toHaveLength(2)
   })
@@ -70,7 +79,7 @@ describe('ConnectToolsHelp', () => {
     const writeText = vi.fn().mockRejectedValue(new Error('denied'))
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     render(<ConnectToolsHelp />)
-    fireEvent.click(screen.getAllByRole('button', { name: /connectTools.copy/ })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /connectTools.copy/ }))
     await waitFor(() => expect(writeText).toHaveBeenCalled())
     expect(screen.queryByText('connectTools.copied')).toBeNull()
   })

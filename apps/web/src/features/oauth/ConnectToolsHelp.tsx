@@ -1,4 +1,4 @@
-import { Check, Copy } from 'lucide-react'
+import { Check, ChevronDown, Copy, Plug } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -52,55 +52,78 @@ function CopyBlock({ text, multiline = false }: { text: string; multiline?: bool
   )
 }
 
+const TOOLS = ['claude', 'chatgpt', 'codex', 'claudeCode', 'cursor'] as const
+type ToolKey = (typeof TOOLS)[number]
+
+/** The text to copy for each tool; Claude and ChatGPT only need the address. */
+const SNIPPETS: Record<ToolKey, { text: string; multiline: boolean } | null> = {
+  claude: null,
+  chatgpt: null,
+  codex: { text: CODEX_COMMANDS, multiline: true },
+  claudeCode: { text: CLAUDE_CODE_COMMAND, multiline: false },
+  cursor: { text: CURSOR_CONFIG, multiline: true },
+}
+
 /**
  * How a person connects an outside AI tool to their knowledge. Shown whether or not anything
- * is connected yet, because the first connection is exactly when it is needed.
+ * is connected yet, because the first connection is exactly when it is needed. One tool at a
+ * time, so the panel stays short.
  */
 export function ConnectToolsHelp() {
   const { t } = useTranslation()
+  const [active, setActive] = useState<ToolKey>('claude')
+  const snippet = SNIPPETS[active]
   return (
     <>
-      <details className="connect-help">
-        <summary>
-          <strong>{t('connectTools.title')}</strong>
-          <span>{t('connectTools.hint')}</span>
-        </summary>
+      <div className="connect-help-wrap">
+        <details className="connect-help">
+          <summary>
+            <span className="connect-help-icon" aria-hidden="true">
+              <Plug size={18} />
+            </span>
+            <span className="connect-help-heading">
+              <strong>{t('connectTools.title')}</strong>
+              <small>{t('connectTools.hint')}</small>
+            </span>
+            <ChevronDown className="connect-help-chevron" size={18} aria-hidden="true" />
+          </summary>
 
-        <div className="connect-help-body">
-          <p className="connect-help-label">{t('connectTools.urlLabel')}</p>
-          <CopyBlock text={MCP_URL} />
+          <div className="connect-help-body">
+            <div className="connect-help-field">
+              <span className="connect-help-label">{t('connectTools.urlLabel')}</span>
+              <CopyBlock text={MCP_URL} />
+            </div>
 
-          <section>
-            <h3>{t('connectTools.claude.title')}</h3>
-            <p>{t('connectTools.claude.steps')}</p>
-          </section>
+            <div className="connect-help-tabs" role="tablist" aria-label={t('connectTools.title')}>
+              {TOOLS.map((k) => (
+                <button
+                  key={k}
+                  aria-selected={active === k}
+                  className={active === k ? 'connect-help-tab active' : 'connect-help-tab'}
+                  id={`connect-tab-${k}`}
+                  onClick={() => setActive(k)}
+                  role="tab"
+                  type="button"
+                >
+                  {t(`connectTools.${k}.tab`)}
+                </button>
+              ))}
+            </div>
 
-          <section>
-            <h3>{t('connectTools.chatgpt.title')}</h3>
-            <p>{t('connectTools.chatgpt.steps')}</p>
-          </section>
+            <div
+              aria-labelledby={`connect-tab-${active}`}
+              className="connect-help-panel"
+              role="tabpanel"
+            >
+              <h3>{t(`connectTools.${active}.title`)}</h3>
+              <p>{t(`connectTools.${active}.steps`)}</p>
+              {snippet && <CopyBlock text={snippet.text} multiline={snippet.multiline} />}
+            </div>
 
-          <section>
-            <h3>{t('connectTools.codex.title')}</h3>
-            <p>{t('connectTools.codex.steps')}</p>
-            <CopyBlock text={CODEX_COMMANDS} multiline />
-          </section>
-
-          <section>
-            <h3>{t('connectTools.claudeCode.title')}</h3>
-            <p>{t('connectTools.claudeCode.steps')}</p>
-            <CopyBlock text={CLAUDE_CODE_COMMAND} />
-          </section>
-
-          <section>
-            <h3>{t('connectTools.cursor.title')}</h3>
-            <p>{t('connectTools.cursor.steps')}</p>
-            <CopyBlock text={CURSOR_CONFIG} multiline />
-          </section>
-
-          <p className="connect-help-note">{t('connectTools.note')}</p>
-        </div>
-      </details>
+            <p className="connect-help-note">{t('connectTools.note')}</p>
+          </div>
+        </details>
+      </div>
       <div className="account-divider" />
     </>
   )

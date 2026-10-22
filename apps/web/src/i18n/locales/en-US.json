@@ -788,22 +788,27 @@
     "copy": "Copy",
     "copied": "Copied",
     "claude": {
+      "tab": "Claude",
       "title": "Claude (web and desktop)",
       "steps": "Settings → Connectors → Add custom connector. Paste the server address above, then sign in to Quberi when asked."
     },
     "chatgpt": {
+      "tab": "ChatGPT",
       "title": "ChatGPT",
       "steps": "Plugins → Add → Add custom MCP server. Paste the server address above (do not add /mcp), choose OAuth, and leave the advanced OAuth settings alone. Then sign in to Quberi when asked."
     },
     "codex": {
+      "tab": "Codex",
       "title": "Codex",
       "steps": "Run these two commands in a terminal. The second opens your browser to sign in."
     },
     "claudeCode": {
+      "tab": "Claude Code",
       "title": "Claude Code",
       "steps": "Run this command, then type /mcp inside Claude Code and choose quberi to sign in. If it says the client is not known, add --client-id quberi-mcp to the command."
     },
     "cursor": {
+      "tab": "Cursor",
       "title": "Cursor (desktop)",
       "steps": "Add this to ~/.cursor/mcp.json (merge it with what is already there), restart Cursor, then open Settings → MCP and click Connect on quberi."
     },
