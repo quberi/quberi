@@ -58,7 +58,7 @@ codex mcp login quberi
 `codex mcp login` opens your browser to Quberi's sign-in and consent page.
 Approve the connection there (choosing which organization's knowledge it can
 reach), and the CLI stores the resulting token itself. From then on, Codex's
-tool list includes `search`, `search_images`, `list_spaces`,
+tool list includes `search`, `read_around`, `search_images`, `list_spaces`,
 `list_documents`, `save_note`, and `upload` — filtered to what your account's
 scope allows.
 
@@ -186,6 +186,34 @@ Two things worth passing on to the person reading the answer:
   passage from an older version should be quoted as such, and the newest version
   is the one to rely on when they disagree. A file that has only one version is
   described exactly as before.
+
+### Seeing the page, and reading around a passage
+
+Two more things come with a search result, so the answer can be checked without leaving the tool.
+
+**An image of the page.** A passage from a PDF, and text read out of (or a description of) a picture,
+carries `page_preview_url`: a link to an image of the page it was found on, or of the picture itself
+(larger than its search preview). The text result gives it as a ready-made `![...](...)` line under the
+passage, and tells the model to show it only when the person asks to see the original. The link works
+like the picture preview link: it is short-lived (about ten minutes), names one page of one version for
+one person, and is **re-checked every time it is opened**. Revoking the tool, deactivating the
+person, switching outside tools off, losing access to the space or the document, archiving the
+document, or a version not yet approved all make it answer `404` with the same body as a bad link. The
+image is drawn from the stored file in a separate short-lived process with a time and memory limit, and
+is always a plain JPEG made from pixels, never the stored bytes. Slides, sheets and Word paragraphs have
+no page that can be drawn, so they carry no link. A server without a signing key issues none.
+
+**The text around a passage.** `read_around` (REST: `POST /api/v1/external/read-around`) returns the
+text on either side of a passage, from the same file and version. Pass the `document_id`,
+`version_number`, `char_start` and `char_end` that the search result gave; `before` and `after` say how
+many characters to return on each side (default 1500, at most 3000). It reads the file through the same
+access check as opening it in Quberi, so it can show nothing the person could not open there. The
+passage itself is capped (6000 characters, `passage_truncated` says when it was cut), the call is rate
+limited, and each call is written to the audit log with the document, version and number of characters,
+never the text. It does not work for text read from a scan or a picture (there is no text layer to
+read around) and answers `422` `no_text` or `position_out_of_range`; any reason the person may not read
+the document is the same `404` `document_not_found`. The text comes back framed as data, like search
+results.
 
 A picture can come back twice for one question: as a possible-match picture (with a
 preview) and as a passage read out of it. Neither is dropped. The picture carries
