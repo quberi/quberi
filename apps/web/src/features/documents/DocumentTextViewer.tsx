@@ -26,11 +26,14 @@ export function DocumentTextViewer({
   documentName,
   charStart,
   charEnd,
+  version,
   onClose,
 }: {
   spaceId: string
   documentId: string
   documentName: string
+  /** Open this version of the file (a passage quoted from an earlier version). */
+  version?: number
   /** Highlight range into the re-extracted text. Omit to just open the
    * document with no highlight (e.g. a citation indexed before this
    * feature existed). */
@@ -51,7 +54,7 @@ export function DocumentTextViewer({
     if (!credentials) return
     let cancelled = false
     setState({ kind: 'loading' })
-    getDocumentText(credentials, spaceId, documentId)
+    getDocumentText(credentials, spaceId, documentId, version)
       .then((res) => {
         if (!cancelled) setState({ kind: 'ready', text: res.text })
       })
@@ -66,7 +69,7 @@ export function DocumentTextViewer({
     return () => {
       cancelled = true
     }
-  }, [credentials, spaceId, documentId])
+  }, [credentials, spaceId, documentId, version])
 
   // Scroll the highlighted span into view once the text has rendered.
   useEffect(() => {

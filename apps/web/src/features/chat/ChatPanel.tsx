@@ -1438,6 +1438,7 @@ function CitationsRail({
           documentName={viewerCitation.document_name}
           charStart={viewerCitation.char_start}
           charEnd={viewerCitation.char_end}
+          version={viewerCitation.version_number}
           onClose={() => setViewerCitation(null)}
         />
       )}

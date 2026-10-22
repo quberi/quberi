@@ -227,6 +227,29 @@ async def test_a_picture_text_job_files_its_text_under_the_current_version(
     assert "QS-FLG-STD" in points[1][1] and row.current_version_id is not None
 
 
+async def test_a_passage_from_an_older_version_opens_in_that_version(
+    db_session, world, infra, blobs
+):
+    from quberi_api.services import documents as documents_service
+    from quberi_api.services.errors import NotFoundError
+
+    doc = await _upload(db_session, world, world.editor, data=V1)
+    await _new_version(db_session, world, world.editor, doc, V2)
+    await db_session.commit()
+
+    async def text(version):
+        return await documents_service.get_document_text(
+            db_session, document_id=doc.id, organization_id=world.boot.organization_id,
+            space_id=world.space.id, caller_user_id=world.viewer.id, version_number=version,
+        )
+
+    assert "10 days" in await text(None) and "5 days" not in await text(None)
+    assert "5 days" in await text(1) and "10 days" not in await text(1)
+    assert "10 days" in await text(2)
+    with pytest.raises(NotFoundError):
+        await text(9)
+
+
 # --------------------------------------------------------------------------
 # The web API
 # --------------------------------------------------------------------------

@@ -98,9 +98,12 @@ export function getDocumentText(
   credentials: DevCredentials,
   spaceId: string,
   documentId: string,
+  version?: number,
 ): Promise<{ document_id: string; text: string }> {
+  // A passage quoted from an earlier version is opened in that version, not the current file.
+  const suffix = version != null ? `?version=${version}` : ''
   return apiFetch<{ document_id: string; text: string }>(
-    `/api/v1/spaces/${spaceId}/documents/${documentId}/text`,
+    `/api/v1/spaces/${spaceId}/documents/${documentId}/text${suffix}`,
     { credentials },
   )
 }

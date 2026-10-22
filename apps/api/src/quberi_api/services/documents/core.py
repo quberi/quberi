@@ -1121,8 +1121,12 @@ async def get_document_text(
     organization_id: uuid.UUID,
     space_id: uuid.UUID,
     caller_user_id: uuid.UUID,
+    version_number: Optional[int] = None,
 ) -> str:
     """Re-extract and return the document's full plain text.
+
+    ``version_number`` reads an earlier version instead of the current file: a passage
+    quoted from version 1 is opened in version 1, not in whatever replaced it.
 
     We never persist the extracted text (only Qdrant chunk previews +
     the original blob are kept), so a citation that wants to render the
@@ -1156,14 +1160,23 @@ async def get_document_text(
         raise NotFoundError(
             "document has no local blob (reference-only source; not yet supported)"
         )
+    storage_key, filename, mime_type = doc.storage_key, doc.name, doc.mime_type
+    if version_number is not None:
+        version = await versions_service.get_version(session, doc.id, version_number)
+        if version is not None:
+            storage_key, filename, mime_type = (
+                version.storage_key, version.filename, version.mime_type,
+            )
+        elif not (doc.current_version_id is None and version_number == 1):
+            raise NotFoundError(f"version not found: {version_number}")
 
     from quberi_api.services.rag.extract import extract_text
 
     chunks: list[bytes] = []
-    async for piece in local_connector.open_stream(doc.storage_key):
+    async for piece in local_connector.open_stream(storage_key):
         chunks.append(piece)
     blob = b"".join(chunks)
-    extracted = extract_text(blob=blob, filename=doc.name, mime_type=doc.mime_type)
+    extracted = extract_text(blob=blob, filename=filename, mime_type=mime_type)
     return extracted.text
 
 

@@ -650,6 +650,9 @@ class DocumentTextResponse(BaseModel):
 async def get_document_text(
     space_id: uuid.UUID,
     document_id: uuid.UUID,
+    version: Optional[int] = Query(
+        default=None, ge=1, description="Read this version instead of the current file."
+    ),
     caller: CallerContext = Depends(require_caller),
     session: AsyncSession = Depends(get_db_session),
 ) -> DocumentTextResponse:
@@ -664,6 +667,7 @@ async def get_document_text(
             organization_id=caller.organization.id,
             space_id=space_id,
             caller_user_id=caller.user.id,
+            version_number=version,
         )
     except ExtractError as exc:
         raise HTTPException(
