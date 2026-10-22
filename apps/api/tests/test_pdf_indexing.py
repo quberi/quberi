@@ -395,3 +395,79 @@ def test_a_page_is_drawn_with_its_longest_side_near_the_target():
     width, height = Image.open(io.BytesIO(png)).size
     assert abs(max(width, height) - pdf_ocr.RENDER_LONGEST_SIDE) <= 4
     assert height > width  # A4 portrait stays portrait
+
+
+# -- a page cannot make the worker draw something enormous -------------------------------
+
+
+def _pdf_with_page_size(width, height):
+    import tests.pdf_fixtures as fixtures
+
+    saved = (fixtures.PAGE_W, fixtures.PAGE_H)
+    fixtures.PAGE_W, fixtures.PAGE_H = width, height
+    try:
+        return text_pdf([[(72, 72, 11, "x")]])
+    finally:
+        fixtures.PAGE_W, fixtures.PAGE_H = saved
+
+
+@pytest.mark.parametrize(
+    "width, height",
+    [(595, 842), (842, 595), (5000, 7000), (14400, 14400), (19000, 300)],
+)
+def test_the_picture_is_never_bigger_than_the_target_however_big_the_page_claims_to_be(
+    width, height
+):
+    png = pdf_ocr.render_page_png(_pdf_with_page_size(width, height), 1)
+    drawn = Image.open(io.BytesIO(png)).size
+    assert max(drawn) <= pdf_ocr.RENDER_LONGEST_SIDE + 8, drawn
+
+
+@pytest.mark.parametrize("width, height", [(20001, 100), (200000, 200000), (0.5, 842)])
+def test_a_page_that_declares_an_impossible_size_is_refused_not_drawn(width, height):
+    with pytest.raises(pdf_ocr.PageNotReadable, match="impossible size"):
+        pdf_ocr.render_page_png(_pdf_with_page_size(width, height), 1)
+
+
+async def test_one_page_that_cannot_be_drawn_does_not_stop_the_others():
+    """It is a failure of that page, not of the engine, so the rest are still read."""
+    blob = _pdf_with_page_size(595, 842)
+    units = [TextUnit("", n, 0, needs_ocr=True) for n in (1, 2)]
+    engine = FakeOcr(pages={1: [_line("only page one exists")]})
+    # Page 2 does not exist in this one-page file, so drawing it fails.
+    out, summary = await read_scanned_pages(blob, units, engine)
+    assert engine.calls == 1
+    assert (summary.read, summary.failed) == (1, 1)
+    assert out[0].text == "only page one exists" and out[1].needs_ocr
+
+
+def test_a_large_page_is_drawn_at_a_low_resolution_not_drawn_big_and_shrunk(monkeypatch):
+    """The first defence: do not spend the memory. Drawing 14400 points at 36 dpi alone
+    makes a 7200 px picture, which the later cut-down would only shrink after it exists."""
+    import pdfplumber.page
+
+    asked = []
+    real = pdfplumber.page.Page.to_image
+
+    def spy(self, *args, **kwargs):
+        asked.append(kwargs.get("resolution"))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(pdfplumber.page.Page, "to_image", spy)
+    pdf_ocr.render_page_png(_pdf_with_page_size(14400, 14400), 1)
+    resolution = asked[0]
+    # pixels = points * resolution / 72
+    assert 14400 * resolution / 72 <= pdf_ocr.RENDER_LONGEST_SIDE + 8, resolution
+
+
+def test_the_cut_down_is_a_second_guard_that_still_works_on_its_own(monkeypatch):
+    """If the renderer hands back something bigger than asked for, it is shrunk."""
+    import pdfplumber.page
+
+    class Huge:
+        def __init__(self):
+            self.original = Image.new("RGB", (6000, 3000), "white")
+
+    monkeypatch.setattr(pdfplumber.page.Page, "to_image", lambda self, *a, **k: Huge())
+    png = pdf_ocr.render_page_png(_pdf_with_page_size(595, 842), 1)
+    assert max(Image.open(io.BytesIO(png)).size) <= pdf_ocr.RENDER_LONGEST_SIDE + 8

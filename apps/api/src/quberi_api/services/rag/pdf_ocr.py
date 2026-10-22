@@ -71,20 +71,49 @@ def blocks_from_lines(lines: Sequence[OcrLine]) -> list[str]:
     return ["\n".join(block) for block in blocks]
 
 
+# A page that declares a size outside this is not a real page. The largest ordinary sheet
+# (A0) is about 3400 points; this leaves room for large drawings and refuses the rest rather
+# than spending memory drawing it.
+MAX_PAGE_POINTS = 20_000.0
+MIN_PAGE_POINTS = 1.0
+
+
+class PageNotReadable(OcrError):
+    """The page cannot be drawn safely (an impossible size, or the renderer refused)."""
+
+
 def render_page_png(blob: bytes, page_number: int) -> bytes:
-    """Draw one page (1-based) of the PDF as a PNG whose longest side is about 2000 px."""
+    """Draw one page (1-based) of the PDF as a PNG whose longest side is at most about 2000 px.
+
+    The limit holds however large the page claims to be: a few kilobytes of PDF can declare a
+    page tens of thousands of points across, and drawing that at any fixed resolution would
+    take gigabytes. The resolution therefore falls with the page, with no floor, and the
+    picture is cut down afterwards if rounding left it over.
+    """
 
     import pdfplumber
+    from PIL import Image
 
     with pdfplumber.open(io.BytesIO(blob)) as pdf:
         page = pdf.pages[page_number - 1]
-        longest_points = max(float(page.width), float(page.height), 1.0)
-        # pdfplumber draws at 72 dpi * (resolution / 72) pixels per point.
-        resolution = max(36.0, min(RENDER_LONGEST_SIDE / longest_points * 72.0, 300.0))
-        image = page.to_image(resolution=resolution).original
-        buf = io.BytesIO()
-        image.convert("RGB").save(buf, format="PNG")
-        return buf.getvalue()
+        width, height = float(page.width), float(page.height)
+        longest_points = max(width, height)
+        if min(width, height) < MIN_PAGE_POINTS or longest_points > MAX_PAGE_POINTS:
+            raise PageNotReadable(
+                f"page {page_number} declares an impossible size "
+                f"({width:.0f} x {height:.0f} points)"
+            )
+        # pdfplumber draws at 72 dpi * (resolution / 72) pixels per point; no lower bound.
+        resolution = min(RENDER_LONGEST_SIDE / longest_points * 72.0, 300.0)
+        try:
+            image = page.to_image(resolution=resolution).original.convert("RGB")
+        except Exception as exc:  # noqa: BLE001 — the renderer's own refusal
+            raise PageNotReadable(f"page {page_number} could not be drawn: {exc}") from exc
+    if max(image.size) > RENDER_LONGEST_SIDE + 8:
+        image.thumbnail((RENDER_LONGEST_SIDE, RENDER_LONGEST_SIDE), Image.LANCZOS)
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 async def read_scanned_pages(

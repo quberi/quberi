@@ -134,7 +134,6 @@ def test_factory_reports_ocr_switched_off(settings, monkeypatch):
     monkeypatch.setattr(settings, "image_ocr_enabled", False)
     with pytest.raises(OcrUnavailableError, match="turned off"):
         ocr.get_ocr_provider()
-    assert ocr.ocr_enabled() is False
 
 
 def test_factory_rejects_an_unknown_provider(settings, monkeypatch):
@@ -142,3 +141,64 @@ def test_factory_rejects_an_unknown_provider(settings, monkeypatch):
     monkeypatch.setattr(settings, "ocr_provider", "carrier-pigeon")
     with pytest.raises(OcrUnavailableError, match="unknown OCR provider"):
         ocr.get_ocr_provider()
+
+
+# -- the worker stops the engine when it shuts down ---------------------------------------
+
+
+class _Closable:
+    def __init__(self, fail=False):
+        self.closed, self.fail = False, fail
+
+    async def close(self):
+        self.closed = True
+
+    async def aclose(self):
+        if self.fail:
+            raise RuntimeError("could not stop")
+        self.closed = True
+
+
+async def test_the_worker_stops_the_ocr_engine_when_it_shuts_down(monkeypatch):
+    from quberi_api.db import session as db_session_module
+    from quberi_api.workers import rag as worker
+
+    disposed = []
+
+    async def fake_dispose(engine):
+        disposed.append(engine)
+
+    monkeypatch.setattr(db_session_module, "dispose_engine", fake_dispose)
+    provider = _Closable()
+    monkeypatch.setattr(ocr.factory, "_PROVIDER", provider)
+    qdrant = _Closable()
+
+    await worker.on_shutdown({"engine": "ENGINE", "qdrant": qdrant})
+
+    assert provider.closed and ocr.factory._PROVIDER is None
+    assert qdrant.closed and disposed == ["ENGINE"]
+
+
+async def test_a_failure_stopping_the_engine_does_not_leave_the_database_open(monkeypatch):
+    from quberi_api.db import session as db_session_module
+    from quberi_api.workers import rag as worker
+
+    disposed = []
+
+    async def fake_dispose(engine):
+        disposed.append(engine)
+
+    monkeypatch.setattr(db_session_module, "dispose_engine", fake_dispose)
+    monkeypatch.setattr(ocr.factory, "_PROVIDER", _Closable(fail=True))
+    qdrant = _Closable()
+
+    await worker.on_shutdown({"engine": "ENGINE", "qdrant": qdrant})  # must not raise
+
+    assert qdrant.closed and disposed == ["ENGINE"]
+
+
+async def test_shutting_down_with_no_engine_ever_started_is_quiet(monkeypatch):
+    from quberi_api.workers import rag as worker
+
+    monkeypatch.setattr(ocr.factory, "_PROVIDER", None)
+    await worker.on_shutdown({})

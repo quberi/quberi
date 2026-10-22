@@ -79,8 +79,13 @@ class Settings(BaseSettings):
     ocr_min_confidence: float = 0.5
     ocr_max_lines: int = 500
     ocr_threads: int = 2
-    # The child is stopped if it holds more than this; give the container at least this
-    # much plus the models (~0.6 GB).
+    # The child is stopped if it holds more than this. Measured on real scanned pages (two
+    # CPU cores): the child peaks at about 1.25 GB while reading a page, and the process
+    # that owns it stays near 0.17 GB. This limit is the guard against a runaway input, not
+    # the working size, so it sits well above the peak. It must still be below the memory the
+    # host can really give: a host with less free memory than this (the worker alone uses
+    # about 0.5 GB, more once the embedding model is loaded) can run out before the guard
+    # acts. Give the worker enough memory, or turn OCR off with QUBERI_IMAGE_OCR_ENABLED=false.
     ocr_max_memory_mb: int = 2048
     ocr_timeout_s: float = 60.0
     ocr_startup_timeout_s: float = 300.0

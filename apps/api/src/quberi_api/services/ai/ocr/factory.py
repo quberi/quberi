@@ -13,10 +13,6 @@ from .models import EngineConfig
 _PROVIDER: OCRProvider | None = None
 
 
-def ocr_enabled() -> bool:
-    return bool(get_settings().image_ocr_enabled)
-
-
 def get_ocr_provider() -> OCRProvider:
     """The shared provider (created empty; the child process starts on first use).
 

@@ -111,6 +111,15 @@ async def _warm_up_embedding_model(*, settings) -> None:
 
 async def on_shutdown(ctx: dict) -> None:
     from quberi_api.db.session import dispose_engine
+    from quberi_api.services.ai.ocr import close_ocr_provider
+
+    # Stop the OCR child first. It can hold a gigabyte while reading a page, and it should
+    # not be left for the operating system to clean up. A failure here must not stop the
+    # connections below from closing.
+    try:
+        await close_ocr_provider()
+    except Exception:  # noqa: BLE001
+        _log.exception("worker: could not stop the OCR engine cleanly")
 
     engine = ctx.get("engine")
     qdrant = ctx.get("qdrant")

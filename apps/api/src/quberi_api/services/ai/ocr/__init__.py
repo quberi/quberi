@@ -13,7 +13,7 @@ from .base import (
     OcrTimeoutError,
     OcrUnavailableError,
 )
-from .factory import close_ocr_provider, get_ocr_provider, ocr_enabled
+from .factory import close_ocr_provider, get_ocr_provider
 
 __all__ = [
     "OCRProvider",
@@ -25,5 +25,4 @@ __all__ = [
     "OcrUnavailableError",
     "close_ocr_provider",
     "get_ocr_provider",
-    "ocr_enabled",
 ]

@@ -256,6 +256,29 @@ async def test_a_denied_document_is_dropped_even_if_the_store_returned_it():
     assert merged == []
 
 
+async def test_the_whole_access_scope_reaches_the_store_not_just_the_recheck():
+    """The store filter is the first door; the re-check is only the second.
+
+    A stub store that returns nothing hides a dropped argument, so assert on what the
+    store was actually asked for.
+    """
+
+    denied, granted, doc, other_space = (uuid.uuid4() for _ in range(4))
+    access = DocAccess(granted={granted: other_space}, denied=frozenset({denied}))
+    store = StubStore()
+    await _merge_exact_code_hits(
+        store, [], query="Φ520", space_ids=[SPACE], organization_id=ORG,
+        document_ids=[doc], doc_access=access, limit=7,
+    )
+    call = store.calls[0]
+    assert call["denied_document_ids"] == [denied]
+    assert call["granted_document_ids"] == [granted]
+    assert call["document_ids"] == [doc]
+    assert list(call["space_ids"]) == [SPACE]
+    assert call["organization_id"] == ORG
+    assert call["limit"] == 7
+
+
 async def test_a_failing_exact_lookup_leaves_the_normal_results_untouched():
     kept = [_chunk(uuid.uuid4())]
     merged = await _merge(StubStore(error=ConnectionError("qdrant down")), kept, "Φ520")
@@ -272,3 +295,25 @@ def test_the_reranker_path_keeps_every_field_of_a_chunk():
     rescored = replace(original, score=0.9)
     assert (rescored.char_start, rescored.char_end, rescored.source_kind) == (40, 90, "image_ocr")
     assert rescored.score == 0.9
+
+
+# -- a denied document must not use up the places meant for readable ones ---------------
+
+
+async def test_a_denied_document_does_not_take_the_only_place_in_an_exact_result(qdrant):
+    """The deny is applied inside the index. If it were applied afterwards, the better-
+    matching denied document would fill the single place and the readable one would be cut."""
+    space = uuid.uuid4()
+    denied = await _file(qdrant, space, "denied.png", ["Φ520", "M12"], vector=_vec(1.0))
+    readable = await _file(qdrant, space, "readable.png", ["Φ520"], vector=_vec(0.0, 1.0))
+
+    hits = await _exact(qdrant, [space], ["Φ520", "M12"], denied_document_ids=[denied], limit=1)
+
+    assert [c.document_id for c in hits] == [readable]
+
+
+async def test_the_store_itself_never_returns_a_denied_document_for_a_code(qdrant):
+    """Not only the later re-check: the lookup, asked directly, already leaves it out."""
+    space = uuid.uuid4()
+    denied = await _file(qdrant, space, "denied.png", ["Φ520"], vector=_vec(1.0))
+    assert await _exact(qdrant, [space], ["Φ520"], denied_document_ids=[denied]) == []
