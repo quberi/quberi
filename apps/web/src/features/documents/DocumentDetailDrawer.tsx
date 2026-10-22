@@ -383,7 +383,7 @@ export function VersionsTab({ doc, canAdd }: { doc: DocumentSummary; canAdd: boo
   }
 
   return (
-    <div className="doc-drawer-body">
+    <div className="doc-drawer-body doc-drawer-body-top">
       {canAdd && (
         <div className="doc-version-upload">
           <p className="doc-drawer-note">{t('knowledge.versions.explain')}</p>

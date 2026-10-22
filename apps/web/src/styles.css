@@ -3549,6 +3549,8 @@ input[type="radio"] {
   display: grid;
   gap: 10px;
 }
+/* Keep the rows packed at the top instead of stretching to fill a tall drawer. */
+.doc-drawer-body-top { align-content: start; }
 .doc-drawer-row {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
@@ -3608,7 +3610,8 @@ input[type="radio"] {
   gap: 8px;
   margin-bottom: 14px;
 }
-.doc-version-upload input[type="text"] { width: 100%; }
+/* Look comes from the shared "text box beside buttons" rule further down. */
+.doc-version-upload input[type="text"] { width: 100%; box-sizing: border-box; }
 .doc-version-error { color: #b3261e; font-size: 12.5px; }
 .doc-drawer-foot {
   padding: 14px 22px;
@@ -6300,6 +6303,7 @@ details.review-part > summary { cursor: pointer; }
 .upload-review-actions input:not([type]),
 .access-request-actions input[type="text"],
 .access-request-actions input:not([type]),
+.doc-version-upload input[type="text"],
 .doc-access-search input {
   min-height: 40px;
   padding: 10px 13px;
@@ -6314,11 +6318,13 @@ details.review-part > summary { cursor: pointer; }
 }
 .upload-review-actions input::placeholder,
 .access-request-actions input::placeholder,
+.doc-version-upload input::placeholder,
 .doc-access-search input::placeholder {
   color: #9a93ad;
 }
 .upload-review-actions input:focus,
 .access-request-actions input:focus,
+.doc-version-upload input[type="text"]:focus,
 .doc-access-search input:focus {
   border-color: var(--purple-500);
   box-shadow: 0 0 0 4px rgba(139, 108, 243, .18);
