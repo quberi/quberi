@@ -4,7 +4,41 @@
 # Cloudflare's SSL/TLS mode must be set to "Full (strict)" for this to work
 # end-to-end encrypted between Cloudflare's edge and this server.
 
+# Access log, shared by every site below. One JSON line per request, in a file on the
+# caddy-data volume that rolls over and is deleted after 14 days (336h).
+#
+# What it keeps: time, host, method, path, status, size, duration, the connecting address
+# (remote_ip, which behind Cloudflare is Cloudflare's), plus three fields added below: the
+# visitor's own address and country as Cloudflare reports them, and the User-Agent.
+# What it never keeps: the query string (OAuth state and code challenges travel there),
+# request headers (Authorization, Cookie, ...), response headers (Set-Cookie), the body.
+#
+# visitor_ip comes from a header Cloudflare sets. It can be forged by anyone who reaches this
+# server without going through Cloudflare, so read it next to request.remote_ip: if that is not a
+# Cloudflare address, visitor_ip means nothing.
+(access_log) {
+	log {
+		output file /data/access.log {
+			roll_size 20MiB
+			roll_keep 10
+			roll_keep_for 336h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>uri regexp \?.* ""
+				resp_headers delete
+			}
+		}
+	}
+	log_append visitor_ip {header.Cf-Connecting-Ip}
+	log_append country {header.Cf-Ipcountry}
+	log_append user_agent {header.User-Agent}
+}
+
 ai.quberi.com {
+	import access_log
 	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
 
 	# OAuth authorization server metadata (RFC 8414) and the token/revoke
@@ -31,6 +65,7 @@ ai.quberi.com {
 }
 
 api.quberi.com {
+	import access_log
 	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
 	reverse_proxy api:8000
 }
@@ -45,6 +80,7 @@ api.quberi.com {
 # character for character (no trailing slash), and `authorization_servers`
 # must equal the `issuer` of the authorization server metadata.
 mcp.quberi.com {
+	import access_log
 	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
 
 	handle /.well-known/oauth-protected-resource {
@@ -78,6 +114,7 @@ mcp.quberi.com {
 # against a signed challenge. Not used for anything else: there is no
 # first-party product served at quberi.com itself.
 quberi.com {
+	import access_log
 	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
 
 	handle /.well-known/mcp-registry-auth {
@@ -94,6 +131,7 @@ quberi.com {
 # answers an unconfigured host with an empty 200, which a client reads as
 # success and then fails on the empty body.
 :443 {
+	import access_log
 	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
 	respond 404
 }
