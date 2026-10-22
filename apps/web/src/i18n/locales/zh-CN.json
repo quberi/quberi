@@ -1641,6 +1641,7 @@
       "pictureOnlyHint": "没有文字描述，这次只搜图。写上描述，也会在文档里查。"
     },
     "imageSearch": {
+      "textAlsoCited": "图中文字是来源 [{{index}}]",
       "pick": "上传图片搜图",
       "pickHint": "选择一张图片，找出你有权限的空间里相似的图片。也可以直接粘贴或拖进输入框。",
       "byWordsTitle": "按描述搜图",

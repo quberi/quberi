@@ -80,6 +80,19 @@ class ImageResult(BaseModel):
     preview_url: Optional[str] = None
 
 
+class SearchImageResult(ImageResult):
+    """A picture offered beside the passages of a text search.
+
+    The same as :class:`ImageResult` plus the one thing only a text search can know: whether
+    the text read out of this picture also matched the question. The dedicated picture search
+    keeps returning plain ``ImageResult`` items, unchanged.
+    """
+
+    # The numbers (1-based, as in the passages list) of the passages that are the same file,
+    # found by what it says as well as by what it shows. Empty otherwise.
+    passage_numbers: list[int] = Field(default_factory=list)
+
+
 class SearchResponse(BaseModel):
     organization: str
     passages: list[Passage]
@@ -93,7 +106,7 @@ class SearchResponse(BaseModel):
     # Pictures that might be what was asked for (``kind`` both or image). With ``both`` they
     # are only the few that score well enough and are *possible* matches, to be offered
     # beside the passages; with ``image`` they are simply the closest ones.
-    images: list[ImageResult] = Field(default_factory=list)
+    images: list[SearchImageResult] = Field(default_factory=list)
     preview_expires_in: int = 0
 
 

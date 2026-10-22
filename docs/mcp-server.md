@@ -170,6 +170,12 @@ Two things worth passing on to the person reading the answer:
   is the one to rely on when they disagree. A file that has only one version is
   described exactly as before.
 
+A picture can come back twice for one question: as a possible-match picture (with a
+preview) and as a passage read out of it. Neither is dropped. The picture carries
+`passage_numbers`, the numbers of the passages (1-based, as listed) that are the same
+file, and the text result says so (`Its text also matched this question: see passage
+[2] above.`), so a tool can show one result instead of two.
+
 A search can also find a part number or dimension exactly. A question that
 contains one (`Φ520`, `HZ-8800B`, `6205-2RS`) is looked up by that value as well
 as by meaning, and passages that contain it are listed first. Variant spellings of

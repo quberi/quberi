@@ -58,6 +58,11 @@ export interface ImageMatch {
   score: number
   /** Names are emptied because the space is closed to this reader. */
   hidden?: boolean
+  /**
+   * When the text read out of this picture is also one of the answer's sources, that source's
+   * number: the same file, found by what it says as well as by what it shows.
+   */
+  citation_index?: number
 }
 
 /**

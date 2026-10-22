@@ -53,6 +53,7 @@ from quberi_api.services.errors import (
     InvalidInputError,
     NotFoundError,
 )
+from quberi_api.services.rag.picture_links import link_chat_pictures
 from quberi_api.services.rag.generate import (
     GenerationResult,
     StreamEvent,
@@ -645,7 +646,8 @@ async def send_message(
         if citations_payload:
             content["citations"] = citations_payload
         if related:
-            content["image_matches"] = related
+            # A picture whose own text is also one of the cited sources says so.
+            content["image_matches"] = link_chat_pictures(related, citations_payload or [])
         if assistant_meta:
             content["meta"] = assistant_meta
         if assistant_placeholder:
@@ -1652,7 +1654,8 @@ async def _persist_assistant_turn(
         if citations_payload:
             content["citations"] = citations_payload
         if related:
-            content["image_matches"] = related
+            # A picture whose own text is also one of the cited sources says so.
+            content["image_matches"] = link_chat_pictures(related, citations_payload or [])
         if assistant_meta:
             content["meta"] = assistant_meta
         if error_note:

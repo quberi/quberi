@@ -203,6 +203,14 @@ export function ImageMatchesRail({
                     <span>{t('chat.imageSearch.score', { score: m.score.toFixed(2) })}</span>
                   </>
                 )}
+                {m.citation_index !== undefined && !m.hidden && (
+                  <>
+                    <span className="dot-sep">·</span>
+                    <span className="image-match-text-also">
+                      {t('chat.imageSearch.textAlsoCited', { index: m.citation_index })}
+                    </span>
+                  </>
+                )}
               </small>
             </button>
           </li>

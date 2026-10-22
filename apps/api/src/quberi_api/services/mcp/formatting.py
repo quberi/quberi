@@ -260,6 +260,11 @@ def _picture_lines(images: list) -> list[str]:
     for i, hit in enumerate(images):
         where = f" (space: {hit.space_name})" if hit.space_name else ""
         lines.append(f'{i + 1}. "{hit.name}"{where}, closeness {hit.score:.2f}')
+        numbers = getattr(hit, "passage_numbers", None)
+        if numbers:
+            # The same file matched by its text as well: say so, so it is not read as two.
+            cited = ", ".join(f"[{n}]" for n in numbers)
+            lines.append(f"Its text also matched this question: see passage {cited} above.")
         if hit.preview_url is not None:
             lines.append(f"![{_alt_text(hit.name)}]({hit.preview_url})")
         else:

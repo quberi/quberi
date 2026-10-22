@@ -120,6 +120,20 @@ describe('fetchThumbnail', () => {
 })
 
 describe('related pictures beside a text answer', () => {
+  it('says when the text of a picture is also one of the answer sources', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Blob(['x']), { status: 200 })))
+    const { unmount } = render(
+      <ImageMatchesRail
+        matches={[{ ...MATCHES[0], citation_index: 3 }]}
+        railRef={{ current: null }}
+        related
+      />,
+    )
+    expect(screen.getByText('chat.imageSearch.textAlsoCited:{"index":3}')).toBeInTheDocument()
+    unmount()
+    render(<ImageMatchesRail matches={[MATCHES[0]]} railRef={{ current: null }} related />)
+    expect(screen.queryByText(/textAlsoCited/)).toBeNull()
+  })
   it('titles the rail as possibly related, not as the answer', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Blob(['x']), { status: 200 })))
     const { unmount } = render(

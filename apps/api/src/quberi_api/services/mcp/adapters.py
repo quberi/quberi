@@ -45,6 +45,7 @@ from quberi_api.api.v1.external_schemas import (
     PendingDocument,
     SaveRequest,
     SaveResponse,
+    SearchImageResult,
     SearchRequest,
     SearchResponse,
     SpaceInfo,
@@ -71,6 +72,7 @@ from quberi_api.services.documents.errors import (
 from quberi_api.services.errors import NotFoundError
 from quberi_api.services.oauth import clients, core
 from quberi_api.services.rag import image_search
+from quberi_api.services.rag.picture_links import passage_numbers_by_document
 from quberi_api.services.rag.retrieve import retrieve_for_user
 from quberi_api.services.retrieval_audit import document_ids_from_chunks
 
@@ -376,6 +378,18 @@ async def related_pictures(
     ]
 
 
+def _with_passage_numbers(
+    related: list[tuple[image_search.ImageMatch, ImageResult]], chunks: list
+) -> list[SearchImageResult]:
+    """The related pictures, each pointing at the passages from its own file, if any."""
+
+    positions = passage_numbers_by_document(c.document_id for c in chunks)
+    return [
+        SearchImageResult(**r.model_dump(), passage_numbers=positions.get(m.document_id, []))
+        for m, r in related
+    ]
+
+
 async def pending_documents(
     session: AsyncSession,
     *,
@@ -466,7 +480,7 @@ async def do_search(
             organization=pictures.organization,
             passages=[],
             searched_spaces=pictures.searched_spaces,
-            images=pictures.images,
+            images=[SearchImageResult(**i.model_dump()) for i in pictures.images],
             preview_expires_in=pictures.preview_expires_in,
         )
 
@@ -567,7 +581,7 @@ async def do_search(
             for name, space_id, state in pending_rows
         ],
         pending_total=pending_total,
-        images=[r for _m, r in related],
+        images=_with_passage_numbers(related, chunks),
         preview_expires_in=external_image_links.LINK_TTL_SECONDS if related else 0,
     )
 

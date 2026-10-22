@@ -397,3 +397,50 @@ async def test_a_held_prompt_remembers_that_the_person_chose_text_only(
 
 
 _ = types  # (kept for fixtures that build namespaces)
+
+# ---------------------------------------------------------------------------
+# A picture whose own text is also a cited source
+# ---------------------------------------------------------------------------
+
+
+async def test_a_chat_answer_points_a_picture_at_the_source_card_made_from_its_text(
+    db_session, org_and_owner, qdrant, model, monkeypatch  # noqa: F811
+):
+    from tests.test_send_review import _chunk
+
+    space = await _space(db_session, org_and_owner, "Animals")
+    pic = await _picture(db_session, org_and_owner, qdrant, space, BLUE, "lioness.png")
+    cid = (await _conversation(db_session, org_and_owner)).id
+    from_text = _chunk(uuid.uuid4(), space.id, "some other source", 0)
+    from_picture = _chunk(pic.id, space.id, "Φ520 flange", 1)
+
+    async def fake_retrieve(*_a, **_k):
+        return ScopedRetrieval(
+            chunks=[from_text, from_picture], space_ids=[space.id], scope_mode="auto",
+            model_id="m", collection="c",
+        )
+
+    monkeypatch.setattr(conv, "retrieve_for_conversation", fake_retrieve)
+    events = [
+        (k, d)
+        async for k, d in conv.send_message_stream(
+            db_session, conversation_id=cid, organization_id=org_and_owner.organization_id,
+            user_id=org_and_owner.user_id, identity_id=org_and_owner.identity_id,
+            text="动物母狮",
+        )
+    ]
+
+    answer = next(d for k, d in events if k == "assistant_message")["content"]
+    by_name = {m["document_name"]: m for m in answer["image_matches"]}
+    assert list(by_name) == ["lioness.png"]
+    cited = {c["document_id"]: c["index"] for c in answer["citations"]}
+    assert cited[str(pic.id)] == 2
+    assert by_name["lioness.png"]["citation_index"] == 2
+    saved = (
+        await db_session.execute(
+            select(Message.content).where(
+                Message.conversation_id == cid, Message.role == "assistant"
+            )
+        )
+    ).scalar_one()
+    assert [m.get("citation_index") for m in saved["image_matches"]] == [2]

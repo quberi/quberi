@@ -1648,6 +1648,7 @@
       "pictureOnlyHint": "No description, so this searches pictures only. Add words to ask the documents too."
     },
     "imageSearch": {
+      "textAlsoCited": "its text is source [{{index}}]",
       "pick": "Search with a picture",
       "pickHint": "Pick a picture to find similar ones in the spaces you can read. You can also paste or drop one into the box.",
       "byWordsTitle": "Search pictures by description",
