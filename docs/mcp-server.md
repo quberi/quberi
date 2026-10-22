@@ -16,6 +16,17 @@ You need a Quberi account whose organization has outside tools turned on
 page). The first connection opens a normal sign-in-and-consent page in your
 browser — nothing about this requires a separate account or an API key.
 
+## Server card
+
+For directories that list MCP servers but cannot sign in to scan this one,
+the server publishes a static description of itself at
+`https://mcp.quberi.com/.well-known/mcp/server-card.json`
+([SEP-1649](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1649)):
+its name and version, that it needs OAuth, and all six tools with their
+input schemas and the permission each needs. It is generated from the same
+tool table the server uses, needs no sign-in, and says nothing about any
+person or organisation.
+
 ## Configuring the MCP client
 
 Quberi's authorization server does not implement open automatic client

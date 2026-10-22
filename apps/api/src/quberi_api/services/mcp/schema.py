@@ -180,3 +180,35 @@ def tools_list_for(ext: core.ExternalCaller) -> list[dict[str, Any]]:
         for t in TOOLS
         if ext.has_scope(t.required_scope)
     ]
+
+
+_SCOPE_NOTE = {
+    clients.SCOPE_KNOWLEDGE_READ: "Needs the knowledge:read permission.",
+    clients.SCOPE_KNOWLEDGE_WRITE: "Needs the knowledge:write permission.",
+    clients.SCOPE_KNOWLEDGE_UPLOAD: "Needs the knowledge:upload permission.",
+}
+
+
+def server_card(server_info: dict[str, str]) -> dict[str, Any]:
+    """A static description of this server for directories that cannot sign in to scan it.
+
+    It lists every tool the server offers, exactly as ``tools/list`` words them, plus the
+    permission each needs (a signed-in grant only sees the tools its permissions allow). It is
+    built from the same ``TOOLS`` table, so it cannot drift from what the server really does.
+    Nothing here depends on a person, an organisation or any stored data.
+    """
+
+    return {
+        "serverInfo": {**server_info, "title": "Quberi"},
+        "authentication": {"required": True, "schemes": ["oauth2"]},
+        "tools": [
+            {
+                "name": t.name,
+                "description": f"{t.description} {_SCOPE_NOTE.get(t.required_scope, '')}".strip(),
+                "inputSchema": t.input_schema,
+            }
+            for t in TOOLS
+        ],
+        "resources": [],
+        "prompts": [],
+    }

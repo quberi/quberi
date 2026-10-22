@@ -409,3 +409,57 @@ async def test_a_tool_not_marked_for_mcp_is_refused_even_though_it_is_switched_o
     await db_session.commit()
 
     assert (await _tools_list(http, tokens)).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# The static server card: for directories that cannot sign in to scan the server
+# ---------------------------------------------------------------------------
+
+CARD_URL = "/.well-known/mcp/server-card.json"
+
+
+async def test_the_server_card_needs_no_sign_in_and_is_cacheable(http):
+    resp = await http.get(CARD_URL)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    assert "max-age" in resp.headers["cache-control"]
+
+
+async def test_the_server_card_lists_exactly_the_tools_the_server_has(http):
+    from quberi_api.services.mcp import schema
+
+    card = (await http.get(CARD_URL)).json()
+
+    assert [t["name"] for t in card["tools"]] == [t.name for t in schema.TOOLS]
+    by_name = {t["name"]: t for t in card["tools"]}
+    for spec in schema.TOOLS:
+        assert by_name[spec.name]["inputSchema"] == spec.input_schema
+        assert spec.description in by_name[spec.name]["description"]
+        # Each tool says which permission it needs, as a grant only sees the ones it holds.
+        assert spec.required_scope in by_name[spec.name]["description"]
+    assert card["resources"] == [] and card["prompts"] == []
+
+
+async def test_the_server_card_agrees_with_what_initialize_says_about_the_server(
+    http, db_session, redis_client
+):
+    boot = await _org(db_session)
+    tokens = await _mcp_tokens(db_session, redis_client, boot)
+    init = await http.post(
+        "/",
+        headers=_auth(tokens),
+        json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+    )
+    card = (await http.get(CARD_URL)).json()
+
+    real = init.json()["result"]["serverInfo"]
+    assert card["serverInfo"]["name"] == real["name"] and card["serverInfo"]["version"] == real["version"]
+    assert card["authentication"] == {"required": True, "schemes": ["oauth2"]}
+
+
+async def test_the_server_card_says_nothing_about_any_person_or_organisation(http, db_session):
+    boot = await _org(db_session)
+    text = (await http.get(CARD_URL)).text
+
+    assert str(boot.organization_id) not in text and "example.com" not in text

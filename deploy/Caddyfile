@@ -52,6 +52,11 @@ mcp.quberi.com {
 		respond `{"resource":"https://mcp.quberi.com","authorization_servers":["https://ai.quberi.com"],"scopes_supported":["knowledge:read","knowledge:write","knowledge:upload"],"bearer_methods_supported":["header"]}` 200
 	}
 
+	# The static server card: what this server offers, readable without signing in, for
+	# directories (Smithery, ...) that cannot sign in to scan it. Served by the API.
+	handle /.well-known/mcp/server-card.json {
+		reverse_proxy api:8000
+	}
 	# The authorization server metadata lives on ai.quberi.com, not here.
 	handle /.well-known/* {
 		respond 404

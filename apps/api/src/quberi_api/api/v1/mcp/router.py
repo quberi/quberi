@@ -109,6 +109,21 @@ async def require_mcp_caller(
     return caller
 
 
+@router.get("/.well-known/mcp/server-card.json")
+async def mcp_server_card() -> Response:
+    """The static server card (MCP SEP-1649): what this server offers, readable without signing in.
+
+    Directories that list MCP servers normally connect and ask for the tool list, which needs a
+    sign-in here. This lets them describe the server without one. It contains nothing about any
+    person or organisation: only the tool names, descriptions and input schemas.
+    """
+    return Response(
+        content=json.dumps(schema.server_card(protocol.SERVER_INFO)),
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
 @router.get("/")
 async def mcp_get() -> Response:
     """No server-to-client push is offered: a real 405, not a fake SSE stream (design.md §2.1).
