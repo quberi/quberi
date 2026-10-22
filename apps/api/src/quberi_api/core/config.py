@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # nobody sends pictures to pays nothing for it. ``ocr_provider`` is a deployment
     # choice like the chat model; only ``local`` exists today.
     image_ocr_enabled: bool = True
+    # Pictures that were indexed before their text was read (or whose reading is out of
+    # date) are read in the background, this many at a time, once an hour. 0 turns the
+    # catch-up off; new pictures are still read when they are uploaded.
+    ocr_backfill_batch: int = 30
     ocr_provider: str = "local"
     # Longest side the text detector sees. Raised from the model's 960 because small
     # print is lost on a full page; capped at 2000 in code because memory climbs steeply

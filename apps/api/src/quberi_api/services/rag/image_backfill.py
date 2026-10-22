@@ -12,6 +12,9 @@ Three kinds of picture are picked up and queued for the normal indexing job:
 
 A picture that fails for a *picture* reason (a corrupt file, an unsupported format)
 carries an ``image: …`` error and is left alone, so nothing is retried forever.
+
+:func:`pictures_needing_text` is the same idea for the text inside pictures: pictures that
+were indexed before it could be read.
 """
 
 from __future__ import annotations
@@ -23,6 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.spaces.models import Space
+from quberi_api.services.ai.ocr.models import ENGINE_VERSION
+from quberi_api.services.rag.image_text import IMAGE_TEXT_KEY
 from quberi_api.services.rag.indexer import IMAGE_INDEX_MODEL_KEY, LEGACY_IMAGE_MODEL
 
 DEFAULT_BATCH = 200
@@ -60,3 +65,49 @@ async def pictures_needing_index(
         .limit(limit)
     )
     return list((await session.execute(stmt)).scalars().all())
+
+
+async def pictures_needing_text(
+    session: AsyncSession, *, limit: int
+) -> list[tuple[uuid.UUID, str]]:
+    """Pictures whose text has not been read, or was read from another file or engine.
+
+    ``(id, checksum)`` pairs, oldest first. Only pictures that already have their picture
+    vector are listed: one that has not is read right after it is indexed. Left alone:
+
+    * a picture whose reading failed for a reason about the picture (``failed``) and is
+      still the same file: retrying it would only fail again;
+    * a reading that is current for the file and the engine.
+
+    Whether the embedding model has changed since is not decided here (it is per
+    organisation); the job itself notices and re-files the text.
+    """
+
+    state = Document.attributes[IMAGE_TEXT_KEY]
+    stmt = (
+        select(Document.id, Document.checksum_sha256)
+        .join(Space, Space.id == Document.space_id)
+        .where(
+            func.lower(Document.mime_type).like("image/%"),
+            Document.status != "archived",
+            Document.review_state == "approved",
+            Document.storage_key.is_not(None),
+            Document.checksum_sha256.is_not(None),
+            Document.indexing_state == "indexed",
+            Space.status == "active",
+            or_(
+                not_(Document.attributes.has_key(IMAGE_TEXT_KEY)),
+                # Read from another file than the one it is now.
+                state["source_checksum"].astext != Document.checksum_sha256,
+                # Read by an older engine. (A failure is not retried just because the engine
+                # changed: it failed for a reason about the picture.)
+                and_(
+                    state["status"].astext == "indexed",
+                    func.coalesce(state["ocr"]["version"].astext, "") != ENGINE_VERSION,
+                ),
+            ),
+        )
+        .order_by(Document.created_at.asc())
+        .limit(limit)
+    )
+    return [(row[0], row[1]) for row in (await session.execute(stmt)).all()]

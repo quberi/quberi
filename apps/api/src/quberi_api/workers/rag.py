@@ -194,6 +194,39 @@ async def backfill_pictures(ctx: dict) -> int:
     return queued
 
 
+async def backfill_picture_text(ctx: dict) -> int:
+    """Queue reading the text of pictures that were indexed before it could be read.
+
+    A few at a time (``ocr_backfill_batch``) so a large library is caught up over several
+    hours without holding the OCR engine for long, and so stopping the worker loses nothing:
+    what is not done yet is simply found again next time. Returns how many were queued.
+    """
+
+    settings = get_settings()
+    if not settings.image_ocr_enabled or settings.ocr_backfill_batch <= 0:
+        return 0
+    from quberi_api.services.rag.image_backfill import pictures_needing_text
+
+    async with ctx["session_factory"]() as session:
+        pending = await pictures_needing_text(session, limit=settings.ocr_backfill_batch)
+        await session.commit()
+    queued = 0
+    for document_id, checksum in pending:
+        # The same job id as a picture read right after upload, so the two never both run.
+        job = await ctx["redis"].enqueue_job(
+            "index_image_text_job",
+            str(document_id),
+            _job_id=f"image-text-{document_id}-{(checksum or 'none')[:16]}",
+        )
+        queued += 1 if job is not None else 0
+    if queued:
+        _log.info(
+            "picture text backfill: queued %d picture(s) (about %d s of reading at 5-10 s each)",
+            queued, queued * 8,
+        )
+    return queued
+
+
 async def purge_revoked_sessions(ctx: dict) -> int:
     """Drop signed-out session records whose token has expired anyway."""
 
@@ -218,6 +251,8 @@ class WorkerSettings:
         cron(sweep_guest_sandbox, minute=0, run_at_startup=True),
         # Pictures uploaded before picture search existed; cheap when there is none.
         cron(backfill_pictures, minute=7, run_at_startup=True),
+        # Pictures indexed before their text could be read, a few per hour.
+        cron(backfill_picture_text, minute=37, run_at_startup=True),
         cron(purge_revoked_sessions, minute=30),
     ]
     on_startup = on_startup
