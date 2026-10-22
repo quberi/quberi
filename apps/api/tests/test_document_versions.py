@@ -19,7 +19,7 @@ from quberi_api.domain.audit.models import AuditEvent
 from quberi_api.domain.documents.models import Document, DocumentVersion
 from quberi_api.services import documents as documents_service
 from quberi_api.services.documents import core as documents_core
-from quberi_api.services.documents import new_version, review
+from quberi_api.services.documents import new_version
 from quberi_api.services.documents import versions as versions_service
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
@@ -358,24 +358,6 @@ async def test_a_document_cannot_be_given_a_version_through_another_space(
     doc = await _upload(db_session, world, world.editor)
     with pytest.raises(NotFoundError):
         await _new_version(db_session, world, world.editor, doc, V2, space=world.other_space)
-
-
-async def test_in_a_space_that_approves_uploads_only_a_reviewer_adds_a_version(
-    db_session, world, infra
-):
-    doc = await _upload(db_session, world, world.admin)
-    await db_session.commit()
-    await review.set_requirement(
-        db_session, organization_id=world.boot.organization_id, actor_user_id=world.owner.id,
-        space_id=world.space.id, enabled=True,
-    )
-    await db_session.commit()
-
-    with pytest.raises(DocumentPermissionError):
-        await _new_version(db_session, world, world.editor, doc, V2)
-    await _new_version(db_session, world, world.admin, doc, V2)
-
-    assert [v.version_number for v in await _versions(db_session, doc.id)] == [1, 2]
 
 
 @pytest.mark.parametrize(

@@ -99,6 +99,10 @@ class DocumentView(BaseModel):
     # ``None`` / 0 for a document with no stored file (an external source).
     version_number: Optional[int] = None
     version_count: int = 0
+    # The number of a new version of this document that is waiting for approval. Set only for
+    # the person who added it and for the space's reviewers; the document keeps showing its
+    # current file until a reviewer approves it.
+    pending_version_number: Optional[int] = None
 
 
 class DocumentVersionView(BaseModel):
@@ -113,6 +117,9 @@ class DocumentVersionView(BaseModel):
     created_by_user_id: Optional[uuid.UUID] = None
     created_by_name: str = ""
     is_current: bool
+    # 'approved', or 'pending' / 'rejected' for a version added where uploads need approval.
+    review_state: str = "approved"
+    review_note: Optional[str] = None
 
 
 class DocumentVersionList(BaseModel):
@@ -152,27 +159,51 @@ class DocumentStats(BaseModel):
 
 
 async def _version_info(
-    session: AsyncSession, documents: list
-) -> dict[uuid.UUID, tuple[int, int]]:
-    """Document id → (current version number, number of versions), for the given views."""
+    session: AsyncSession, documents: list, caller: CallerContext
+) -> dict[uuid.UUID, tuple[int, int, Optional[int]]]:
+    """Document id → (current version number, number of versions, version waiting for
+    approval), for the given views.
+
+    The waiting one is reported only to the person who added it and to the space's reviewers.
+    """
 
     ids = [d.document.id for d in documents]
     current = await versions_service.latest_version_numbers(session, ids)
     counts = await versions_service.version_count_by_document(session, ids)
-    return {i: (current[i], counts.get(i, 1)) for i in current}
+    waiting: dict[uuid.UUID, int] = {}
+    by_space: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for d in documents:
+        by_space.setdefault(d.document.space_id, []).append(d.document.id)
+    for space_id, doc_ids in by_space.items():
+        role = await documents_service.core._caller_space_role(
+            session,
+            user_id=caller.user.id,
+            organization_id=caller.organization.id,
+            space_id=space_id,
+        )
+        waiting.update(
+            await versions_service.waiting_version_numbers(
+                session, doc_ids, user_id=caller.user.id, reviewer=role in ("owner", "admin")
+            )
+        )
+    return {i: (current[i], counts.get(i, 1), waiting.get(i)) for i in current} | {
+        i: (current.get(i, 0), counts.get(i, 0), n) for i, n in waiting.items() if i not in current
+    }
 
 
 def _serialise(
     v,
     guest_token: Optional[str] = None,
     exceptions: Optional[dict[uuid.UUID, tuple[int, int]]] = None,
-    versions: Optional[dict[uuid.UUID, tuple[int, int]]] = None,
+    versions: Optional[dict[uuid.UUID, tuple[int, int, Optional[int]]]] = None,
 ) -> DocumentView:
     doc = v.document
     allow_rules = deny_rules = None
     if exceptions is not None:
         allow_rules, deny_rules = exceptions.get(doc.id, (0, 0))
-    version_number, version_count = (versions or {}).get(doc.id, (None, 0))
+    version_number, version_count, pending_version = (versions or {}).get(
+        doc.id, (None, 0, None)
+    )
     return DocumentView(
         id=doc.id,
         space_id=doc.space_id,
@@ -202,6 +233,7 @@ def _serialise(
         deny_rules=deny_rules,
         version_number=version_number,
         version_count=version_count,
+        pending_version_number=pending_version,
     )
 
 
@@ -294,7 +326,7 @@ async def list_documents(
             document_ids=[v.document.id for v in page.items],
         )
     )
-    versions = await _version_info(session, page.items)
+    versions = await _version_info(session, page.items, caller)
     return DocumentList(
         items=[_serialise(v, x_guest_token, exceptions, versions) for v in page.items],
         total=page.total,
@@ -370,7 +402,7 @@ async def upload_document(
         UnsupportedMimeError,
     ) as exc:
         raise _translate(exc) from exc
-    return _serialise(view, versions=await _version_info(session, [view]))
+    return _serialise(view, versions=await _version_info(session, [view], caller))
 
 
 class SaveNoteRequest(BaseModel):
@@ -407,7 +439,7 @@ async def save_note(
         )
     except (DocumentValidationError, DocumentPermissionError, UnsupportedMimeError) as exc:
         raise _translate(exc) from exc
-    return _serialise(view, versions=await _version_info(session, [view]))
+    return _serialise(view, versions=await _version_info(session, [view], caller))
 
 
 @router.get(
@@ -428,7 +460,7 @@ async def get_document(
         space_id=space_id,
         caller_user_id=caller.user.id,
     )
-    return _serialise(view, versions=await _version_info(session, [view]))
+    return _serialise(view, versions=await _version_info(session, [view], caller))
 
 
 @router.get(
@@ -519,7 +551,7 @@ async def upload_new_version(
         VersionConflictError,
     ) as exc:
         raise _translate(exc) from exc
-    return _serialise(view, versions=await _version_info(session, [view]))
+    return _serialise(view, versions=await _version_info(session, [view], caller))
 
 
 @router.get(
@@ -555,6 +587,8 @@ async def list_document_versions(
                 created_by_user_id=r.version.created_by_user_id,
                 created_by_name=r.created_by_name,
                 is_current=r.is_current,
+                review_state=r.version.review_state,
+                review_note=r.version.review_note,
             )
             for r in rows
         ],

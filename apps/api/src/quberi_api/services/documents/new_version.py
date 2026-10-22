@@ -80,7 +80,14 @@ async def upload_new_version(
     content_type: str,
     note: Optional[str] = None,
 ) -> core.DocumentView:
-    """Add ``file_obj`` as the next version of a document and make it the current one."""
+    """Add ``file_obj`` as the next version of a document.
+
+    For someone whose uploads need no approval (a reviewer, or any editor in a space that does
+    not approve uploads) it becomes the current file and is indexed. For an editor in a space
+    that approves uploads it is stored as a **pending** version: not the current file, not
+    indexed, visible to its uploader and the reviewers, until a reviewer decides (see
+    :mod:`version_review`). The document keeps showing its current file meanwhile.
+    """
 
     note = (note or "").strip() or None
     if note is not None and len(note) > MAX_NOTE_CHARS:
@@ -127,17 +134,11 @@ async def upload_new_version(
             "只有已批准、未归档的文档才能上传新版本。 "
             "A new version can only be added to a document that is approved and not archived."
         )
-    if (
-        await review_service.initial_state(
-            session, space_id=space_id, organization_id=organization_id, role=role
-        )
-        != "approved"
-    ):
-        raise DocumentPermissionError(
-            "这个空间的上传需要审核，只有空间的所有者或管理员可以上传新版本。 "
-            "Uploads to this space need approval, so only an owner or admin of the space "
-            "can upload a new version."
-        )
+    state = await review_service.initial_state(
+        session, space_id=space_id, organization_id=organization_id, role=role
+    )
+    if await _waiting_version(session, doc.id) is not None:
+        raise VersionConflictError(PENDING_EXISTS_MESSAGE)
 
     filename = core._sanitize_filename(filename)
     mime = core._validate_mime(content_type)
@@ -222,6 +223,8 @@ async def upload_new_version(
                     "另一个新版本刚刚上传，请刷新后重试。 "
                     "Another new version was just uploaded; refresh and try again."
                 )
+            if await _waiting_version(session, doc.id) is not None:
+                raise VersionConflictError(PENDING_EXISTS_MESSAGE)
             version = DocumentVersion(
                 id=uuid.uuid4(),
                 document_id=doc.id,
@@ -233,31 +236,22 @@ async def upload_new_version(
                 checksum_sha256=stored.checksum_sha256,
                 note=note,
                 created_by_user_id=uploader_user_id,
+                review_state=state,
             )
             session.add(version)
             await session.flush()
-            locked.name = filename
-            locked.mime_type = mime
-            locked.size_bytes = stored.size_bytes
-            locked.storage_key = stored.storage_key
-            locked.checksum_sha256 = stored.checksum_sha256
-            locked.current_version_id = version.id
-            # What indexing says about the document now describes the new file.
-            locked.indexing_state = "not_indexed"
-            locked.indexing_error = None
-            locked.chunk_count = 0
-            locked.last_indexed_at = None
-            locked.attributes = {
-                k: v
-                for k, v in (locked.attributes or {}).items()
-                if k not in _FILE_BOUND_ATTRIBUTES
-            }
+            if state == "approved":
+                apply_version_as_current(locked, version)
             session.add(
                 AuditEvent(
                     organization_id=organization_id,
                     actor_type="user",
                     actor_id=uploader_user_id,
-                    action="document.version_added",
+                    action=(
+                        "document.version_added"
+                        if state == "approved"
+                        else "document.version_submitted"
+                    ),
                     resource_type="document",
                     resource_id=doc.id,
                     space_id=space_id,
@@ -269,6 +263,7 @@ async def upload_new_version(
                         "size_bytes": stored.size_bytes,
                         "checksum_sha256": stored.checksum_sha256,
                         "note": note or "",
+                        "review_state": state,
                     },
                 )
             )
@@ -278,8 +273,11 @@ async def upload_new_version(
         await _discard(stored.storage_key)
         raise
     except IntegrityError as exc:
-        # An identical file was uploaded to the space between the check and the write.
+        # An identical file was uploaded to the space, or another version was submitted for
+        # approval, between the check and the write.
         await _discard(stored.storage_key)
+        if ONE_PENDING_INDEX in str(exc):
+            raise VersionConflictError(PENDING_EXISTS_MESSAGE) from exc
         if DUPLICATE_INDEX not in str(exc):
             raise
         existing = await find_live_duplicate(
@@ -294,13 +292,55 @@ async def upload_new_version(
             "这个空间里刚刚上传了相同的文件。 An identical file was just uploaded to this space."
         ) from exc
 
-    await _after_commit(doc.id, organization_id, previous_mime, mime)
+    if state == "approved":
+        await after_current_changed(doc.id, previous_mime, mime)
     return await core._to_view(session, locked)
 
 
-async def _after_commit(
-    document_id: uuid.UUID, organization_id: uuid.UUID, previous_mime: str, mime: str
-) -> None:
+PENDING_EXISTS_MESSAGE = (
+    "这份文档已有一个新版本在等待审核，请先等审核结果。 "
+    "A new version of this document is already waiting for approval; wait for the decision."
+)
+ONE_PENDING_INDEX = "uq_document_versions_one_pending"
+
+
+async def _waiting_version(session: AsyncSession, document_id: uuid.UUID) -> Optional[int]:
+    """The number of the version of this document that is waiting for approval, if any."""
+
+    return (
+        await session.execute(
+            select(DocumentVersion.version_number).where(
+                DocumentVersion.document_id == document_id,
+                DocumentVersion.review_state == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+
+
+def apply_version_as_current(doc: Document, version: DocumentVersion) -> None:
+    """Make ``version`` the file the document shows now.
+
+    The document's own file columns mirror the current version, and everything indexing
+    remembers about the previous file is cleared, so the document is read again from the new
+    one. Runs inside the caller's write transaction on a locked document row.
+    """
+
+    doc.name = version.filename
+    doc.mime_type = version.mime_type
+    doc.size_bytes = version.size_bytes
+    doc.storage_key = version.storage_key
+    doc.checksum_sha256 = version.checksum_sha256
+    doc.current_version_id = version.id
+    doc.indexing_state = "not_indexed"
+    doc.indexing_error = None
+    doc.chunk_count = 0
+    doc.last_indexed_at = None
+    doc.attributes = {
+        k: v for k, v in (doc.attributes or {}).items() if k not in _FILE_BOUND_ATTRIBUTES
+    }
+
+
+async def after_current_changed(document_id: uuid.UUID, previous_mime: str, mime: str) -> None:
     """Queue indexing of the new file, and drop the picture vector of an old picture.
 
     A picture is found by what it shows, kept in a collection of its own that holds one
@@ -345,8 +385,9 @@ async def _readable_document(
     organization_id: uuid.UUID,
     space_id: uuid.UUID,
     caller_user_id: uuid.UUID,
-) -> Document:
-    """The document, if this person may read it (the same rule as opening it)."""
+) -> tuple[Document, bool]:
+    """The document, if this person may read it (the same rule as opening it), and whether
+    they review uploads in its space (an owner or admin)."""
 
     whole_space, access, review = await core._read_gate(
         session, user_id=caller_user_id, organization_id=organization_id, space_id=space_id
@@ -363,7 +404,7 @@ async def _readable_document(
     if doc is None:
         raise NotFoundError(f"document not found: {document_id}")
     core._require_visible(doc, whole_space=whole_space, access=access, review=review)
-    return doc
+    return doc, review.reviewer
 
 
 async def list_document_versions(
@@ -376,7 +417,7 @@ async def list_document_versions(
 ) -> list[VersionView]:
     """Every version of a document, newest first. Same access as reading the document."""
 
-    doc = await _readable_document(
+    doc, reviewer = await _readable_document(
         session,
         document_id=document_id,
         organization_id=organization_id,
@@ -398,6 +439,7 @@ async def list_document_versions(
             is_current=v.id == doc.current_version_id,
         )
         for v, name in rows
+        if versions_service.can_see(v, reviewer=reviewer, user_id=caller_user_id)
     ]
 
 
@@ -412,7 +454,7 @@ async def open_version_stream(
 ) -> tuple[DocumentVersion, AsyncIterator[bytes]]:
     """The stored file of one version, for download. Same access as the current file."""
 
-    doc = await _readable_document(
+    doc, reviewer = await _readable_document(
         session,
         document_id=document_id,
         organization_id=organization_id,
@@ -420,6 +462,8 @@ async def open_version_stream(
         caller_user_id=caller_user_id,
     )
     version = await versions_service.get_version(session, doc.id, version_number)
-    if version is None:
+    if version is None or not versions_service.can_see(
+        version, reviewer=reviewer, user_id=caller_user_id
+    ):
         raise NotFoundError(f"version not found: {version_number}")
     return version, local_connector.open_stream(version.storage_key)

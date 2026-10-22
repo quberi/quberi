@@ -300,7 +300,11 @@ class DocumentVersion(Base):
     so a citation that names "version 2" can always be traced to exactly those bytes.
     The checksum is the proof the bytes are unchanged.
 
-    There is no ``updated_at`` and no code path that updates a row. Rows go away only when
+    The file and its checksum are never changed. The only thing that changes on a row is its
+    review: in a space that approves uploads a version added by an editor waits as
+    ``pending`` (stored, but not the document's current file, not indexed, seen only by its
+    uploader and the space's reviewers) until a reviewer approves or rejects it, exactly as for
+    a new document. At most one version of a document waits at a time. Rows go away only when
     the whole document is deleted.
     """
 
@@ -310,6 +314,14 @@ class DocumentVersion(Base):
             "document_id", "version_number", name="uq_document_versions_document_number"
         ),
         Index("ix_document_versions_document_id", "document_id"),
+        in_values("review_state", DOCUMENT_REVIEW_STATES, name="review_state"),
+        # Backstop for "one version waits at a time", for two uploads that arrive together.
+        Index(
+            "uq_document_versions_one_pending",
+            "document_id",
+            unique=True,
+            postgresql_where=text("review_state = 'pending'"),
+        ),
     )
 
     id: Mapped[UUIDPk]
@@ -333,6 +345,18 @@ class DocumentVersion(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # 'approved' (the default, and every version added by a reviewer or in a space that does
+    # not approve uploads), 'pending' or 'rejected'.
+    review_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="approved", server_default="approved"
+    )
+    reviewed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class DocumentAccessRule(TimestampMixin, Base):

@@ -1163,6 +1163,10 @@ async def get_document_text(
     storage_key, filename, mime_type = doc.storage_key, doc.name, doc.mime_type
     if version_number is not None:
         version = await versions_service.get_version(session, doc.id, version_number)
+        if version is not None and not versions_service.can_see(
+            version, reviewer=review.reviewer, user_id=caller_user_id
+        ):
+            raise NotFoundError(f"version not found: {version_number}")
         if version is not None:
             storage_key, filename, mime_type = (
                 version.storage_key, version.filename, version.mime_type,

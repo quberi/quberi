@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.audit.models import AuditEvent
-from quberi_api.domain.documents.models import Document
+from quberi_api.domain.documents.models import Document, DocumentVersion
 from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services.documents.duplicates import DUPLICATE_INDEX, find_live_duplicate
@@ -343,20 +343,39 @@ class PendingSpace:
 async def pending_inbox(
     session: AsyncSession, *, organization_id: uuid.UUID, user_id: uuid.UUID
 ) -> list[PendingSpace]:
-    """Spaces this person reviews that have uploads waiting, with the count."""
+    """Spaces this person reviews that have uploads waiting, with the count.
 
+    A new version of a document waiting for approval counts like a new document."""
+
+    documents = (
+        select(Space.id.label("space_id"), Space.name.label("name"), Document.id.label("item"))
+        .join(Document, Document.space_id == Space.id)
+        .where(
+            Space.organization_id == organization_id,
+            Space.status == "active",
+            Document.review_state == "pending",
+            Document.status != "archived",
+        )
+    )
+    versions = (
+        select(
+            Space.id.label("space_id"), Space.name.label("name"), DocumentVersion.id.label("item")
+        )
+        .join(Document, Document.space_id == Space.id)
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .where(
+            Space.organization_id == organization_id,
+            Space.status == "active",
+            DocumentVersion.review_state == "pending",
+            Document.status != "archived",
+        )
+    )
+    waiting = documents.union_all(versions).subquery()
     rows = (
         await session.execute(
-            select(Space.id, Space.name, func.count(Document.id))
-            .join(Document, Document.space_id == Space.id)
-            .where(
-                Space.organization_id == organization_id,
-                Space.status == "active",
-                Document.review_state == "pending",
-                Document.status != "archived",
-            )
-            .group_by(Space.id, Space.name)
-            .order_by(Space.name)
+            select(waiting.c.space_id, waiting.c.name, func.count(waiting.c.item))
+            .group_by(waiting.c.space_id, waiting.c.name)
+            .order_by(waiting.c.name)
         )
     ).all()
     result: list[PendingSpace] = []

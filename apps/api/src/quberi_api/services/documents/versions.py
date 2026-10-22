@@ -58,10 +58,23 @@ async def latest_version_numbers(
     return {doc_id: int(number) for doc_id, number in rows}
 
 
+def can_see(version: DocumentVersion, *, reviewer: bool, user_id: uuid.UUID) -> bool:
+    """May this person see this version? An approved one, anyone who can read the document;
+    one waiting for approval or refused, only whoever added it and the space's reviewers."""
+
+    return (
+        version.review_state == "approved"
+        or reviewer
+        or (version.created_by_user_id is not None and version.created_by_user_id == user_id)
+    )
+
+
 async def version_count_by_document(
     session: AsyncSession, document_ids: Iterable[uuid.UUID]
 ) -> dict[uuid.UUID, int]:
-    """Document id → how many versions it holds (only documents that hold any)."""
+    """Document id → how many approved versions it holds (only documents that hold any).
+
+    A version waiting for approval is not part of the document's history yet."""
 
     ids = list(dict.fromkeys(document_ids))
     if not ids:
@@ -69,11 +82,30 @@ async def version_count_by_document(
     rows = (
         await session.execute(
             select(DocumentVersion.document_id, func.count(DocumentVersion.id))
-            .where(DocumentVersion.document_id.in_(ids))
+            .where(
+                DocumentVersion.document_id.in_(ids), DocumentVersion.review_state == "approved"
+            )
             .group_by(DocumentVersion.document_id)
         )
     ).all()
     return {doc_id: int(n) for doc_id, n in rows}
+
+
+async def waiting_version_numbers(
+    session: AsyncSession, document_ids: Iterable[uuid.UUID], *, user_id: uuid.UUID, reviewer: bool
+) -> dict[uuid.UUID, int]:
+    """Document id → the number of its version waiting for approval, for those this person may
+    see (everything if ``reviewer``, otherwise what they added themselves)."""
+
+    ids = list(dict.fromkeys(document_ids))
+    if not ids:
+        return {}
+    stmt = select(DocumentVersion.document_id, DocumentVersion.version_number).where(
+        DocumentVersion.document_id.in_(ids), DocumentVersion.review_state == "pending"
+    )
+    if not reviewer:
+        stmt = stmt.where(DocumentVersion.created_by_user_id == user_id)
+    return {doc_id: int(n) for doc_id, n in (await session.execute(stmt)).all()}
 
 
 async def list_versions(session: AsyncSession, document_id: uuid.UUID) -> Sequence[DocumentVersion]:
