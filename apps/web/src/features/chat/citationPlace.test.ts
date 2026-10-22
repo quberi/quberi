@@ -53,6 +53,51 @@ describe('describeCitation', () => {
     )
   })
 
+  it('names a slide, a sheet row, a paragraph under its heading and a line the way each is counted', () => {
+    const place = (extra: Partial<MessageCitation>) => describeCitation(cite(extra), t).place
+    expect(place({ unit_label: 'slide', page_start: 4, page_end: 4 })).toBe(
+      'chat.citations.slide:{"n":4}',
+    )
+    expect(place({ unit_label: 'slide', page_start: 2, page_end: 5 })).toBe(
+      'chat.citations.slides:{"from":2,"to":5}',
+    )
+    expect(
+      place({ unit_label: 'sheet_row', unit_start: 12, unit_end: 12, section: 'Prices' }),
+    ).toBe('chat.citations.sheetRow:{"sheet":"Prices","n":12}')
+    expect(
+      place({ unit_label: 'sheet_row', unit_start: 5, unit_end: 9, section: 'Prices' }),
+    ).toBe('chat.citations.sheetRows:{"sheet":"Prices","from":5,"to":9}')
+    // A chunk that crossed from one sheet into the next has no single row range.
+    expect(
+      place({ unit_label: 'sheet_row', unit_start: 5, unit_end: 9, section: 'A / B' }),
+    ).toBe('chat.citations.sheetOnly:{"sheet":"A / B"}')
+    expect(
+      place({ unit_label: 'paragraph', unit_start: 12, unit_end: 12, section: '3.2 Payment' }),
+    ).toBe('chat.citations.paragraphUnder:{"section":"3.2 Payment","n":12}')
+    expect(place({ unit_label: 'paragraph', unit_start: 12, unit_end: 15 })).toBe(
+      'chat.citations.paragraphs:{"section":"","from":12,"to":15}',
+    )
+    expect(place({ unit_label: 'line', unit_start: 40, unit_end: 52 })).toBe(
+      'chat.citations.lines:{"from":40,"to":52}',
+    )
+  })
+
+  it('falls back to the chunk number when a format recorded nothing', () => {
+    for (const label of ['slide', 'sheet_row', 'paragraph', 'line']) {
+      expect(describeCitation(cite({ unit_label: label }), t).place).toBe(
+        'chat.citations.chunk:{"index":5}',
+      )
+    }
+  })
+
+  it('shows a heading from the document as one clean line', () => {
+    const shown = describeCitation(
+      cite({ unit_label: 'paragraph', unit_start: 1, unit_end: 1, section: 'Pay\n\n  now\t' }),
+      t,
+    ).place
+    expect(shown).toBe('chat.citations.paragraphUnder:{"section":"Pay now","n":1}')
+  })
+
   it('marks a model description as a guide, not a scan', () => {
     const described = describeCitation(cite({ source_kind: 'image_caption' }), t)
     expect(described.described).toBe(true)

@@ -45,6 +45,13 @@ export interface MessageCitation {
    */
   version_number?: number
   latest_version?: number | null
+  /**
+   * The heading (Word, Markdown) or sheet (Excel) the passage sits in. ``unit_label`` says what
+   * the numbers mean: text_block/ocr_block pages of a PDF, ``slide`` slide numbers (in
+   * ``page_*``), ``sheet_row`` rows, ``paragraph`` Word paragraph numbers, ``line`` lines of a
+   * text file (in ``unit_*``).
+   */
+  section?: string
 }
 
 /** One picture found by a picture search (see ``POST /conversations/{id}/image-search``). */
