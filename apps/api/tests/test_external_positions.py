@@ -47,6 +47,7 @@ def test_the_original_seven_fields_are_unchanged_and_first():
     ]
     assert fields[7:] == [
         "page_start", "page_end", "unit_label", "source_kind", "version_number", "latest_version",
+        "section", "unit_start", "unit_end",
     ]
 
 

@@ -82,8 +82,11 @@ class ChunkPoint:
     page_end: int | None = None
     unit_start: int | None = None
     unit_end: int | None = None
-    # "text_block" or "ocr_block" (any part recognised from a picture); "" if unknown.
+    # What the numbers mean ("text_block", "ocr_block", "slide", "paragraph", "sheet_row",
+    # "line"; see ``chunk.Chunk``); "" if unknown.
     unit_label: str = ""
+    # The heading or sheet the text sits in; "" when the format has none.
+    section: str = ""
 
 
 @dataclass(frozen=True)
@@ -109,6 +112,7 @@ class RetrievedChunk:
     unit_start: int | None = None
     unit_end: int | None = None
     unit_label: str = ""
+    section: str = ""
     # Which version of the document the text was read from (1 for everything indexed
     # before versions existed), and the newest version the document has now. The second
     # is not stored in the index; retrieval fills it in from the database so an answer can
@@ -148,6 +152,8 @@ def _position_payload(c: ChunkPoint) -> dict[str, Any]:
     known = {k: v for k, v in fields.items() if v is not None}
     if c.unit_label:
         known["unit_label"] = c.unit_label
+    if c.section:
+        known["section"] = c.section
     return known
 
 
@@ -170,6 +176,7 @@ def _positions_from(payload: dict[str, Any]) -> dict[str, Any]:
         "unit_start": _optional_int(payload.get("unit_start")),
         "unit_end": _optional_int(payload.get("unit_end")),
         "unit_label": str(payload.get("unit_label") or ""),
+        "section": str(payload.get("section") or ""),
     }
 
 

@@ -179,6 +179,7 @@ def test_a_very_long_document_is_cut_at_the_page_limit(monkeypatch):
 # -- other formats are untouched ---------------------------------------------------------
 
 
-def test_other_formats_still_return_their_text_and_no_positions_yet():
+def test_other_formats_still_return_the_same_text():
     result = extract_text(blob=b"hello world", filename="n.txt", mime_type="text/plain")
-    assert result.text == "hello world" and result.units == ()
+    assert result.text == "hello world"
+    assert [(u.unit_label, u.unit_index, u.page) for u in result.units] == [("line", 1, None)]

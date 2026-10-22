@@ -27,7 +27,7 @@ import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List
+from typing import List, NamedTuple
 
 _log = logging.getLogger(__name__)
 
@@ -53,13 +53,34 @@ class Chunk:
     page_end: int | None = None
     unit_start: int | None = None
     unit_end: int | None = None
-    # "text_block" if all of it is the file's own text; "ocr_block" if any of it was
-    # recognised from a picture and may contain errors. Empty when positions are unknown.
+    # What the numbers mean: "text_block" (a PDF's own text; ``page_*`` are pages),
+    # "ocr_block" (recognised from a picture, may contain errors), "slide" (``page_*`` are
+    # slide numbers), "paragraph" (a Word document's paragraph numbers), "sheet_row" (row
+    # numbers on the sheet named in ``section``) or "line" (line numbers of a text file).
+    # Empty when positions are unknown.
     unit_label: str = ""
+    # The named part of the document the text sits in: the heading above a Word or Markdown
+    # passage, the sheet of a spreadsheet. Several, joined with " / ", when a chunk crosses
+    # from one into the next. Empty when the format has none.
+    section: str = ""
 
 
-# A place in the source: (page, block number within the page, label). ``None`` = unknown.
-Source = tuple[int | None, int, str]
+class Source(NamedTuple):
+    """A place in the source document.
+
+    ``page`` is the page (or slide) number, ``None`` when the format has none; ``index`` is
+    the block's number (its first line or row, where the format counts those); ``end`` is the
+    last line or row when the block spans several (``None``: just ``index``). ``section`` is
+    the named part it sits in. A plain ``(page, index, label)`` tuple converts to this.
+    """
+
+    page: int | None
+    index: int
+    label: str
+    end: int | None = None
+    section: str = ""
+
+MAX_SECTION_CHARS = 200
 
 # Default budget: ~500 tokens with 50-token overlap at CJK ratios.
 DEFAULT_MAX_CHARS = 1200
@@ -107,7 +128,9 @@ def chunk_units(
 
     # A block is one paragraph unless it is longer than a window, in which case the packer
     # splits it and every piece keeps the block's source.
-    items = [(text.strip(), (source,)) for text, source in units if text and text.strip()]
+    items = [
+        (text.strip(), (Source(*source),)) for text, source in units if text and text.strip()
+    ]
     if not items:
         return []
     _check_sizes(max_chars, overlap_chars)
@@ -127,18 +150,31 @@ def _position(source: Source) -> tuple[int, int]:
     return (source[0] if source[0] is not None else -1, source[1])
 
 
-def _range_of(sources: list[Source]) -> tuple[int | None, int | None, int | None, int | None, str]:
-    """First and last page and block among ``sources``, and the label of the text.
+def _range_of(
+    sources: list[Source],
+) -> tuple[int | None, int | None, int | None, int | None, str, str]:
+    """First and last page and block among ``sources``, the label of the text, its section.
 
     The label is ``ocr_block`` if any part was recognised from a picture (a citation must
     not look more certain than its least certain part), otherwise the sources' own label.
+    The last block ends where its own last line or row does. The section is every distinct
+    section the text touched, in reading order, joined by " / ".
     """
 
     if not sources:
-        return None, None, None, None, ""
-    first, last = min(sources, key=_position), max(sources, key=_position)
+        return None, None, None, None, "", ""
+    ordered = sorted(sources, key=_position)
+    first, last = ordered[0], ordered[-1]
     label = "ocr_block" if any(s[2] == "ocr_block" for s in sources) else sources[0][2]
-    return first[0], last[0], first[1], last[1], label
+    names: list[str] = []
+    for s in ordered:
+        if s.section and s.section not in names:
+            names.append(s.section)
+    section = " / ".join(names)
+    if len(section) > MAX_SECTION_CHARS:
+        section = section[: MAX_SECTION_CHARS - 1].rstrip() + "…"
+    unit_end = last.end if last.end is not None else last.index
+    return first.page, last.page, first.index, max(unit_end, last.index), label, section
 
 
 def _pack(
@@ -174,12 +210,12 @@ def _pack(
         start = buffer_start_offset
         end = start + len(window_text)
         known = [src for _, srcs in buffer for src in srcs]
-        p_start, p_end, u_start, u_end, label = _range_of(known)
+        p_start, p_end, u_start, u_end, label, section = _range_of(known)
         chunks.append(
             Chunk(
                 index=idx, text=window_text, char_start=start, char_end=end,
                 page_start=p_start, page_end=p_end, unit_start=u_start, unit_end=u_end,
-                unit_label=label,
+                unit_label=label, section=section,
             )
         )
         # Seed the next buffer with the tail of this one (overlap).

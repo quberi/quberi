@@ -57,6 +57,14 @@ class Passage(BaseModel):
     # newest comes from a version that has since been replaced.
     version_number: int = 1
     latest_version: Optional[int] = None
+    # The heading (Word, Markdown) or sheet (Excel) the passage sits in; empty when the format
+    # has none. ``unit_label`` says what ``unit_start``/``unit_end`` and ``page_*`` count:
+    # "text_block"/"ocr_block" pages of a PDF, "slide" slide numbers (in ``page_*``),
+    # "sheet_row" rows of the sheet in ``section``, "paragraph" paragraphs of a Word file,
+    # "line" lines of a text file.
+    section: str = ""
+    unit_start: Optional[int] = None
+    unit_end: Optional[int] = None
 
 
 class PendingDocument(BaseModel):

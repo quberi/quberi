@@ -47,6 +47,7 @@ from quberi_api.services.ai import (
 )
 from quberi_api.services.ai.base import ChatMessage, ChatProvider
 from quberi_api.services.ai.resolver import BindingUnavailableError
+from quberi_api.services.rag.place import place_of, place_zh
 from quberi_api.services.rag.vector_store import RetrievedChunk
 
 _log = logging.getLogger(__name__)
@@ -157,6 +158,9 @@ class Citation:
     # version 1 of a document that is now at version 2 is shown as an older version.
     version_number: int = 1
     latest_version: Optional[int] = None
+    # The heading (Word, Markdown) or sheet (Excel) the passage sits in; empty when the
+    # format has none. Taken from the document, so it is cleaned before it is shown.
+    section: str = ""
 
 
 @dataclass(frozen=True)
@@ -353,6 +357,7 @@ def _build_citations(chunks: List[RetrievedChunk]) -> List[Citation]:
             source_kind=c.source_kind,
             version_number=c.version_number,
             latest_version=c.latest_version,
+            section=c.section,
         )
         for i, c in enumerate(chunks)
     ]
@@ -361,7 +366,9 @@ def _build_citations(chunks: List[RetrievedChunk]) -> List[Citation]:
 def _where(c: Citation) -> str:
     """Where in the file a reference is, in words a reader can check against the original.
 
-    A PDF passage names its page ("第3页", "第2-4页"). A passage with no recorded page keeps
+    A PDF passage names its page ("第3页", "第2-4页"); a slide, a sheet row, a Word paragraph
+    under its heading and a line of a text file are named the way their format counts them (see
+    ``place``). A passage with no recorded place keeps
     the wording it always had ("chunk N"), byte for byte, so nothing changes for the formats
     that do not have positions yet. Text recognised from a picture says so, because it may
     contain errors. The caller passes the result through ``_fence_safe`` like every other
@@ -369,12 +376,12 @@ def _where(c: Citation) -> str:
     """
 
     recognised = c.unit_label == "ocr_block" or c.source_kind == "image_ocr"
-    if c.page_start is None:
-        base = f"chunk {c.chunk_index}"
-    elif c.page_end is None or c.page_end == c.page_start:
-        base = f"第{c.page_start}页"
-    else:
-        base = f"第{c.page_start}-{c.page_end}页"
+    base = place_zh(
+        place_of(
+            page_start=c.page_start, page_end=c.page_end, unit_start=c.unit_start,
+            unit_end=c.unit_end, unit_label=c.unit_label, section=c.section,
+        )
+    ) or f"chunk {c.chunk_index}"
     base = base + "（扫描识别，可能有误）" if recognised else base
     if c.source_kind == "image_caption":
         # A picture described by a model: a guide to what it shows, not a transcript.
@@ -737,6 +744,7 @@ def citation_to_dict(c: Citation) -> dict:
         "source_kind": c.source_kind,
         "version_number": c.version_number,
         "latest_version": c.latest_version,
+        "section": c.section,
     }
 
 

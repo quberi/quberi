@@ -28,6 +28,7 @@ from quberi_api.api.v1.external_schemas import (
     UploadResponse,
 )
 from quberi_api.services.mcp.adapters import AdapterHTTPError
+from quberi_api.services.rag.place import place_en, place_of
 
 # Below this closeness, even the "best" picture match is not really a match —
 # ported verbatim from controller.ts's ``WEAK_PICTURE_SCORE``.
@@ -317,12 +318,13 @@ def _page_note(p) -> str:
     version, which leaves the line exactly as it was before pages were recorded.
     """
 
-    if p.page_start is None:
-        place = ""
-    elif p.page_end is None or p.page_end == p.page_start:
-        place = f"page {p.page_start}"
-    else:
-        place = f"pages {p.page_start}-{p.page_end}"
+    place = place_en(
+        place_of(
+            page_start=p.page_start, page_end=p.page_end,
+            unit_start=getattr(p, "unit_start", None), unit_end=getattr(p, "unit_end", None),
+            unit_label=p.unit_label, section=getattr(p, "section", ""),
+        )
+    )
     if p.unit_label == "ocr_block" or p.source_kind == "image_ocr":
         note = "recognised from a scan, may contain errors"
         place = f"{place} ({note})" if place else note

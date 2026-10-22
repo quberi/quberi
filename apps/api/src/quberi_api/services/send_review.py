@@ -100,6 +100,7 @@ def chunk_to_dict(c: RetrievedChunk) -> dict:
         "unit_label": c.unit_label,
         "version_number": c.version_number,
         "latest_version": c.latest_version,
+        "section": c.section,
     }
 
 
@@ -124,6 +125,7 @@ def chunk_from_dict(d: dict) -> RetrievedChunk:
         unit_label=d.get("unit_label") or "",
         version_number=d.get("version_number") or 1,
         latest_version=d.get("latest_version"),
+        section=d.get("section") or "",
     )
 
 

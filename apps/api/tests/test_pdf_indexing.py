@@ -174,7 +174,7 @@ async def test_retrieval_returns_the_positions(db_session, org_and_owner, qdrant
     assert [(h.page_start, h.page_end, h.unit_label) for h in hits] == [(1, 3, "text_block")]
 
 
-async def test_other_formats_are_indexed_as_before_with_no_positions(
+async def test_a_text_file_has_line_numbers_and_no_pages(
     db_session, org_and_owner, qdrant, blobs
 ):
     space = await _space(db_session, org_and_owner)
@@ -186,7 +186,9 @@ async def test_other_formats_are_indexed_as_before_with_no_positions(
     await db_session.commit()
     await indexer._run_pipeline(db_session, qdrant=qdrant, document_id=doc.id)
     (point,) = await _points(qdrant)
-    assert not any(k in point for k in ("page_start", "unit_start", "unit_label"))
+    # No pages in a text file; its place is the lines (here the file's only line).
+    assert "page_start" not in point
+    assert (point["unit_label"], point["unit_start"], point["unit_end"]) == ("line", 1, 1)
 
 
 # -- scanned pages -----------------------------------------------------------------------

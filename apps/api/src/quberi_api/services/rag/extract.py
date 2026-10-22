@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -39,11 +40,12 @@ class ExtractError(RuntimeError):
 class TextUnit:
     """One block of text and where it sits in the source document.
 
-    ``page`` is the 1-based page for formats that have real pages, else ``None``.
-    ``unit_index`` counts blocks within the page (0-based), or within the document when
-    there are no pages. ``unit_label`` says what kind of block it is: ``text_block`` is text
-    from the file's own text layer, ``ocr_block`` is text recognised from a picture of the
-    page and may contain errors.
+    ``page`` is the 1-based page (or slide) for formats that have them, else ``None``.
+    ``unit_index`` counts blocks within the page (0-based), or, for formats without pages,
+    is the block's own number as a reader would count it (paragraph, sheet row, first line).
+    ``unit_label`` says what kind of block it is: ``text_block`` is text from a PDF's text
+    layer, ``ocr_block`` is text recognised from a picture of the page and may contain
+    errors, ``slide``, ``paragraph``, ``sheet_row`` and ``line`` are the other formats'.
     """
 
     text: str
@@ -52,6 +54,11 @@ class TextUnit:
     unit_label: str = "text_block"
     # A page with no text layer at all. ``text`` is empty; the indexer reads the page.
     needs_ocr: bool = False
+    # The last line or row of a block that spans several (``unit_index`` is the first);
+    # ``None`` for a block that is just one.
+    unit_end: int | None = None
+    # The named part of the document the block sits in: the heading above it, the sheet.
+    section: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,6 +138,8 @@ def _pick_extractor(mime: str, name: str) -> Extractor:
         or mime == "application/json"
         or name.endswith((".txt", ".md", ".markdown", ".log", ".csv", ".tsv", ".json"))
     ):
+        if mime == "text/markdown" or name.endswith((".md", ".markdown")):
+            return _extract_markdown
         return _extract_plaintext
     raise ExtractError(
         f"no extractor for mime={mime!r} filename={name!r} — "
@@ -243,25 +252,72 @@ def _extract_pdf_pages_only(blob: bytes) -> ExtractResult:
     )
 
 
+_HEADING_STYLE = re.compile(r"^(?:heading|标题)\s*(\d+)$", re.IGNORECASE)
+MAX_HEADING_CHARS = 80
+
+
+def _heading_level(style_name: str) -> int | None:
+    """The level of "Heading 2" / "标题 2" and so on (a "Title" is level 1); ``None`` otherwise."""
+
+    name = (style_name or "").strip()
+    if name.lower() in ("title", "标题"):
+        return 1
+    match = _HEADING_STYLE.match(name)
+    return int(match.group(1)) if match else None
+
+
+def _heading_path(stack: list[tuple[int, str]]) -> str:
+    return " > ".join(title for _, title in stack)
+
+
 def _extract_docx(blob: bytes) -> ExtractResult:
+    """Paragraphs and table rows in the order they appear, each numbered and filed under the
+    heading above it.
+
+    A Word file has no page numbers a program can know (where a page ends depends on the
+    fonts and printer), but a reader can count paragraphs and find a heading, so a passage
+    is "under 3.2 Payment, paragraph 12". Empty paragraphs are not counted. A table row is
+    one paragraph.
+    """
+
     from docx import Document as DocxDocument
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
 
     doc = DocxDocument(io.BytesIO(blob))
-    parts: list[str] = []
-    # Paragraphs first, then tables (each cell on its own line).
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if text:
-            parts.append(text)
-    for table in doc.tables:
-        for row in table.rows:
-            row_text = " | ".join(cell.text.strip() for cell in row.cells)
-            if row_text.strip("| "):
-                parts.append(row_text)
-    text = "\n".join(parts).strip()
+    units: list[TextUnit] = []
+    headings: list[tuple[int, str]] = []
+    number = 0
+
+    def add(text: str) -> None:
+        nonlocal number
+        number += 1
+        units.append(TextUnit(text, None, number, "paragraph", section=_heading_path(headings)))
+
+    for child in doc.element.body.iterchildren():
+        tag = child.tag.rsplit("}", 1)[-1]
+        if tag == "p":
+            para = Paragraph(child, doc)
+            text = para.text.strip()
+            if not text:
+                continue
+            level = _heading_level(para.style.name if para.style is not None else "")
+            if level is not None:
+                while headings and headings[-1][0] >= level:
+                    headings.pop()
+                headings.append((level, text[:MAX_HEADING_CHARS]))
+            add(text)
+        elif tag == "tbl":
+            for row in Table(child, doc).rows:
+                row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                if row_text.strip("| "):
+                    add(row_text)
+    text = "\n".join(u.text for u in units).strip()
     if not text:
         raise ExtractError("python-docx returned no text")
-    return ExtractResult(text=text, page_count=-1, extractor="python-docx")
+    return ExtractResult(
+        text=text, page_count=-1, extractor="python-docx", units=tuple(units)
+    )
 
 
 def _extract_pptx(blob: bytes) -> ExtractResult:
@@ -269,6 +325,7 @@ def _extract_pptx(blob: bytes) -> ExtractResult:
 
     prs = Presentation(io.BytesIO(blob))
     slides: list[str] = []
+    units: list[TextUnit] = []
     for idx, slide in enumerate(prs.slides, start=1):
         chunks: list[str] = []
         for shape in slide.shapes:
@@ -279,11 +336,16 @@ def _extract_pptx(blob: bytes) -> ExtractResult:
                 if text:
                     chunks.append(text)
         if chunks:
-            slides.append(f"[Slide {idx}]\n" + "\n".join(chunks))
+            body = f"[Slide {idx}]\n" + "\n".join(chunks)
+            slides.append(body)
+            # The slide is the place a reader finds it by.
+            units.append(TextUnit(body, idx, 0, "slide"))
     text = "\n\n".join(slides).strip()
     if not text:
         raise ExtractError("python-pptx returned no text")
-    return ExtractResult(text=text, page_count=len(prs.slides), extractor="python-pptx")
+    return ExtractResult(
+        text=text, page_count=len(prs.slides), extractor="python-pptx", units=tuple(units)
+    )
 
 
 _HEADER_MAX_CELL_CHARS = 60
@@ -303,19 +365,23 @@ def _looks_like_header(row: tuple) -> bool:
     )
 
 
-def _sheet_lines(sheet) -> list[str]:
-    """One line per row. With a header row, every data row is written as ``name: value`` pairs.
+def _sheet_rows(sheet) -> list[tuple[int, str]]:
+    """``(row number, line)`` for each non-empty row, numbered as the spreadsheet numbers them.
+
+    With a header row, every data row is written as ``name: value`` pairs.
 
     The text is later cut into pieces for search, and a piece from the middle of a big sheet
     has no header row above it, so "35" would not say whether it is a price or a quantity.
     Putting the column name next to each value makes every row stand on its own, whichever
     piece it lands in. A sheet without a header row keeps the plain ``a | b | c`` form.
+    The row number is the one on the left of the sheet in Excel, empty rows included in the
+    count, so a reader can go straight to it.
     """
 
     header: list[str] | None = None
-    lines: list[str] = []
+    rows: list[tuple[int, str]] = []
     first = True
-    for raw in sheet.iter_rows(values_only=True):
+    for number, raw in enumerate(sheet.iter_rows(min_row=1, values_only=True), start=1):
         cells = [_cell_text(v) for v in raw]
         if not any(cells):
             continue
@@ -323,10 +389,10 @@ def _sheet_lines(sheet) -> list[str]:
             first = False
             if _looks_like_header(raw):
                 header = cells
-                lines.append(" | ".join(cells))
+                rows.append((number, " | ".join(cells)))
                 continue
         if header is None:
-            lines.append(" | ".join(cells))
+            rows.append((number, " | ".join(cells)))
             continue
         pairs = []
         for i, value in enumerate(cells):
@@ -334,33 +400,104 @@ def _sheet_lines(sheet) -> list[str]:
                 continue
             name = header[i] if i < len(header) and header[i] else ""
             pairs.append(f"{name}: {value}" if name else value)
-        lines.append(" | ".join(pairs))
-    return lines
+        rows.append((number, " | ".join(pairs)))
+    return rows
+
+
+def _sheet_lines(sheet) -> list[str]:
+    return [line for _, line in _sheet_rows(sheet)]
 
 
 def _extract_xlsx(blob: bytes) -> ExtractResult:
     from openpyxl import load_workbook
+
     wb = load_workbook(filename=io.BytesIO(blob), read_only=True, data_only=True)
     sheets: list[str] = []
-    for sheet in wb.worksheets:
-        rows = _sheet_lines(sheet)
-        if rows:
-            sheets.append(f"[Sheet: {sheet.title}]\n" + "\n".join(rows))
+    units: list[TextUnit] = []
+    for sheet_number, sheet in enumerate(wb.worksheets, start=1):
+        rows = _sheet_rows(sheet)
+        if not rows:
+            continue
+        sheets.append(f"[Sheet: {sheet.title}]\n" + "\n".join(line for _, line in rows))
+        for position, (row, line) in enumerate(rows):
+            # The first row of a sheet carries the sheet's name in the text, as it always did.
+            body = f"[Sheet: {sheet.title}]\n{line}" if position == 0 else line
+            units.append(
+                TextUnit(body, sheet_number, row, "sheet_row", section=sheet.title)
+            )
     text = "\n\n".join(sheets).strip()
     if not text:
         raise ExtractError("openpyxl returned no text")
     return ExtractResult(
-        text=text, page_count=len(wb.sheetnames), extractor="openpyxl"
+        text=text, page_count=len(wb.sheetnames), extractor="openpyxl", units=tuple(units)
     )
 
 
-def _extract_plaintext(blob: bytes) -> ExtractResult:
+_MARKDOWN_HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
+
+
+def _paragraph_blocks(text: str) -> list[tuple[int, int, list[str]]]:
+    """Blocks of consecutive non-blank lines: ``(first line, last line, lines)``, numbered from
+    1 as an editor numbers them. A line of only spaces is blank."""
+
+    blocks: list[tuple[int, int, list[str]]] = []
+    current: list[str] = []
+    start = 0
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line.strip():
+            if not current:
+                start = number
+            current.append(line)
+        elif current:
+            blocks.append((start, number - 1, current))
+            current = []
+    if current:
+        blocks.append((start, start + len(current) - 1, current))
+    return blocks
+
+
+def _extract_plaintext(blob: bytes, *, markdown: bool = False) -> ExtractResult:
+    """Text, JSON, CSV and Markdown files: paragraphs numbered by their lines in the file.
+
+    The line numbers are those of the file as saved (the editor's), so they are counted
+    before anything is trimmed. In Markdown the heading above a passage is its section.
+    """
+
     # Decode conservatively; refuse to fail the whole document on a bad
     # byte. Markdown / txt / json / csv all pass through unchanged.
-    text = blob.decode("utf-8", errors="replace").strip()
+    decoded = blob.decode("utf-8", errors="replace")
+    text = decoded.strip()
     if not text:
         raise ExtractError("plaintext body is empty")
-    return ExtractResult(text=text, page_count=-1, extractor="stdlib")
+    units: list[TextUnit] = []
+    headings: list[tuple[int, str]] = []
+    in_fence = False
+    for first, last, lines in _paragraph_blocks(decoded):
+        if markdown:
+            for line in lines:
+                if line.lstrip().startswith(("```", "~~~")):
+                    in_fence = not in_fence
+                match = None if in_fence else _MARKDOWN_HEADING.match(line)
+                if match:
+                    level = len(match.group(1))
+                    while headings and headings[-1][0] >= level:
+                        headings.pop()
+                    headings.append((level, match.group(2)[:MAX_HEADING_CHARS]))
+        units.append(
+            TextUnit(
+                "\n".join(lines).strip(),
+                None,
+                first,
+                "line",
+                unit_end=last,
+                section=_heading_path(headings) if markdown else "",
+            )
+        )
+    return ExtractResult(text=text, page_count=-1, extractor="stdlib", units=tuple(units))
+
+
+def _extract_markdown(blob: bytes) -> ExtractResult:
+    return _extract_plaintext(blob, markdown=True)
 
 
 def _noop() -> Optional[Extractor]:

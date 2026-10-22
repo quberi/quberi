@@ -50,7 +50,7 @@ from quberi_api.services.ai.local_image_embedding import (
 )
 from quberi_api.services.documents import versions as versions_service
 from quberi_api.services.documents.connectors import local as local_connector
-from quberi_api.services.rag.chunk import chunk_text, chunk_units
+from quberi_api.services.rag.chunk import Source, chunk_text, chunk_units
 from quberi_api.services.rag.extract import ExtractError, TextUnit, extract_text
 from quberi_api.services.rag.image_store import ImageVectorStore
 from quberi_api.services.rag.vector_store import ChunkPoint, VectorStore
@@ -472,7 +472,9 @@ async def _finalise_index_from_text(
     # Text that knows where it came from keeps that through chunking; everything else
     # (other formats, text fetched from a connector) is chunked exactly as it always was.
     positioned = [
-        (u.text, (u.page, u.unit_index, u.unit_label)) for u in units if u.text.strip()
+        (u.text, Source(u.page, u.unit_index, u.unit_label, u.unit_end, u.section))
+        for u in units
+        if u.text.strip()
     ]
     chunks = chunk_units(positioned) if positioned else chunk_text(text or "")
     if not chunks:
@@ -516,6 +518,7 @@ async def _finalise_index_from_text(
                 unit_start=c.unit_start,
                 unit_end=c.unit_end,
                 unit_label=c.unit_label,
+                section=c.section,
             )
             for c, v in zip(chunks, vectors)
         ],
