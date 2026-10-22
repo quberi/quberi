@@ -109,6 +109,12 @@ class RetrievedChunk:
     unit_start: int | None = None
     unit_end: int | None = None
     unit_label: str = ""
+    # Which version of the document the text was read from (1 for everything indexed
+    # before versions existed), and the newest version the document has now. The second
+    # is not stored in the index; retrieval fills it in from the database so an answer can
+    # say that a passage comes from a version that has since been replaced.
+    version_number: int = 1
+    latest_version: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +160,11 @@ def _optional_int(value: Any) -> int | None:
 
 
 def _positions_from(payload: dict[str, Any]) -> dict[str, Any]:
+    """Where a hit sits and which version of the document it was read from."""
+
+    version = _optional_int(payload.get("version_number"))
     return {
+        "version_number": version if version and version > 0 else 1,
         "page_start": _optional_int(payload.get("page_start")),
         "page_end": _optional_int(payload.get("page_end")),
         "unit_start": _optional_int(payload.get("unit_start")),
@@ -163,15 +173,45 @@ def _positions_from(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _point_id_for(document_id: uuid.UUID, chunk_index: int) -> str:
+def _point_id_for(document_id: uuid.UUID, chunk_index: int, version_number: int = 1) -> str:
     """Deterministic id — re-indexing a doc overwrites its old points.
 
     Qdrant point ids must be either an int or a UUID; we derive a UUID5
     from the (doc_id, chunk_index) pair so the same chunk always lands
-    on the same id across re-indexing.
+    on the same id across re-indexing. A later version of a document gets ids of its
+    own, so indexing it never overwrites the points of an earlier one. Version 1 keeps
+    the id it always had, which is also the id of every point indexed before versions.
     """
 
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{document_id}:{chunk_index}"))
+    if version_number <= 1:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{document_id}:{chunk_index}"))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{document_id}:v{version_number}:{chunk_index}"))
+
+
+def _document_filter(document_id: uuid.UUID, version_number: int | None) -> qmodels.Filter:
+    """Points of one document: all of them, or those read from one version.
+
+    A point without a ``version_number`` was indexed before versions existed and is
+    version 1, so version 1 is "no number, or a number below 2" and any later version is
+    an exact match.
+    """
+
+    must: list[Any] = [
+        qmodels.FieldCondition(key="document_id", match=qmodels.MatchValue(value=str(document_id)))
+    ]
+    must_not: list[Any] = []
+    if version_number is not None:
+        if version_number <= 1:
+            must_not.append(
+                qmodels.FieldCondition(key="version_number", range=qmodels.Range(gte=2))
+            )
+        else:
+            must.append(
+                qmodels.FieldCondition(
+                    key="version_number", match=qmodels.MatchValue(value=version_number)
+                )
+            )
+    return qmodels.Filter(must=must, must_not=must_not or None)
 
 
 # ---------------------------------------------------------------------------
@@ -285,23 +325,30 @@ class VectorStore:
         document_name: str,
         document_checksum: Optional[str],
         chunks: Sequence[ChunkPoint],
+        version_number: int = 1,
+        keep_other_versions: bool = True,
     ) -> None:
-        """Replace all points for a document.
+        """Replace the points of one version of a document.
 
         We delete-then-upsert so a re-index that produces *fewer* chunks
-        doesn't leave orphaned stale points behind.
+        doesn't leave orphaned stale points behind. Only the points of
+        ``version_number`` are replaced: an earlier version of the document stays
+        searchable, labelled with its version. ``keep_other_versions=False`` replaces
+        everything the document has in the index (a picture, which is searched by what
+        it shows now).
         """
 
+        scope = None if not keep_other_versions else version_number
         if not chunks:
-            await self.delete_document(document_id=document_id)
+            await self.delete_document(document_id=document_id, version_number=scope)
             return
 
         await self.ensure_collection()
-        await self.delete_document(document_id=document_id)
+        await self.delete_document(document_id=document_id, version_number=scope)
 
         points = [
             qmodels.PointStruct(
-                id=_point_id_for(document_id, c.chunk_index),
+                id=_point_id_for(document_id, c.chunk_index, version_number),
                 vector=c.vector,
                 payload={
                     "organization_id": str(organization_id),
@@ -309,6 +356,7 @@ class VectorStore:
                     "document_id": str(document_id),
                     "document_name": document_name,
                     "document_checksum": document_checksum or "",
+                    "version_number": max(1, version_number),
                     "chunk_index": c.chunk_index,
                     "text": c.text,
                     "char_start": c.char_start,
@@ -324,22 +372,20 @@ class VectorStore:
             collection_name=self._collection, points=points, wait=True
         )
 
-    async def delete_document(self, *, document_id: uuid.UUID) -> None:
-        """Remove every point for the document (no-op if collection missing)."""
+    async def delete_document(
+        self, *, document_id: uuid.UUID, version_number: int | None = None
+    ) -> None:
+        """Remove the points of a document (no-op if collection missing).
+
+        Every version's points by default; with ``version_number``, only that version's.
+        """
 
         if not await self._client.collection_exists(self._collection):
             return
         await self._client.delete(
             collection_name=self._collection,
             points_selector=qmodels.FilterSelector(
-                filter=qmodels.Filter(
-                    must=[
-                        qmodels.FieldCondition(
-                            key="document_id",
-                            match=qmodels.MatchValue(value=str(document_id)),
-                        )
-                    ]
-                )
+                filter=_document_filter(document_id, version_number)
             ),
             wait=True,
         )

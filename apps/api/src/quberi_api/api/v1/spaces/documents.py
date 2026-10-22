@@ -39,11 +39,14 @@ from quberi_api.api.security import CallerContext, require_caller
 from quberi_api.services import documents as documents_service
 from quberi_api.services import guest_sandbox
 from quberi_api.services.documents import access_rules as rules_service
+from quberi_api.services.documents import new_version as new_version_service
+from quberi_api.services.documents import versions as versions_service
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
     DocumentValidationError,
     DuplicateDocumentError,
     UnsupportedMimeError,
+    VersionConflictError,
 )
 from quberi_api.services.rag.extract import ExtractError
 
@@ -92,6 +95,29 @@ class DocumentView(BaseModel):
     # the space, and only in the list; ``None`` everywhere else.
     allow_rules: Optional[int] = None
     deny_rules: Optional[int] = None
+    # The version the file columns above describe, and how many versions the document has.
+    # ``None`` / 0 for a document with no stored file (an external source).
+    version_number: Optional[int] = None
+    version_count: int = 0
+
+
+class DocumentVersionView(BaseModel):
+    version_id: uuid.UUID
+    version_number: int
+    filename: str
+    mime_type: str
+    size_bytes: int
+    checksum_sha256: str
+    note: Optional[str] = None
+    created_at: datetime
+    created_by_user_id: Optional[uuid.UUID] = None
+    created_by_name: str = ""
+    is_current: bool
+
+
+class DocumentVersionList(BaseModel):
+    document_id: uuid.UUID
+    versions: list[DocumentVersionView]
 
 
 class DocumentListFilters(BaseModel):
@@ -125,15 +151,28 @@ class DocumentStats(BaseModel):
     by_indexing_state: dict[str, int] = Field(default_factory=dict)
 
 
+async def _version_info(
+    session: AsyncSession, documents: list
+) -> dict[uuid.UUID, tuple[int, int]]:
+    """Document id → (current version number, number of versions), for the given views."""
+
+    ids = [d.document.id for d in documents]
+    current = await versions_service.latest_version_numbers(session, ids)
+    counts = await versions_service.version_count_by_document(session, ids)
+    return {i: (current[i], counts.get(i, 1)) for i in current}
+
+
 def _serialise(
     v,
     guest_token: Optional[str] = None,
     exceptions: Optional[dict[uuid.UUID, tuple[int, int]]] = None,
+    versions: Optional[dict[uuid.UUID, tuple[int, int]]] = None,
 ) -> DocumentView:
     doc = v.document
     allow_rules = deny_rules = None
     if exceptions is not None:
         allow_rules, deny_rules = exceptions.get(doc.id, (0, 0))
+    version_number, version_count = (versions or {}).get(doc.id, (None, 0))
     return DocumentView(
         id=doc.id,
         space_id=doc.space_id,
@@ -161,6 +200,8 @@ def _serialise(
         is_mine=guest_sandbox.is_owned_by(doc.attributes, guest_token),
         allow_rules=allow_rules,
         deny_rules=deny_rules,
+        version_number=version_number,
+        version_count=version_count,
     )
 
 
@@ -176,7 +217,7 @@ def _translate(exc: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     if isinstance(exc, DocumentPermissionError):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    if isinstance(exc, DuplicateDocumentError):
+    if isinstance(exc, DuplicateDocumentError | VersionConflictError):
         # The text is already bilingual and the web client shows it as it is.
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     raise exc
@@ -253,8 +294,9 @@ async def list_documents(
             document_ids=[v.document.id for v in page.items],
         )
     )
+    versions = await _version_info(session, page.items)
     return DocumentList(
-        items=[_serialise(v, x_guest_token, exceptions) for v in page.items],
+        items=[_serialise(v, x_guest_token, exceptions, versions) for v in page.items],
         total=page.total,
         limit=page.limit,
         offset=page.offset,
@@ -328,7 +370,7 @@ async def upload_document(
         UnsupportedMimeError,
     ) as exc:
         raise _translate(exc) from exc
-    return _serialise(view)
+    return _serialise(view, versions=await _version_info(session, [view]))
 
 
 class SaveNoteRequest(BaseModel):
@@ -365,7 +407,7 @@ async def save_note(
         )
     except (DocumentValidationError, DocumentPermissionError, UnsupportedMimeError) as exc:
         raise _translate(exc) from exc
-    return _serialise(view)
+    return _serialise(view, versions=await _version_info(session, [view]))
 
 
 @router.get(
@@ -386,7 +428,7 @@ async def get_document(
         space_id=space_id,
         caller_user_id=caller.user.id,
     )
-    return _serialise(view)
+    return _serialise(view, versions=await _version_info(session, [view]))
 
 
 @router.get(
@@ -429,6 +471,129 @@ async def download_document(
     )
 
 
+
+
+@router.post(
+    "/{space_id}/documents/{document_id}/versions",
+    response_model=DocumentView,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload a new version of a document",
+    responses={
+        409: {"description": "The file is the document's current version, or already in the space."}
+    },
+)
+async def upload_new_version(
+    space_id: uuid.UUID,
+    document_id: uuid.UUID,
+    file: UploadFile = File(...),
+    filename: Optional[str] = Form(default=None),
+    note: Optional[str] = Form(default=None),
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentView:
+    """Add a file as the next version of this document.
+
+    The earlier versions are kept, can be downloaded and stay searchable, marked with their
+    version number. Only a person who chose this document does this; an ordinary upload is
+    never treated as a new version of something.
+    """
+
+    try:
+        view = await new_version_service.upload_new_version(
+            session,
+            organization_id=caller.organization.id,
+            space_id=space_id,
+            document_id=document_id,
+            uploader_user_id=caller.user.id,
+            filename=(filename or file.filename or "upload").strip(),
+            file_obj=file.file,
+            content_type=file.content_type or "application/octet-stream",
+            note=note,
+        )
+    except DuplicateDocumentError as exc:
+        return duplicate_response(exc)  # type: ignore[return-value]
+    except (
+        DocumentValidationError,
+        DocumentPermissionError,
+        UnsupportedMimeError,
+        VersionConflictError,
+    ) as exc:
+        raise _translate(exc) from exc
+    return _serialise(view, versions=await _version_info(session, [view]))
+
+
+@router.get(
+    "/{space_id}/documents/{document_id}/versions",
+    response_model=DocumentVersionList,
+    summary="List the versions of a document, newest first",
+)
+async def list_document_versions(
+    space_id: uuid.UUID,
+    document_id: uuid.UUID,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> DocumentVersionList:
+    rows = await new_version_service.list_document_versions(
+        session,
+        document_id=document_id,
+        organization_id=caller.organization.id,
+        space_id=space_id,
+        caller_user_id=caller.user.id,
+    )
+    return DocumentVersionList(
+        document_id=document_id,
+        versions=[
+            DocumentVersionView(
+                version_id=r.version.id,
+                version_number=r.version.version_number,
+                filename=r.version.filename,
+                mime_type=r.version.mime_type,
+                size_bytes=r.version.size_bytes,
+                checksum_sha256=r.version.checksum_sha256,
+                note=r.version.note,
+                created_at=r.version.created_at,
+                created_by_user_id=r.version.created_by_user_id,
+                created_by_name=r.created_by_name,
+                is_current=r.is_current,
+            )
+            for r in rows
+        ],
+    )
+
+
+@router.get(
+    "/{space_id}/documents/{document_id}/versions/{version_number}/download",
+    summary="Download one version of a document",
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+async def download_document_version(
+    space_id: uuid.UUID,
+    document_id: uuid.UUID,
+    version_number: int,
+    caller: CallerContext = Depends(require_caller),
+    session: AsyncSession = Depends(get_db_session),
+) -> StreamingResponse:
+    version, stream = await new_version_service.open_version_stream(
+        session,
+        document_id=document_id,
+        version_number=version_number,
+        organization_id=caller.organization.id,
+        space_id=space_id,
+        caller_user_id=caller.user.id,
+    )
+    encoded_name = quote(version.filename)
+    return StreamingResponse(
+        stream,
+        media_type=version.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{encoded_name}"; filename*=UTF-8\'\'{encoded_name}'
+            ),
+            "Content-Length": str(version.size_bytes),
+            "X-Document-Checksum-SHA256": version.checksum_sha256,
+            "X-Document-Version": str(version.version_number),
+        },
+    )
 
 
 @router.get(

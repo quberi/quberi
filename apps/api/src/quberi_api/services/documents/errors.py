@@ -38,6 +38,12 @@ class DuplicateDocumentError(ServiceError):
         self.review_state = review_state
 
 
+class VersionConflictError(ServiceError):
+    """A new version cannot be added right now: the file is the one the document already
+    has, or another version was added at the same moment. The HTTP layer maps this to 409.
+    """
+
+
 class DocumentPermissionError(ServiceError):
     """Caller lacks the required role on the parent space.
 

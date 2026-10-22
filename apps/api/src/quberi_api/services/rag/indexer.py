@@ -48,6 +48,7 @@ from quberi_api.services.ai.local_image_embedding import (
     get_image_embedder,
     image_vector_dim,
 )
+from quberi_api.services.documents import versions as versions_service
 from quberi_api.services.documents.connectors import local as local_connector
 from quberi_api.services.rag.chunk import chunk_text, chunk_units
 from quberi_api.services.rag.extract import ExtractError, TextUnit, extract_text
@@ -206,6 +207,10 @@ async def _run_pipeline(
             "index_document_from_text() for reference-only sources"
         )
 
+    # The version being indexed is fixed now: an upload of a newer version while this job
+    # runs must not have its points filed under the older number (or the reverse).
+    version_number = await versions_service.current_version_number(session, doc)
+
     # -- 1. Fetch blob → 2. Extract → 3. Chunk (only for mirrored docs) --
     doc.indexing_state = "indexing"
     doc.indexing_error = None
@@ -232,7 +237,8 @@ async def _run_pipeline(
             )
 
         return await _finalise_index_from_text(
-            session, qdrant=qdrant, doc=doc, text=text, units=units
+            session, qdrant=qdrant, doc=doc, text=text, units=units,
+            version_number=version_number,
         )
     except Exception as exc:  # noqa: BLE001
         if doc.indexing_state != "failed":
@@ -436,6 +442,7 @@ async def _finalise_index_from_text(
     doc: Document,
     text: str,
     units: Sequence[TextUnit] = (),
+    version_number: int = 1,
 ) -> IndexingResult:
     """Steps 4-8 of the pipeline: chunk → embed → upsert → mark ready.
 
@@ -479,6 +486,7 @@ async def _finalise_index_from_text(
         document_id=doc.id,
         document_name=doc.name,
         document_checksum=doc.checksum_sha256,
+        version_number=version_number,
         chunks=[
             ChunkPoint(
                 chunk_index=c.index,
@@ -497,6 +505,18 @@ async def _finalise_index_from_text(
     )
 
     # -- 8. Mark indexed -----------------------------------------------
+    # If a newer version was uploaded while this one was being read, this job has filed
+    # an older version (still correct, still searchable as that version) but the document
+    # now shows another file: leave its state to the job that is indexing that one.
+    await session.refresh(doc, attribute_names=["current_version_id"])
+    if await versions_service.current_version_number(session, doc) != version_number:
+        _log.info("indexed %s version %d, which is no longer current", doc.id, version_number)
+        return IndexingResult(
+            document_id=doc.id,
+            chunk_count=len(chunks),
+            collection=store.collection,
+            model_id=model_id,
+        )
     doc.indexing_state = "indexed"
     doc.chunk_count = len(chunks)
     doc.last_indexed_at = datetime.now(timezone.utc)

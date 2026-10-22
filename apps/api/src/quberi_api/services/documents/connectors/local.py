@@ -231,9 +231,18 @@ async def delete(storage_key: str) -> None:
 
 
 def storage_key_for(
-    *, organization_id: str, space_id: str, document_id: str, filename: str
+    *,
+    organization_id: str,
+    space_id: str,
+    document_id: str,
+    filename: str,
+    version_number: int = 1,
 ) -> str:
     """Deterministic key layout ``{org}/{space}/{doc}/{filename}``.
+
+    A later version lives under ``{org}/{space}/{doc}.v{n}/{filename}`` so it can never
+    overwrite the file of an earlier one, even when the name is the same. Version 1 keeps
+    the original layout, which is also what every document stored before versions has.
 
     Keeping the filename in the key is optional but useful: presigned or
     proxied downloads honour ``response-content-disposition`` correctly,
@@ -243,6 +252,10 @@ def storage_key_for(
     # Very light sanitisation — dropping slashes is enough because the
     # rest of the key is machine-generated uuids we control.
     safe = filename.replace("/", "_").replace("\\", "_").strip() or "file"
+    if version_number > 1:
+        # A sibling folder, not a subfolder: version 1 may be a file called "v2", and an
+        # object store cannot hold both a file and a folder of one name.
+        return f"{organization_id}/{space_id}/{document_id}.v{version_number}/{safe}"
     return f"{organization_id}/{space_id}/{document_id}/{safe}"
 
 

@@ -34,6 +34,7 @@ from quberi_api.domain.identity.models import User
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services import access_guard, doc_acl, document_sources
 from quberi_api.services.documents import review as review_service
+from quberi_api.services.documents import versions as versions_service
 from quberi_api.services.documents.duplicates import (
     DUPLICATE_INDEX as _DUPLICATE_INDEX,
     find_live_duplicate,
@@ -838,6 +839,9 @@ async def upload_local(
                 )
             )
             await session.flush()
+            await versions_service.record_first_version(
+                session, doc, created_by=uploader_user_id
+            )
             await session.refresh(
                 doc, attribute_names=["created_at", "updated_at", "indexing_state"]
             )
@@ -1026,6 +1030,10 @@ async def delete_document(
         )
 
     storage_key = doc.storage_key
+    # Every version's file goes with the document, not just the current one.
+    storage_keys = list(await versions_service.storage_keys_of(session, doc.id))
+    if storage_key and storage_key not in storage_keys:
+        storage_keys.append(storage_key)
     doc_id_for_cascade = doc.id
     doc_org_id = doc.organization_id
     # The authz check above already ran ``session.execute`` which
@@ -1050,9 +1058,9 @@ async def delete_document(
     # Best-effort blob delete after the DB commits — if the blob delete
     # fails we've still consistently removed the metadata and can rely
     # on a future garbage collector to reap orphaned objects.
-    if storage_key:
+    for key in storage_keys:
         try:
-            await local_connector.delete(storage_key)
+            await local_connector.delete(key)
         except Exception:  # pragma: no cover — logged upstream
             pass
 

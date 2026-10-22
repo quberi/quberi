@@ -274,6 +274,67 @@ class Document(TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # ---- Versions ----------------------------------------------------------
+    # The version whose file this row's ``storage_key`` / ``checksum_sha256`` /
+    # ``size_bytes`` / ``mime_type`` describe. Those columns stay on the row as a copy
+    # of the current version so nothing that reads a document has to join; the
+    # ``document_versions`` table is the history. ``None`` for a document with no stored
+    # file (a reference-only page).
+    current_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey(
+            "document_versions.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_documents_current_version_id",
+        ),
+        nullable=True,
+    )
+
+
+class DocumentVersion(Base):
+    """One stored file of a document. Written once, never changed.
+
+    A document is a name, a place in a space and a set of access rules; its versions are
+    the files it has held. Uploading a new version adds a row here and moves the
+    document's ``current_version_id``; it never touches an older row or its stored file,
+    so a citation that names "version 2" can always be traced to exactly those bytes.
+    The checksum is the proof the bytes are unchanged.
+
+    There is no ``updated_at`` and no code path that updates a row. Rows go away only when
+    the whole document is deleted.
+    """
+
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id", "version_number", name="uq_document_versions_document_number"
+        ),
+        Index("ix_document_versions_document_id", "document_id"),
+    )
+
+    id: Mapped[UUIDPk]
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    # 1, 2, 3 ... within one document.
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # What the file was called and what it was when it was uploaded; a later version may
+    # be a different name or even a different format.
+    filename: Mapped[str] = mapped_column(String(400), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(200), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # An optional line from the uploader about what changed.
+    note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class DocumentAccessRule(TimestampMixin, Base):
     """One document-level exception to its space's permissions.
 

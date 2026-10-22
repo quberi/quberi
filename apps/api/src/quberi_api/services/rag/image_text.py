@@ -46,6 +46,7 @@ from quberi_api.services.ai.ocr import (
     get_ocr_provider,
 )
 from quberi_api.services.ai.ocr.models import ENGINE_NAME, ENGINE_VERSION, MODEL_NAME
+from quberi_api.services.documents import versions as versions_service
 from quberi_api.services.rag.chunk import chunk_text
 from quberi_api.services.rag.codes import codes_in_lines
 from quberi_api.services.rag.vector_store import ChunkPoint, VectorStore
@@ -280,6 +281,9 @@ async def index_image_text(
         document_id=doc.id,
         document_name=doc.name,
         document_checksum=doc.checksum_sha256,
+        # The text of the current picture only replaces the text filed for this version;
+        # what an earlier version of the document left in the index stays.
+        version_number=await versions_service.current_version_number(session, doc),
         chunks=[
             ChunkPoint(
                 chunk_index=c.index,

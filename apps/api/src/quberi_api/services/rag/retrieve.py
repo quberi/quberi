@@ -37,6 +37,7 @@ from quberi_api.services.ai.base import EmbeddingProvider
 from quberi_api.services.ai.registry import MODEL_REGISTRY
 from quberi_api.services.authz import list_accessible_space_ids
 from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access
+from quberi_api.services.documents import versions as versions_service
 from quberi_api.services.rag.codes import extract_codes
 from quberi_api.services.rag.vector_store import RetrievedChunk, VectorStore
 
@@ -417,7 +418,27 @@ async def _search_scoped_spaces(
     else:
         kept = kept[:top_k]
 
-    return kept, model_id, store.collection
+    return await _label_latest_versions(session, kept), model_id, store.collection
+
+
+async def _label_latest_versions(
+    session: AsyncSession, chunks: list[RetrievedChunk]
+) -> list[RetrievedChunk]:
+    """Say, on each hit, which version of its document is the current one.
+
+    The index knows which version a passage was read from, not which version is newest
+    today; that is read from the database so a passage from a replaced version can be shown
+    as such. A document with no version record (a reference-only page) is left unlabelled.
+    """
+
+    if not chunks:
+        return chunks
+    latest = await versions_service.latest_version_numbers(
+        session, {c.document_id for c in chunks}
+    )
+    if not latest:
+        return chunks
+    return [replace(c, latest_version=latest.get(c.document_id)) for c in chunks]
 
 
 async def _merge_exact_code_hits(
