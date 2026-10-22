@@ -79,6 +79,49 @@ equivalent option (sometimes called a static or manual client ID) — look for
 a way to supply `quberi-mcp` as the client ID before the client's login flow
 starts, rather than letting it attempt registration.
 
+## Other tools
+
+The server address is `https://mcp.quberi.com` for every tool. The same
+steps are shown, with copy buttons, on the account page of the web app under
+"Connect an AI tool".
+
+- **Claude** (web and desktop): Settings → Connectors → Add custom connector,
+  paste the address, and sign in when asked. Claude identifies itself by a
+  metadata URL that the platform admin has listed, so there is no client ID to
+  type.
+- **ChatGPT**: Plugins → Add → Add custom MCP server, paste the address (no
+  `/mcp`), choose OAuth, and leave the advanced OAuth settings alone.
+- **Claude Code**:
+
+  ```
+  claude mcp add --transport http quberi https://mcp.quberi.com
+  ```
+
+  Then type `/mcp` inside Claude Code and choose `quberi` to sign in. If it
+  says the client is not known, add `--client-id quberi-mcp` to the command.
+- **Cursor** (desktop app): add this to `~/.cursor/mcp.json`, merging it with
+  what is already there, then restart Cursor and use Settings → MCP → Connect.
+
+  ```json
+  {
+    "mcpServers": {
+      "quberi": {
+        "url": "https://mcp.quberi.com",
+        "auth": { "CLIENT_ID": "quberi-cursor" }
+      }
+    }
+  }
+  ```
+
+  Cursor receives its sign-in code on `http://localhost:8787/callback`, a
+  loopback address, which `quberi-cursor` allows. It is created by a database
+  migration, so a fresh install has it already; a platform admin can turn it
+  off like any other tool. Cursor's web and cloud agents use a different
+  callback and are not allowed unless an admin adds it.
+
+A self-hosted deployment serves the web app with a different MCP address by
+setting `VITE_MCP_URL` when building it.
+
 ## What a connected client can do
 
 A connection acts as the person who approved it, in the organization they

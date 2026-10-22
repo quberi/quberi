@@ -6223,3 +6223,47 @@ details.review-part > summary { cursor: pointer; }
   height: 16px;
   accent-color: var(--purple-700);
 }
+
+/* "Connect an AI tool" help on the account page */
+.connect-help { margin: 0 0 4px; }
+.connect-help > summary {
+  display: grid;
+  gap: 2px;
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+.connect-help > summary::-webkit-details-marker { display: none; }
+.connect-help > summary strong { font-size: 15px; color: var(--ink); }
+.connect-help > summary span { font-size: 13px; color: var(--muted); }
+.connect-help > summary:focus-visible { outline: 2px solid var(--purple-500); outline-offset: 3px; border-radius: 6px; }
+.connect-help[open] > summary { margin-bottom: 10px; }
+.connect-help-body { display: grid; gap: 14px; }
+.connect-help-body section { display: grid; gap: 6px; }
+.connect-help-body h3 { margin: 0; font-size: 13.5px; color: var(--purple-800); }
+.connect-help-body p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.connect-help-body .connect-help-label { font-weight: 600; color: var(--ink); }
+.connect-help-body .connect-help-note { font-size: 12.5px; }
+.connect-help-copy {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--purple-50);
+}
+.connect-help-copy code,
+.connect-help-copy pre {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.connect-help-copy .ghost-button { flex: none; padding: 4px 9px; font-size: 12px; }

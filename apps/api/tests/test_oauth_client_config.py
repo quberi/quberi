@@ -425,3 +425,13 @@ async def test_the_admin_list_forgets_refused_attempts_that_would_be_allowed_now
 
     after = (await admin.get("/api/v1/admin/oauth-clients")).json()["rejected"]
     assert {(r["client_id"], r["redirect_uri"]) for r in after} == {("quberi-mcp", "https://elsewhere.example/cb")}
+
+
+async def test_cursor_is_a_built_in_tool_that_may_only_use_its_own_machine(db_session):
+    cursor = await _resolve(db_session, "quberi-cursor")
+
+    assert cursor.name == "Cursor" and cursor.allow_mcp is True
+    assert cursor.redirect_allowed("http://localhost:8787/callback")  # what Cursor's desktop app uses
+    assert not cursor.redirect_allowed("https://www.cursor.com/agents/mcp/oauth/callback")
+    assert not cursor.redirect_allowed("cursor://anysphere.cursor-mcp/oauth/callback")
+    assert not cursor.redirect_allowed("https://claude.ai/api/mcp/auth_callback")

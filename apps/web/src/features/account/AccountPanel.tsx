@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ApiError } from '../api/client'
 import { ConnectedTools } from '../oauth/ConnectedTools'
+import { ConnectToolsHelp } from '../oauth/ConnectToolsHelp'
 import { useAuth } from '../auth/AuthContext'
 
 import { Building2, Plus } from 'lucide-react'
@@ -96,6 +97,8 @@ export function AccountPanel() {
           <FeishuMethod profile={profile} onLinked={load} />
 
           <div className="account-divider" />
+
+          <ConnectToolsHelp />
 
           <ConnectedTools />
 

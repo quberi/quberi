@@ -775,6 +775,34 @@
     "toggleLabel": "允许成员连接外部工具",
     "offEffect": "检索结果会发送给该工具和它使用的 AI 模型，不经过“发送前检查”。关闭后访问立即失效。每一次检索都会记录在审计日志里。"
   },
+  "connectTools": {
+    "title": "连接 AI 工具",
+    "hint": "在 Claude、ChatGPT、Codex、Claude Code、Cursor 里使用你的知识库。",
+    "urlLabel": "服务器地址（所有工具都一样）",
+    "copy": "复制",
+    "copied": "已复制",
+    "claude": {
+      "title": "Claude（网页版和桌面版）",
+      "steps": "设置 → 连接器 → 添加自定义连接器。粘贴上面的服务器地址，按提示登录 Quberi。"
+    },
+    "chatgpt": {
+      "title": "ChatGPT",
+      "steps": "插件 → 添加 → 添加自定义 MCP 服务器。粘贴上面的服务器地址（不要加 /mcp），认证方式选 OAuth，“高级 OAuth 设置”保持默认。按提示登录 Quberi。"
+    },
+    "codex": {
+      "title": "Codex",
+      "steps": "在终端依次运行下面两条命令，第二条会打开浏览器让你登录。"
+    },
+    "claudeCode": {
+      "title": "Claude Code",
+      "steps": "运行下面的命令，然后在 Claude Code 里输入 /mcp，选择 quberi 登录。如果提示不认识这个客户端，在命令末尾加上 --client-id quberi-mcp。"
+    },
+    "cursor": {
+      "title": "Cursor（桌面版）",
+      "steps": "把下面的内容加到 ~/.cursor/mcp.json（和已有内容合并），重启 Cursor，然后打开 设置 → MCP，点击 quberi 旁的 Connect。"
+    },
+    "note": "每个工具都以你本人的身份工作：只能读取或修改你的账号本来就能访问的内容。你所在的组织可能需要先允许使用外部工具。随时可以在下方列表里断开某个工具。"
+  },
   "connectedTools": {
     "title": "已连接的工具",
     "hint": "你允许检索自己知识库的外部工具。断开后立即生效。",
