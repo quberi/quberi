@@ -360,6 +360,22 @@
         "other": "Other"
       }
     },
+    "versions": {
+      "tab": "Versions",
+      "propVersion": "Version",
+      "currentOf": "{{number}} of {{count}}",
+      "badge": "v{{number}}",
+      "versionsTitle": "{{count}} versions",
+      "explain": "Add a newer file of this same document. Earlier versions are kept and stay searchable, marked with their version number.",
+      "noteLabel": "What changed",
+      "notePlaceholder": "What changed in this version (optional)",
+      "upload": "Upload a new version",
+      "uploading": "Uploading… {{percent}}%",
+      "loading": "Loading versions…",
+      "number": "Version {{number}}",
+      "current": "Current",
+      "download": "Download version {{number}}"
+    },
     "detail": {
       "close": "Close",
       "tabProperties": "Properties",
@@ -1478,6 +1494,12 @@
       "header_one": "{{used}}/{{total}} cited",
       "header_other": "{{used}}/{{total}} cited",
       "chunk": "chunk #{{index}}",
+      "page": "page {{page}}",
+      "pages": "pages {{from}}–{{to}}",
+      "scanned": "scanned",
+      "scannedHint": "Read from a picture of the page, so it may contain misread characters.",
+      "versionLatest": "version {{number}} (latest)",
+      "versionOlder": "version {{number}} (older, replaced by version {{latest}})",
       "score": "score {{score}}",
       "usedBadge": "cited",
       "empty": "This answer has no sources yet.",

@@ -86,6 +86,29 @@ export interface DocumentSummary {
   /** Exception rules on this document. Present only for someone who manages the space. */
   allow_rules?: number | null
   deny_rules?: number | null
+  /** The version the file columns describe, and how many versions there are (0 = no file). */
+  version_number?: number | null
+  version_count?: number
+}
+
+/** One stored file of a document. Written once, never changed. */
+export interface DocumentVersion {
+  version_id: string
+  version_number: number
+  filename: string
+  mime_type: string
+  size_bytes: number
+  checksum_sha256: string
+  note: string | null
+  created_at: string
+  created_by_user_id: string | null
+  created_by_name: string
+  is_current: boolean
+}
+
+export interface DocumentVersionList {
+  document_id: string
+  versions: DocumentVersion[]
 }
 
 export interface DocumentListFilters {

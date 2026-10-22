@@ -25,6 +25,26 @@ export interface MessageCitation {
   char_end: number
   /** The passage is empty because its space is closed to this reader. */
   text_hidden?: boolean
+  /**
+   * Where the passage sits in the file, when it is known: first and last page, so a reader can
+   * open the original and check. Absent for formats without pages and for answers saved before
+   * pages were recorded.
+   */
+  page_start?: number | null
+  page_end?: number | null
+  unit_start?: number | null
+  unit_end?: number | null
+  /** 'ocr_block' when any of it was read from a picture of the page (it may contain errors). */
+  unit_label?: string
+  /** 'image_ocr' for text read out of a picture; 'text' otherwise. */
+  source_kind?: string
+  /**
+   * Which version of the file the passage was read from, and the file's newest version
+   * (null when it has no version record). A lower number than the newest means the passage
+   * comes from a version that has since been replaced.
+   */
+  version_number?: number
+  latest_version?: number | null
 }
 
 /** One picture found by a picture search (see ``POST /conversations/{id}/image-search``). */

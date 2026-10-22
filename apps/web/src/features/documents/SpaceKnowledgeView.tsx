@@ -107,6 +107,14 @@ function SpaceKnowledgeViewInner({
   const needsLogin = isGuest && !guestCanUpload
   // A reader of the space is not offered adding or deleting: the server would refuse them.
   const readOnly = isReadOnlySpace(space, isGuest)
+  // A new version is added by an editor or better; in a space that approves uploads only by
+  // an owner or admin (the server refuses the others, so the button is not offered to them).
+  const canAddVersion =
+    !readOnly &&
+    !isGuest &&
+    (space?.require_upload_approval !== true ||
+      space?.caller_role === 'owner' ||
+      space?.caller_role === 'admin')
 
   return (
     <>
@@ -233,6 +241,7 @@ function SpaceKnowledgeViewInner({
 
       {detailId && (
         <DocumentDetailDrawer
+          canAddVersion={canAddVersion}
           documentId={detailId}
           onClose={() => setDetailId(null)}
         />
@@ -630,6 +639,14 @@ function DocumentsTable({
           >
             <td>
               <strong>{doc.name}</strong>
+              {(doc.version_count ?? 0) > 1 && (
+                <span
+                  className="chip chip-inline"
+                  title={t('knowledge.versions.versionsTitle', { count: doc.version_count })}
+                >
+                  {t('knowledge.versions.badge', { number: doc.version_number })}
+                </span>
+              )}
               <ExceptionBadges allow={doc.allow_rules} deny={doc.deny_rules} />
               {isGuest && doc.is_mine && (
                 <span className="chip chip-inline">{t('guestSandbox.mine')}</span>

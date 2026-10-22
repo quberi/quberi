@@ -23,6 +23,7 @@ import type {
   DocumentSourceList,
   DocumentStats,
   DocumentSummary,
+  DocumentVersionList,
   ListDocumentsParams,
   RegisterSourceInput,
 } from './types'
@@ -102,6 +103,33 @@ export function getDocumentText(
     `/api/v1/spaces/${spaceId}/documents/${documentId}/text`,
     { credentials },
   )
+}
+
+export function listDocumentVersions(
+  credentials: DevCredentials,
+  spaceId: string,
+  documentId: string,
+): Promise<DocumentVersionList> {
+  return apiFetch<DocumentVersionList>(
+    `/api/v1/spaces/${spaceId}/documents/${documentId}/versions`,
+    { credentials },
+  )
+}
+
+/** One earlier (or the current) version's file, the same way ``downloadDocument`` fetches. */
+export async function downloadDocumentVersion(
+  credentials: DevCredentials,
+  spaceId: string,
+  documentId: string,
+  versionNumber: number,
+): Promise<{ blob: Blob; filename: string }> {
+  const url = `${API_BASE}/api/v1/spaces/${spaceId}/documents/${documentId}/versions/${versionNumber}/download`
+  const response = await fetch(url, { headers: buildAuthHeaders(credentials) })
+  if (!response.ok) {
+    throw await apiErrorFrom(response)
+  }
+  const filename = extractFilename(response.headers.get('content-disposition') ?? '')
+  return { blob: await response.blob(), filename }
 }
 
 /**
@@ -197,6 +225,55 @@ export function uploadDocument(
 
     const form = new FormData()
     form.append('file', file, file.name)
+    xhr.send(form)
+  })
+}
+
+/**
+ * Upload a file as the next version of an existing document. Only ever called from the
+ * "upload a new version" action on a chosen document; an ordinary upload is a new document.
+ * Resolves with the document as it is now (``version_number`` is the one just added).
+ */
+export function uploadNewVersion(
+  credentials: DevCredentials,
+  spaceId: string,
+  documentId: string,
+  file: File,
+  {
+    note,
+    onProgress,
+  }: { note?: string; onProgress?: (p: UploadProgress) => void } = {},
+): Promise<DocumentSummary> {
+  return new Promise<DocumentSummary>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(
+      'POST',
+      `${API_BASE}/api/v1/spaces/${spaceId}/documents/${documentId}/versions`,
+      true,
+    )
+    for (const [key, value] of Object.entries(buildAuthHeaders(credentials))) {
+      xhr.setRequestHeader(key, value)
+    }
+    xhr.responseType = 'json'
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress({ loaded: event.loaded, total: event.total })
+      }
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'network error'))
+    xhr.onabort = () => reject(new ApiError(0, 'upload aborted'))
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response as DocumentSummary)
+      } else {
+        const body = xhr.response as { detail?: string; code?: string } | undefined
+        notifyIfSessionInvalid(xhr.status, body?.code)
+        reject(new ApiError(xhr.status, body?.detail ?? '', body?.code))
+      }
+    }
+    const form = new FormData()
+    form.append('file', file, file.name)
+    if (note && note.trim()) form.append('note', note.trim())
     xhr.send(form)
   })
 }

@@ -354,6 +354,22 @@
         "other": "其他"
       }
     },
+    "versions": {
+      "tab": "版本",
+      "propVersion": "版本",
+      "currentOf": "第 {{number}} 版（共 {{count}} 版）",
+      "badge": "v{{number}}",
+      "versionsTitle": "共 {{count}} 个版本",
+      "explain": "为这份文档添加更新的文件。旧版本会保留，仍可被检索，并标注版本号。",
+      "noteLabel": "更新说明",
+      "notePlaceholder": "这一版改了什么（选填）",
+      "upload": "上传新版本",
+      "uploading": "上传中… {{percent}}%",
+      "loading": "正在加载版本…",
+      "number": "第 {{number}} 版",
+      "current": "当前",
+      "download": "下载第 {{number}} 版"
+    },
     "detail": {
       "close": "关闭",
       "tabProperties": "属性",
@@ -1465,6 +1481,12 @@
       "header_one": "{{used}}/{{total}} 条被引用",
       "header_other": "{{used}}/{{total}} 条被引用",
       "chunk": "chunk #{{index}}",
+      "page": "第 {{page}} 页",
+      "pages": "第 {{from}}–{{to}} 页",
+      "scanned": "扫描识别",
+      "scannedHint": "由页面图片识别而来，可能有识别错误。",
+      "versionLatest": "第 {{number}} 版（最新）",
+      "versionOlder": "第 {{number}} 版（旧版，已被第 {{latest}} 版取代）",
       "score": "得分 {{score}}",
       "usedBadge": "已引用",
       "empty": "这条回答暂无引用来源。",

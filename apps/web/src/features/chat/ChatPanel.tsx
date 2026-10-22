@@ -44,6 +44,7 @@ import { listAgents } from '../agent/api'
 import type { AgentSummary } from '../agent/types'
 
 import { MAX_IMAGE_QUERY_TEXT, MAX_QUERY_PICTURE_BYTES, fetchQueryPicture } from './api'
+import { describeCitation } from './citationPlace'
 import { useChat } from './ChatContext'
 import { ensureQueryPicture, useQueryPicture } from './queryPictures'
 import { ImageMatchesRail } from './ImageMatches'
@@ -1411,7 +1412,7 @@ function CitationsRail({
                 </span>
               </span>
               <small className="chat-citation-meta">
-                <span>{t('chat.citations.chunk', { index: c.chunk_index })}</span>
+                <CitationPlaceLabel citation={c} />
                 <span className="dot-sep">·</span>
                 <span>{t('chat.citations.score', { score: c.score.toFixed(3) })}</span>
                 {c.used && (
@@ -1441,6 +1442,33 @@ function CitationsRail({
         />
       )}
     </aside>
+  )
+}
+
+/** "page 3", the scan warning and the version, for the line under a source's name. */
+function CitationPlaceLabel({ citation }: { citation: MessageCitation }) {
+  const { t } = useTranslation()
+  const { place, scanned, version } = describeCitation(citation, t)
+  return (
+    <>
+      <span>{place}</span>
+      {scanned && (
+        <span className="chat-citation-scan-note" title={t('chat.citations.scannedHint')}>
+          {t('chat.citations.scanned')}
+        </span>
+      )}
+      {version && (
+        <span
+          className={
+            version.older
+              ? 'chat-citation-version chat-citation-version-older'
+              : 'chat-citation-version'
+          }
+        >
+          {version.text}
+        </span>
+      )}
+    </>
   )
 }
 
