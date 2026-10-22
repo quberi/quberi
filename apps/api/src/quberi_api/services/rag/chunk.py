@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import List
 
@@ -45,7 +46,20 @@ class Chunk:
     text: str
     char_start: int
     char_end: int
+    # Where in the source document this text came from, when the extractor recorded it
+    # (see ``extract.TextUnit``). A chunk can span several blocks and pages, so these are
+    # the first and last. ``None`` when positions are unknown (plain text, other formats).
+    page_start: int | None = None
+    page_end: int | None = None
+    unit_start: int | None = None
+    unit_end: int | None = None
+    # "text_block" if all of it is the file's own text; "ocr_block" if any of it was
+    # recognised from a picture and may contain errors. Empty when positions are unknown.
+    unit_label: str = ""
 
+
+# A place in the source: (page, block number within the page, label). ``None`` = unknown.
+Source = tuple[int | None, int, str]
 
 # Default budget: ~500 tokens with 50-token overlap at CJK ratios.
 DEFAULT_MAX_CHARS = 1200
@@ -68,15 +82,74 @@ def chunk_text(
 
     if not text:
         return []
+    _check_sizes(max_chars, overlap_chars)
+    paragraphs = _split_paragraphs(text, max_chars=max_chars)
+    return _pack([(p, ()) for p in paragraphs], max_chars, overlap_chars)
+
+
+def chunk_units(
+    units: Sequence[tuple[str, Source]],
+    *,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    overlap_chars: int = DEFAULT_OVERLAP_CHARS,
+) -> list[Chunk]:
+    """Chunk blocks of text that know where in the document they came from.
+
+    Packs exactly as :func:`chunk_text` does (the same function does the work), and in
+    addition records on every chunk the first and last page and block it touches, so a
+    citation can say "page 3, blocks 2 to 4". ``units`` is ``(text, source)`` in reading
+    order; blocks with no text are skipped by the caller.
+
+    The tail repeated from the previous window counts too: if it came from an earlier
+    block, that block is part of this chunk's range. A citation that names fewer places
+    than the text really came from would send a reader to the wrong page.
+    """
+
+    # A block is one paragraph unless it is longer than a window, in which case the packer
+    # splits it and every piece keeps the block's source.
+    items = [(text.strip(), (source,)) for text, source in units if text and text.strip()]
+    if not items:
+        return []
+    _check_sizes(max_chars, overlap_chars)
+    return _pack(items, max_chars, overlap_chars)
+
+
+def _check_sizes(max_chars: int, overlap_chars: int) -> None:
     if max_chars <= 0:
         raise ValueError("max_chars must be positive")
     if overlap_chars < 0 or overlap_chars >= max_chars:
         raise ValueError("overlap_chars must be in [0, max_chars)")
 
-    paragraphs = _split_paragraphs(text, max_chars=max_chars)
 
-    chunks: List[Chunk] = []
-    buffer: list[str] = []
+def _position(source: Source) -> tuple[int, int]:
+    """Sort key for a source: by page, then block. A source without a page sorts first."""
+
+    return (source[0] if source[0] is not None else -1, source[1])
+
+
+def _range_of(sources: list[Source]) -> tuple[int | None, int | None, int | None, int | None, str]:
+    """First and last page and block among ``sources``, and the label of the text.
+
+    The label is ``ocr_block`` if any part was recognised from a picture (a citation must
+    not look more certain than its least certain part), otherwise the sources' own label.
+    """
+
+    if not sources:
+        return None, None, None, None, ""
+    first, last = min(sources, key=_position), max(sources, key=_position)
+    label = "ocr_block" if any(s[2] == "ocr_block" for s in sources) else sources[0][2]
+    return first[0], last[0], first[1], last[1], label
+
+
+def _pack(
+    paragraphs: Sequence[tuple[str, tuple[Source, ...]]], max_chars: int, overlap_chars: int
+) -> list[Chunk]:
+    """Greedy packing into windows with a repeated tail. The one place this is done."""
+
+    chunks: list[Chunk] = []
+    # Each piece in the buffer remembers where it came from: one source for a block, several
+    # for the repeated tail (which can span more than one block). Empty if unknown.
+    buffer: list[tuple[str, tuple[Source, ...]]] = []
     buffer_len = 0
     buffer_start_offset = 0
     cursor = 0  # running index into ``text`` — approximate but stable
@@ -85,7 +158,7 @@ def chunk_text(
         nonlocal buffer, buffer_len, buffer_start_offset
         if not buffer:
             return
-        window_text = "\n\n".join(buffer).strip()
+        window_text = "\n\n".join(piece for piece, _ in buffer).strip()
         # Drop trivial windows *unless* it's the only chunk we'd emit —
         # a 26-byte demo file still deserves to be searchable rather
         # than silently zero-chunked.
@@ -100,13 +173,19 @@ def chunk_text(
         idx = len(chunks)
         start = buffer_start_offset
         end = start + len(window_text)
+        known = [src for _, srcs in buffer for src in srcs]
+        p_start, p_end, u_start, u_end, label = _range_of(known)
         chunks.append(
-            Chunk(index=idx, text=window_text, char_start=start, char_end=end)
+            Chunk(
+                index=idx, text=window_text, char_start=start, char_end=end,
+                page_start=p_start, page_end=p_end, unit_start=u_start, unit_end=u_end,
+                unit_label=label,
+            )
         )
         # Seed the next buffer with the tail of this one (overlap).
         if overlap_chars > 0 and len(window_text) > overlap_chars:
             tail = window_text[-overlap_chars:]
-            buffer = [tail]
+            buffer = [(tail, _tail_sources(buffer, overlap_chars))]
             buffer_len = len(tail)
             buffer_start_offset = end - len(tail)
         else:
@@ -114,7 +193,7 @@ def chunk_text(
             buffer_len = 0
             buffer_start_offset = end
 
-    for para in paragraphs:
+    for para, source in paragraphs:
         # If a single paragraph is bigger than the window, split it.
         if len(para) > max_chars:
             # Flush what we have first so the giant paragraph stands on its own.
@@ -127,7 +206,7 @@ def chunk_text(
                     flush()
                     if not buffer:
                         buffer_start_offset = cursor
-                buffer.append(sub)
+                buffer.append((sub, source))
                 buffer_len += len(sub) + (2 if len(buffer) > 1 else 0)
                 cursor += len(sub) + 2
                 if buffer_len >= max_chars:
@@ -140,12 +219,34 @@ def chunk_text(
             flush()
         if not buffer:
             buffer_start_offset = cursor
-        buffer.append(para)
+        buffer.append((para, source))
         buffer_len += len(para) + (2 if len(buffer) > 1 else 0)
         cursor += len(para) + 2
 
     flush()
     return chunks
+
+
+def _tail_sources(
+    buffer: list[tuple[str, tuple[Source, ...]]], overlap_chars: int
+) -> tuple[Source, ...]:
+    """Every block the repeated tail came from.
+
+    The tail is the last ``overlap_chars`` characters of the window. Walk the pieces from
+    the end, counting the two-character separator between them, and collect the sources of
+    each piece the tail reaches into. It can reach several: a short block packed after a
+    longer one fits in the tail whole. All of them are kept, because a citation that names
+    fewer places than the text really came from sends a reader to the wrong page.
+    """
+
+    remaining = overlap_chars
+    touched: list[Source] = []
+    for piece, sources in reversed(buffer):
+        if remaining <= 0:
+            break
+        touched.extend(sources)
+        remaining -= len(piece) + 2  # the piece and the separator before it
+    return tuple(touched)
 
 
 def _split_paragraphs(text: str, *, max_chars: int) -> list[str]:

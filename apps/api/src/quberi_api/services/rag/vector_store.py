@@ -76,6 +76,14 @@ class ChunkPoint:
     # query that contains one can be looked up exactly instead of by meaning. Empty for
     # ordinary text.
     codes: tuple[str, ...] = ()
+    # Where in the source document the text sits (see ``chunk.Chunk``): first and last
+    # page and block. ``None`` when the extractor did not record positions.
+    page_start: int | None = None
+    page_end: int | None = None
+    unit_start: int | None = None
+    unit_end: int | None = None
+    # "text_block" or "ocr_block" (any part recognised from a picture); "" if unknown.
+    unit_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -96,6 +104,11 @@ class RetrievedChunk:
     char_start: int
     char_end: int
     source_kind: str = "text"
+    page_start: int | None = None
+    page_end: int | None = None
+    unit_start: int | None = None
+    unit_end: int | None = None
+    unit_label: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +128,39 @@ def collection_name_for_model(model_id: str, prefix: str = _COLLECTION_PREFIX) -
 
     sanitised = re.sub(r"[^a-z0-9]+", "_", model_id.lower()).strip("_")
     return f"{prefix}{sanitised}"
+
+
+def _position_payload(c: ChunkPoint) -> dict[str, Any]:
+    """The position fields that are known, left out when they are not."""
+
+    fields = {
+        "page_start": c.page_start,
+        "page_end": c.page_end,
+        "unit_start": c.unit_start,
+        "unit_end": c.unit_end,
+    }
+    known = {k: v for k, v in fields.items() if v is not None}
+    if c.unit_label:
+        known["unit_label"] = c.unit_label
+    return known
+
+
+def _optional_int(value: Any) -> int | None:
+    """A payload number, or ``None`` when the field is absent or not a whole number."""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _positions_from(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "page_start": _optional_int(payload.get("page_start")),
+        "page_end": _optional_int(payload.get("page_end")),
+        "unit_start": _optional_int(payload.get("unit_start")),
+        "unit_end": _optional_int(payload.get("unit_end")),
+        "unit_label": str(payload.get("unit_label") or ""),
+    }
 
 
 def _point_id_for(document_id: uuid.UUID, chunk_index: int) -> str:
@@ -269,6 +315,7 @@ class VectorStore:
                     "char_end": c.char_end,
                     "source_kind": c.source_kind,
                     **({"codes": list(c.codes)} if c.codes else {}),
+                    **_position_payload(c),
                 },
             )
             for c in chunks
@@ -440,6 +487,7 @@ class VectorStore:
                             char_start=int(payload.get("char_start", 0)),
                             char_end=int(payload.get("char_end", 0)),
                             source_kind=str(payload.get("source_kind", "text")),
+                            **_positions_from(payload),
                         ),
                     )
                 )
@@ -518,6 +566,7 @@ class VectorStore:
                         char_start=int(payload.get("char_start", 0)),
                         char_end=int(payload.get("char_end", 0)),
                         source_kind=str(payload.get("source_kind", "text")),
+                        **_positions_from(payload),
                     )
                 )
             except (KeyError, ValueError):  # pragma: no cover — defensive

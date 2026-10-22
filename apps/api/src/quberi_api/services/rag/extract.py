@@ -4,7 +4,9 @@ Format matrix (H-1)
 -------------------
 | ext / mime            | extractor            | notes                          |
 |-----------------------|----------------------|--------------------------------|
-| .pdf                  | ``pypdf``            | Text-native PDFs only.          |
+| .pdf                  | ``pdfplumber``       | Page and block positions kept;  |
+|                       | (``pypdf`` fallback) | a page with no text is flagged  |
+|                       |                      | for OCR, see ``needs_ocr``.     |
 | .docx                 | ``python-docx``      | Paragraphs + tables (cells).    |
 | .pptx                 | ``python-pptx``      | Slide title + body text frames. |
 | .xlsx                 | ``openpyxl``         | Sheet-scoped cell dump.         |
@@ -14,7 +16,9 @@ Format matrix (H-1)
 |                       |                      | ``indexing_state='failed'`` w/  |
 |                       |                      | a specific error.               |
 
-OCR + complex-layout PDFs land in H-3.
+A page whose text layer is empty is not an error here: it comes back as a unit with
+``needs_ocr=True`` and no text. Reading it is asynchronous work done by the indexer
+(``services/ai/ocr``), so this module stays synchronous and cheap.
 """
 
 from __future__ import annotations
@@ -32,12 +36,34 @@ class ExtractError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class TextUnit:
+    """One block of text and where it sits in the source document.
+
+    ``page`` is the 1-based page for formats that have real pages, else ``None``.
+    ``unit_index`` counts blocks within the page (0-based), or within the document when
+    there are no pages. ``unit_label`` says what kind of block it is: ``text_block`` is text
+    from the file's own text layer, ``ocr_block`` is text recognised from a picture of the
+    page and may contain errors.
+    """
+
+    text: str
+    page: int | None
+    unit_index: int
+    unit_label: str = "text_block"
+    # A page with no text layer at all. ``text`` is empty; the indexer reads the page.
+    needs_ocr: bool = False
+
+
+@dataclass(frozen=True)
 class ExtractResult:
     """Text pulled out of one document, plus a few useful stats."""
 
     text: str
     page_count: int  # -1 when the format has no pages
     extractor: str  # human-readable, e.g. "pypdf", "python-docx"
+    # The same text split into positioned blocks. Empty for formats that do not yet record
+    # positions; ``text`` is always complete either way.
+    units: tuple[TextUnit, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -117,25 +143,104 @@ def _pick_extractor(mime: str, name: str) -> Extractor:
 # ---------------------------------------------------------------------------
 
 
+# A paragraph break is a gap between two lines of more than this fraction of a line's height.
+# Lines of one paragraph sit a few points apart (about 0.3 of their height); paragraphs and
+# headings are separated by roughly twice the line height. Measured on test pages, and to
+# be checked again on real documents.
+_PARAGRAPH_GAP = 0.8
+# Pages read per document. A huge or hostile PDF must not hold the worker for hours; pages
+# beyond this are left out and the result says so.
+MAX_PDF_PAGES = 1000
+
+
+def _group_lines(lines: list[dict]) -> list[str]:
+    """Join lines into paragraph-sized blocks by the gap between them."""
+
+    blocks: list[list[str]] = []
+    previous = None
+    for line in sorted(lines, key=lambda ln: (round(ln["top"], 1), ln["x0"])):
+        text = (line.get("text") or "").strip()
+        if not text:
+            continue
+        height = max(line["bottom"] - line["top"], 1.0)
+        starts_new = (
+            previous is None or (line["top"] - previous["bottom"]) > _PARAGRAPH_GAP * height
+        )
+        if starts_new:
+            blocks.append([text])
+        else:
+            blocks[-1].append(text)
+        previous = line
+    return ["\n".join(block) for block in blocks]
+
+
 def _extract_pdf(blob: bytes) -> ExtractResult:
-    # Deferred import — pypdf imports are cheap but keep the module
-    # graph lean for the API worker in case someone strips pypdf out.
+    try:
+        return _extract_pdf_positioned(blob)
+    except ExtractError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — a library failure must not lose the document
+        _log.warning("pdfplumber failed (%s: %s); falling back to pypdf", type(exc).__name__, exc)
+        return _extract_pdf_pages_only(blob)
+
+
+def _extract_pdf_positioned(blob: bytes) -> ExtractResult:
+    import logging as _logging
+
+    import pdfplumber
+
+    # pdfminer logs every font quirk at WARNING; that is noise for us.
+    _logging.getLogger("pdfminer").setLevel(_logging.ERROR)
+
+    units: list[TextUnit] = []
+    page_texts: list[str] = []
+    with pdfplumber.open(io.BytesIO(blob)) as pdf:
+        total_pages = len(pdf.pages)
+        for number, page in enumerate(pdf.pages[:MAX_PDF_PAGES], start=1):
+            try:
+                blocks = _group_lines(page.extract_text_lines())
+            except Exception as exc:  # noqa: BLE001 — one bad page must not fail the document
+                _log.warning("pdfplumber: page %d failed to extract: %s", number, exc)
+                blocks = []
+            if not blocks:
+                units.append(TextUnit("", number, 0, "text_block", needs_ocr=True))
+                page_texts.append("")
+                continue
+            for index, block in enumerate(blocks):
+                units.append(TextUnit(block, number, index))
+            page_texts.append("\n\n".join(blocks))
+    if total_pages > MAX_PDF_PAGES:
+        _log.warning("pdf has %d pages; only the first %d were read", total_pages, MAX_PDF_PAGES)
+    text = "\n\n".join(page_texts).strip()
+    if not text and not any(u.needs_ocr for u in units):
+        raise ExtractError("the PDF has no pages")
+    return ExtractResult(
+        text=text, page_count=total_pages, extractor="pdfplumber", units=tuple(units)
+    )
+
+
+def _extract_pdf_pages_only(blob: bytes) -> ExtractResult:
+    """Fallback: pypdf gives a page of text at a time, so the page is known but not the block."""
+
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(blob))
+    units: list[TextUnit] = []
     pages: list[str] = []
-    for page in reader.pages:
+    for number, page in enumerate(reader.pages[:MAX_PDF_PAGES], start=1):
         try:
-            pages.append(page.extract_text() or "")
+            text = (page.extract_text() or "").strip()
         except Exception as exc:  # noqa: BLE001 — page-level failures shouldn't fail the doc
             _log.warning("pypdf: page failed to extract: %s", exc)
-            pages.append("")
+            text = ""
+        pages.append(text)
+        units.append(TextUnit(text, number, 0, "page", needs_ocr=not text))
     text = "\n\n".join(pages).strip()
-    if not text:
-        raise ExtractError(
-            "pypdf returned no text — likely a scanned PDF (OCR arrives in H-3)"
-        )
-    return ExtractResult(text=text, page_count=len(reader.pages), extractor="pypdf")
+    if not text and not any(u.needs_ocr for u in units):
+        raise ExtractError("the PDF has no pages")
+    return ExtractResult(
+        text=text, page_count=len(reader.pages), extractor="pypdf", units=tuple(units)
+    )
 
 
 def _extract_docx(blob: bytes) -> ExtractResult:

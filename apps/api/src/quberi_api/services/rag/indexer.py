@@ -32,6 +32,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import select
@@ -48,8 +49,8 @@ from quberi_api.services.ai.local_image_embedding import (
     image_vector_dim,
 )
 from quberi_api.services.documents.connectors import local as local_connector
-from quberi_api.services.rag.chunk import chunk_text
-from quberi_api.services.rag.extract import ExtractError, extract_text
+from quberi_api.services.rag.chunk import chunk_text, chunk_units
+from quberi_api.services.rag.extract import ExtractError, TextUnit, extract_text
 from quberi_api.services.rag.image_store import ImageVectorStore
 from quberi_api.services.rag.vector_store import ChunkPoint, VectorStore
 
@@ -223,8 +224,15 @@ async def _run_pipeline(
             await _mark_failed(session, doc, f"extract: {exc}")
             raise
 
+        units = extracted.units
+        text = extracted.text
+        if any(u.needs_ocr for u in units):
+            units, text = await _read_scanned_pages(
+                session, doc=doc, blob=blob, extracted=extracted
+            )
+
         return await _finalise_index_from_text(
-            session, qdrant=qdrant, doc=doc, text=extracted.text
+            session, qdrant=qdrant, doc=doc, text=text, units=units
         )
     except Exception as exc:  # noqa: BLE001
         if doc.indexing_state != "failed":
@@ -290,6 +298,83 @@ async def _index_image(
     )
 
 
+OCR_ATTRIBUTE_KEY = "pdf_ocr"
+
+
+async def _read_scanned_pages(
+    session: AsyncSession, *, doc: Document, blob: bytes, extracted: Any
+) -> tuple[Sequence[TextUnit], str]:
+    """Read the PDF pages that have no text layer, and return all units and their text.
+
+    Three outcomes, each deliberate:
+
+    * the pages are read: their text joins the rest as ``ocr_block`` units;
+    * OCR cannot run and **nothing** in the file has text: the document fails with a plain
+      reason (the same outcome a scan always had), never an empty "indexed" document;
+    * OCR cannot run but **some** pages have text: those are indexed, and the number of
+      pages not read is kept on the document so it can be shown.
+
+    Nothing here lets a failure to read a page fail a document that has other pages.
+    """
+
+    from quberi_api.services.ai.ocr import OcrError, get_ocr_provider
+    from quberi_api.services.rag.image_text import save_attribute
+    from quberi_api.services.rag.pdf_ocr import read_scanned_pages
+
+    units = list(extracted.units)
+    flagged = sum(1 for u in units if u.needs_ocr)
+    has_text = any(u.text.strip() for u in units)
+    try:
+        provider = get_ocr_provider()
+    except OcrError as exc:
+        return await _scan_not_read(
+            session, doc=doc, units=units, flagged=flagged, has_text=has_text, reason=str(exc),
+        )
+
+    filled, outcome = await read_scanned_pages(blob, units, provider)
+    still_unread = sum(1 for u in filled if u.needs_ocr)
+    if outcome.read == 0 and not has_text:
+        return await _scan_not_read(
+            session, doc=doc, units=units, flagged=flagged, has_text=False,
+            reason="; ".join(outcome.errors) or "no text was found on any page",
+        )
+    await save_attribute(
+        session, doc.id, OCR_ATTRIBUTE_KEY,
+        {
+            "pages_read": outcome.read,
+            "pages_unread": still_unread,
+            "pages_failed": outcome.failed,
+            "pages_over_limit": outcome.skipped,
+            "out_of_time": outcome.out_of_time,
+            "errors": list(outcome.errors),
+        },
+    )
+    return filled, "\n\n".join(u.text for u in filled if u.text.strip())
+
+
+async def _scan_not_read(
+    session: AsyncSession,
+    *,
+    doc: Document,
+    units: list[TextUnit],
+    flagged: int,
+    has_text: bool,
+    reason: str,
+) -> tuple[Sequence[TextUnit], str]:
+    if not has_text:
+        message = f"extract: the PDF has no text layer and could not be read ({reason})"
+        await _mark_failed(session, doc, message)
+        raise ExtractError(message)
+    from quberi_api.services.rag.image_text import save_attribute
+
+    await save_attribute(
+        session, doc.id, OCR_ATTRIBUTE_KEY,
+        {"pages_read": 0, "pages_unread": flagged, "pages_failed": 0,
+         "pages_over_limit": 0, "errors": [reason]},
+    )
+    return units, "\n\n".join(u.text for u in units if u.text.strip())
+
+
 async def _queue_picture_text(doc: Document) -> None:
     """Ask for the text inside a picture to be read and filed, after the picture itself
     is already searchable. Never raises: the picture's own index is not undone by this."""
@@ -350,6 +435,7 @@ async def _finalise_index_from_text(
     qdrant: AsyncQdrantClient,
     doc: Document,
     text: str,
+    units: Sequence[TextUnit] = (),
 ) -> IndexingResult:
     """Steps 4-8 of the pipeline: chunk → embed → upsert → mark ready.
 
@@ -359,7 +445,12 @@ async def _finalise_index_from_text(
     """
 
     # -- 4. Chunk ------------------------------------------------------
-    chunks = chunk_text(text or "")
+    # Text that knows where it came from keeps that through chunking; everything else
+    # (other formats, text fetched from a connector) is chunked exactly as it always was.
+    positioned = [
+        (u.text, (u.page, u.unit_index, u.unit_label)) for u in units if u.text.strip()
+    ]
+    chunks = chunk_units(positioned) if positioned else chunk_text(text or "")
     if not chunks:
         await _mark_failed(session, doc, "chunking produced zero windows")
         raise RuntimeError("chunker returned no chunks")
@@ -395,6 +486,11 @@ async def _finalise_index_from_text(
                 vector=v,
                 char_start=c.char_start,
                 char_end=c.char_end,
+                page_start=c.page_start,
+                page_end=c.page_end,
+                unit_start=c.unit_start,
+                unit_end=c.unit_end,
+                unit_label=c.unit_label,
             )
             for c, v in zip(chunks, vectors)
         ],

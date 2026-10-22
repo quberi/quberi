@@ -25,6 +25,15 @@ dependencies = [
   "openpyxl==3.1.5",
   "pydantic-settings==2.9.1",
   "pypdf==5.1.0",
+  # PDF text with its page and block positions (a citation names the page). pdfplumber reads
+  # the text layer through pdfminer.six and draws scanned pages through pypdfium2 for OCR.
+  # The two are pinned because they change what is extracted and drawn; these are the
+  # versions measured. pypdfium2 5.12.0 was withdrawn from PyPI for a packaging fault, and
+  # pdfminer.six needs cryptography >= 36, which the pin above satisfies. pypdf stays as the
+  # fallback when pdfplumber cannot read a file.
+  "pdfplumber==0.11.10",
+  "pdfminer.six==20260107",
+  "pypdfium2==5.14.0",
   "python-docx==1.1.2",
   "python-multipart==0.0.20",
   "python-pptx==1.0.2",

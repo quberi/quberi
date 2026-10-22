@@ -146,14 +146,14 @@ def is_current(
     )
 
 
-async def _save_state(
-    session: AsyncSession, document_id: uuid.UUID, state: dict[str, Any]
+async def save_attribute(
+    session: AsyncSession, document_id: uuid.UUID, key: str, value: dict[str, Any]
 ) -> None:
-    """Write ``attributes["image_text"]`` without clobbering the other keys.
+    """Set one key of ``documents.attributes`` without clobbering the others.
 
-    ``attributes`` is rewritten as a whole, and the picture-embedding job writes
-    ``image_index_model`` into the same column. So the row is locked and re-read first,
-    and only our key is changed on the fresh copy.
+    ``attributes`` is rewritten as a whole, and other jobs write their own keys into the
+    same column (the picture-embedding job writes ``image_index_model``). So the row is
+    locked and re-read first, and only ``key`` is changed on the fresh copy.
     """
 
     fresh = (
@@ -161,8 +161,14 @@ async def _save_state(
             select(Document).where(Document.id == document_id).with_for_update()
         )
     ).scalar_one()
-    fresh.attributes = {**(fresh.attributes or {}), IMAGE_TEXT_KEY: state}
+    fresh.attributes = {**(fresh.attributes or {}), key: value}
     await session.commit()
+
+
+async def _save_state(
+    session: AsyncSession, document_id: uuid.UUID, state: dict[str, Any]
+) -> None:
+    await save_attribute(session, document_id, IMAGE_TEXT_KEY, state)
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +356,7 @@ __all__ = [
     "index_image_text_job",
     "is_current",
     "normalise",
+    "save_attribute",
     "stored_state",
     "unify_diameter",
 ]
