@@ -59,6 +59,11 @@ CAPTION_SOURCE_KIND = "image_caption"
 # read out of the same picture (which is numbered from 0).
 CAPTION_CHUNK_BASE = 1000
 MAX_CAPTION_CHARS = 1200
+# The most the model may write for one picture, *including* any reasoning it does first. The
+# description itself is short (see the prompt); the rest is room to think. At 600 a model that
+# reasons spent every token before it wrote a word and returned nothing (finish_reason
+# "length") on the busier pictures, such as drawings.
+MAX_ANSWER_TOKENS = 2000
 # The longest side sent. Small print needs resolution; the model scales anything larger.
 SEND_MAX_SIDE = 2048
 MAX_SEND_PIXELS = 40_000_000
@@ -383,7 +388,7 @@ async def index_image_caption(
                 ],
                 model=vision_model,
                 temperature=0.0,
-                max_tokens=600,
+                max_tokens=MAX_ANSWER_TOKENS,
             )
         except Exception as exc:  # noqa: BLE001 - a provider failure must not crash the worker
             reason = f"the vision model call failed ({type(exc).__name__})"

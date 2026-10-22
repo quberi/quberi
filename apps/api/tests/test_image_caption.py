@@ -147,7 +147,9 @@ class Vision:
         self.finish_reason, self.completion_tokens = finish_reason, completion_tokens
 
     async def complete(self, *, messages, model, temperature=0.2, max_tokens=None, **_kw):
-        self.calls.append(SimpleNamespace(messages=list(messages), model=model))
+        self.calls.append(
+            SimpleNamespace(messages=list(messages), model=model, max_tokens=max_tokens)
+        )
         if self.error:
             raise self.error
         return ChatResponse(
@@ -489,6 +491,18 @@ async def test_an_empty_answer_is_a_failure_not_an_empty_description(
     state = await _state(db_session, pic)
     assert state["error"] == "the model returned no description"
     assert state["finish_reason"] == "length" and state["completion_tokens"] == 600
+
+
+async def test_the_model_is_given_room_to_reason_before_it_writes(
+    db_session, org_and_owner, qdrant, world
+):
+    await _enable(db_session, org_and_owner)
+    pic = await _picture(db_session, org_and_owner)
+
+    await _run(db_session, qdrant, world, pic)
+
+    # 600 was all spent on reasoning for busy pictures and nothing was written.
+    assert world.vision.calls[0].max_tokens == image_caption.MAX_ANSWER_TOKENS == 2000
 
 
 async def test_the_model_is_not_sent_the_same_picture_again_after_three_failures(
