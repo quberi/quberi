@@ -376,6 +376,9 @@ def _where(c: Citation) -> str:
     else:
         base = f"第{c.page_start}-{c.page_end}页"
     base = base + "（扫描识别，可能有误）" if recognised else base
+    if c.source_kind == "image_caption":
+        # A picture described by a model: a guide to what it shows, not a transcript.
+        base = base + "（模型对图片的描述，可能有误）"
     label = version_label(c.version_number, c.latest_version)
     return f"{base}，{label}" if label else base
 

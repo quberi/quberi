@@ -16,6 +16,7 @@ format is stable and simple enough.
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import AsyncIterator, List, Optional, Sequence
 
@@ -272,6 +273,23 @@ class OpenAICompatProvider(ChatProvider, EmbeddingProvider):
         """
 
         out: dict = {"role": m.role}
+        if m.images:
+            if m.role != "user":
+                raise ValueError("a picture may only be sent in a user message")
+            out["content"] = [
+                {"type": "text", "text": m.content},
+                *(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{p.mime_type};base64,"
+                            + base64.b64encode(p.data).decode("ascii")
+                        },
+                    }
+                    for p in m.images
+                ),
+            ]
+            return out
         if m.tool_calls:
             out["content"] = m.content or ""
             out["tool_calls"] = [

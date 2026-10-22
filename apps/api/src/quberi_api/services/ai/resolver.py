@@ -108,6 +108,57 @@ async def resolve_embedding_provider(
     )
 
 
+async def resolve_vision_provider(
+    session: AsyncSession, *, organization_id: uuid.UUID
+) -> Optional[ResolvedProvider]:
+    """The model this organisation chose to describe pictures, or ``None``.
+
+    There is no platform default: describing a picture sends it to the model's company, so
+    it happens only with a model the organisation picked on purpose. ``None`` means none is
+    picked (or the pick can no longer be used) and nothing is sent anywhere.
+    """
+
+    selection = (
+        await session.execute(
+            select(AiModelSelection).where(
+                AiModelSelection.organization_id == organization_id,
+                AiModelSelection.purpose == "vision",
+            )
+        )
+    ).scalar_one_or_none()
+    if selection is None:
+        return None
+    binding = (
+        await session.execute(
+            select(AiProviderBinding).where(AiProviderBinding.id == selection.provider_binding_id)
+        )
+    ).scalar_one_or_none()
+    if binding is None or binding.status != "active":
+        return None
+    # A binding owned by another organisation is never usable here, whatever the row says.
+    if binding.organization_id is not None and binding.organization_id != organization_id:
+        return None
+    if binding.identity_id is not None:
+        return None  # a member's private key is theirs, not the organisation's
+    model = MODEL_REGISTRY.get(selection.model_id) or ModelSpec(
+        model_id=selection.model_id,
+        provider_kind=binding.provider_kind,
+        purpose="chat",
+        display_name=selection.model_id,
+        context_window=8192,
+        supports_vision=True,  # declared by the administrator who chose it
+    )
+    provider = _instantiate(binding, model)
+    if not isinstance(provider, ChatProvider):
+        return None
+    return ResolvedProvider(
+        provider=provider,
+        model=model,
+        binding_id=binding.id,
+        is_platform_default=binding.is_platform_default,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------

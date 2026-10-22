@@ -29,9 +29,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import CallerContext, require_caller
 from quberi_api.services import ai_providers as ai_providers_service
-from quberi_api.services.ai.registry import MODEL_REGISTRY
+from quberi_api.services.ai.registry import MODEL_REGISTRY, ModelSpec
 
 router = APIRouter(prefix="/organizations/current", tags=["ai-providers"])
+
+_NO_SPEC = ModelSpec(
+    model_id="", provider_kind="", purpose="chat", display_name=""
+)  # stands in for a model name that is not in the registry
 
 
 # ---------------------------------------------------------------------------
@@ -98,12 +102,17 @@ class ModelCapabilityView(BaseModel):
     vector_dim: Optional[int] = None
     context_window: int
     notes: str
+    # Whether the model reads pictures, i.e. may be chosen as the vision model.
+    supports_vision: bool = False
 
 
 class ModelSelectionsView(BaseModel):
     chat: dict
     embedding: dict
     reranker: dict
+    # The model that describes pictures so their content can be searched; empty when none
+    # is chosen (nothing is then sent anywhere).
+    vision: dict = Field(default_factory=lambda: {"model_id": None, "binding_id": None})
 
 
 class SetModelSelectionInput(BaseModel):
@@ -313,6 +322,8 @@ class UsableChatModelView(BaseModel):
     vendor: Optional[str] = None
     is_default: bool = False
     is_private: bool = False
+    # Whether the model reads pictures: only those can be chosen as the vision model.
+    supports_vision: bool = False
 
 
 class UsableChatModelList(BaseModel):
@@ -371,6 +382,9 @@ async def list_usable_chat_models(
                 vendor=m.vendor,
                 is_default=m.is_default,
                 is_private=m.is_private,
+                supports_vision=bool(
+                    (MODEL_REGISTRY.get(m.model_id) or _NO_SPEC).supports_vision
+                ),
             )
             for m in items
         ]
@@ -475,6 +489,7 @@ async def list_models(
             vector_dim=m.vector_dim,
             context_window=m.context_window,
             notes=m.notes,
+            supports_vision=m.supports_vision,
         )
         for m in MODEL_REGISTRY.values()
     ]
@@ -492,6 +507,7 @@ async def get_model_selections(
         chat=data["chat"],
         embedding=data["embedding"],
         reranker=data["reranker"],
+        vision=data["vision"],
     )
 
 
@@ -502,8 +518,11 @@ async def put_model_selection(
     caller: CallerContext = Depends(require_caller),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    if purpose not in ("chat", "embedding", "reranker"):
+    if purpose not in ("chat", "embedding", "reranker", "vision"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid purpose")
+    if purpose == "vision":
+        # Describing pictures sends them to the model's company: an owner or admin decides.
+        await _require_org_admin(session, caller)
     try:
         await ai_providers_service.set_selection(
             session,
@@ -527,8 +546,10 @@ async def delete_model_selection(
     caller: CallerContext = Depends(require_caller),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    if purpose not in ("chat", "embedding", "reranker"):
+    if purpose not in ("chat", "embedding", "reranker", "vision"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid purpose")
+    if purpose == "vision":
+        await _require_org_admin(session, caller)
     await ai_providers_service.clear_selection(
         session, organization_id=caller.organization.id, purpose=purpose
     )

@@ -49,7 +49,8 @@ class Passage(BaseModel):
     # "ocr_block" when any of the passage was recognised from a scan (it may contain
     # errors), "text_block" when it is the file's own text, "" when not recorded.
     unit_label: str = ""
-    # "image_ocr" for text read out of a picture, otherwise "text".
+    # "image_ocr" for text read out of a picture, "image_caption" for a model's description of
+    # one, otherwise "text".
     source_kind: str = "text"
     # Which version of the file the passage was read from, and the file's newest version
     # (null when it has no version record). A passage whose number is lower than the

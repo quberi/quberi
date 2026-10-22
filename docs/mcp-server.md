@@ -159,6 +159,11 @@ Two things worth passing on to the person reading the answer:
   Text read out of a picture that is not a PDF page is marked the same way
   (`source_kind` is `image_ocr`). The text in the result tells the model to say so
   when it relies on one.
+- An organisation can also have a vision model describe its pictures, so what a picture
+  shows (not only the text printed on it) can be found. Such a passage has
+  `source_kind` `image_caption` and is marked as described by a model. It is a guide to
+  what the picture shows, not a transcript: part numbers and dimensions are matched only
+  against text read out of the picture, never against a model's description.
 - Only PDF pages have page numbers for now. For other file types the fields are
   empty, and the passage is described exactly as before.
 - A file can have several versions: someone uploads a new version of a document

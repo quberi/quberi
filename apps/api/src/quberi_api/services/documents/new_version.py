@@ -58,7 +58,7 @@ _log = logging.getLogger(__name__)
 MAX_NOTE_CHARS = 500
 
 # What indexing remembers on the document about its current file. A new file starts clean.
-_FILE_BOUND_ATTRIBUTES = ("pdf_ocr", "image_text")
+_FILE_BOUND_ATTRIBUTES = ("pdf_ocr", "image_text", "image_caption")
 
 
 async def _discard(storage_key: str) -> None:

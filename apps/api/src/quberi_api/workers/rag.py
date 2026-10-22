@@ -24,6 +24,7 @@ from arq import cron
 
 from quberi_api.core.config import get_settings
 from quberi_api.infrastructure.qdrant import create_qdrant_client
+from quberi_api.services.rag.image_caption import index_image_caption_job
 from quberi_api.services.rag.image_text import index_image_text_job
 from quberi_api.services.rag.indexer import index_document
 from quberi_api.workers.feishu import sync_feishu_source
@@ -227,6 +228,35 @@ async def backfill_picture_text(ctx: dict) -> int:
     return queued
 
 
+async def backfill_picture_captions(ctx: dict) -> int:
+    """Queue describing pictures that were indexed before descriptions were turned on.
+
+    Only pictures of organisations that have turned descriptions on and chosen a model, a few
+    per run (``vision_backfill_batch``): each is a paid call, and the organisation's daily
+    limit still applies. Returns how many were queued.
+    """
+
+    settings = get_settings()
+    if settings.vision_backfill_batch <= 0 or settings.vision_daily_limit <= 0:
+        return 0
+    from quberi_api.services.rag.image_backfill import pictures_needing_caption
+
+    async with ctx["session_factory"]() as session:
+        pending = await pictures_needing_caption(session, limit=settings.vision_backfill_batch)
+        await session.commit()
+    queued = 0
+    for document_id, checksum in pending:
+        job = await ctx["redis"].enqueue_job(
+            "index_image_caption_job",
+            str(document_id),
+            _job_id=f"image-caption-{document_id}-{(checksum or 'none')[:16]}",
+        )
+        queued += 1 if job is not None else 0
+    if queued:
+        _log.info("picture description backfill: queued %d picture(s)", queued)
+    return queued
+
+
 async def purge_revoked_sessions(ctx: dict) -> int:
     """Drop signed-out session records whose token has expired anyway."""
 
@@ -245,7 +275,7 @@ async def purge_revoked_sessions(ctx: dict) -> int:
 class WorkerSettings:
     """arq entry point discovered by ``arq quberi_api.workers.rag.WorkerSettings``."""
 
-    functions = [index_document, index_image_text_job, sync_feishu_source]
+    functions = [index_document, index_image_text_job, index_image_caption_job, sync_feishu_source]
     # Every hour, on the hour: expire guest-sandbox uploads.
     cron_jobs = [
         cron(sweep_guest_sandbox, minute=0, run_at_startup=True),
@@ -253,6 +283,8 @@ class WorkerSettings:
         cron(backfill_pictures, minute=7, run_at_startup=True),
         # Pictures indexed before their text could be read, a few per hour.
         cron(backfill_picture_text, minute=37, run_at_startup=True),
+        # Pictures to describe for organisations that turned descriptions on, a few per hour.
+        cron(backfill_picture_captions, minute=47, run_at_startup=True),
         cron(purge_revoked_sessions, minute=30),
     ]
     on_startup = on_startup

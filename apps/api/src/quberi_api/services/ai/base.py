@@ -45,6 +45,14 @@ class ToolCall:
 
 
 @dataclass(frozen=True)
+class ImagePart:
+    """One picture sent with a user message to a model that can read pictures."""
+
+    mime_type: str  # "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+    data: bytes
+
+
+@dataclass(frozen=True)
 class ChatMessage:
     """One turn in a chat conversation. Roles follow the OpenAI schema.
 
@@ -59,6 +67,11 @@ class ChatMessage:
     name: Optional[str] = None  # for tool messages
     tool_call_id: Optional[str] = None
     tool_calls: Optional[List["ToolCall"]] = None
+    # Pictures that go with ``content``. Only a *user* message may carry them (providers
+    # answer 400 for a picture in a system or assistant message), and only a model that can
+    # read pictures should be given any. Kept apart from ``content`` so every place that
+    # reads ``content`` as text keeps working.
+    images: tuple[ImagePart, ...] = ()
 
 
 @dataclass(frozen=True)

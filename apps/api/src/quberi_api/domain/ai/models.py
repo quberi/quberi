@@ -155,7 +155,7 @@ class AiModelSelection(TimestampMixin, Base):
     __tablename__ = "ai_model_selections"
     __table_args__ = (
         CheckConstraint(
-            "purpose IN ('chat', 'embedding', 'reranker')",
+            "purpose IN ('chat', 'embedding', 'reranker', 'vision')",
             name="ck_ai_model_selections_purpose",
         ),
         UniqueConstraint(

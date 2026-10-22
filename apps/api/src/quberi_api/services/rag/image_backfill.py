@@ -25,8 +25,10 @@ from sqlalchemy import and_, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.documents.models import Document
+from quberi_api.domain.identity.models import Organization
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services.ai.ocr.models import ENGINE_VERSION
+from quberi_api.services.rag.image_caption import IMAGE_CAPTION_KEY
 from quberi_api.services.rag.image_text import IMAGE_TEXT_KEY
 from quberi_api.services.rag.indexer import IMAGE_INDEX_MODEL_KEY, LEGACY_IMAGE_MODEL
 
@@ -65,6 +67,43 @@ async def pictures_needing_index(
         .limit(limit)
     )
     return list((await session.execute(stmt)).scalars().all())
+
+
+async def pictures_needing_caption(
+    session: AsyncSession, *, limit: int
+) -> list[tuple[uuid.UUID, str]]:
+    """Pictures of organisations that turned descriptions on, not yet described.
+
+    ``(id, checksum)`` pairs, oldest first. Only pictures that are indexed, approved, not
+    archived, in an active space, a stored file and not a guest upload; a description that
+    failed for the same file is not retried. A description made by an earlier model is kept
+    (describing everything again for a change of model would cost a call per picture).
+    """
+
+    state = Document.attributes[IMAGE_CAPTION_KEY]
+    stmt = (
+        select(Document.id, Document.checksum_sha256)
+        .join(Space, Space.id == Document.space_id)
+        .join(Organization, Organization.id == Document.organization_id)
+        .where(
+            Organization.image_vision_enabled.is_(True),
+            func.lower(Document.mime_type).like("image/%"),
+            Document.status != "archived",
+            Document.review_state == "approved",
+            Document.storage_key.is_not(None),
+            Document.checksum_sha256.is_not(None),
+            Document.indexing_state == "indexed",
+            Space.status == "active",
+            Document.attributes["guest_owner"].astext.is_(None),
+            or_(
+                not_(Document.attributes.has_key(IMAGE_CAPTION_KEY)),
+                state["source_checksum"].astext != Document.checksum_sha256,
+            ),
+        )
+        .order_by(Document.created_at.asc())
+        .limit(limit)
+    )
+    return [(row[0], row[1]) for row in (await session.execute(stmt)).all()]
 
 
 async def pictures_needing_text(

@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     # date) are read in the background, this many at a time, once an hour. 0 turns the
     # catch-up off; new pictures are still read when they are uploaded.
     ocr_backfill_batch: int = 30
+    # Picture descriptions by a vision model (an organisation turns them on and chooses the
+    # model). The most one organisation may have made per day, and how many already-indexed
+    # pictures the hourly catch-up queues per run (0 turns the catch-up off; new pictures are
+    # still described when they are uploaded). Each description is a paid call.
+    vision_daily_limit: int = 200
+    vision_backfill_batch: int = 10
     ocr_provider: str = "local"
     # Longest side the text detector sees. Raised from the model's 960 because small
     # print is lost on a full page; capped at 2000 in code because memory climbs steeply

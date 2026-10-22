@@ -893,7 +893,7 @@ async def get_selections_for_org(
     ).scalars().all()
     by_purpose = {r.purpose: r for r in rows}
     result: dict[str, dict] = {}
-    for purpose in ("chat", "embedding", "reranker"):
+    for purpose in ("chat", "embedding", "reranker", "vision"):
         r = by_purpose.get(purpose)
         result[purpose] = {
             "model_id": r.model_id if r else None,
@@ -925,7 +925,18 @@ async def set_selection(
     if binding is None:
         raise ValueError(f"binding {binding_id} not found")
 
-    if model is not None:
+    if purpose == "vision":
+        # The vision model is a chat model that reads pictures. A listed one must say it
+        # does; a name the administrator types for their own endpoint is taken on their word.
+        if model is not None and not model.supports_vision:
+            raise ValueError(f"model {model_id!r} does not read pictures")
+        if binding.provider_kind != "openai_compat":
+            raise ValueError(
+                f"a vision model needs an openai_compat binding, not {binding.provider_kind}"
+            )
+        if binding.identity_id is not None:
+            raise ValueError("a member's private key cannot be the organisation's vision model")
+    elif model is not None:
         # Known model → enforce purpose + provider_kind match.
         if model.purpose != purpose:
             raise ValueError(
@@ -962,8 +973,16 @@ async def set_selection(
         )
     ).scalar_one_or_none()
 
+    changed = existing is None or (existing.model_id, existing.provider_binding_id) != (
+        model_id,
+        binding_id,
+    )
     await session.commit()
     async with session.begin():
+        if purpose == "vision" and changed:
+            # Pictures go to the model's company, which the owner agreed to for the model that
+            # was chosen. A different model is a different company: ask again.
+            await _switch_off_picture_descriptions(session, organization_id)
         if existing is not None:
             existing.provider_binding_id = binding_id
             existing.model_id = model_id
@@ -977,6 +996,34 @@ async def set_selection(
                     model_id=model_id,
                 )
             )
+
+
+async def _switch_off_picture_descriptions(
+    session: AsyncSession, organization_id: uuid.UUID
+) -> None:
+    """Turn the picture-description switch off (and say so in the audit log), if it is on.
+
+    Runs inside the caller's write transaction.
+    """
+
+    from quberi_api.domain.audit.models import AuditEvent
+    from quberi_api.domain.identity.models import Organization
+
+    org = await session.get(Organization, organization_id)
+    if org is None or not org.image_vision_enabled:
+        return
+    org.image_vision_enabled = False
+    session.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_type="system",
+            actor_id=None,
+            action="organization.image_vision_changed",
+            resource_type="organization",
+            resource_id=organization_id,
+            payload={"enabled": False, "reason": "vision model changed"},
+        )
+    )
 
 
 async def clear_selection(
@@ -996,6 +1043,8 @@ async def clear_selection(
         return
     await session.commit()
     async with session.begin():
+        if purpose == "vision":
+            await _switch_off_picture_descriptions(session, organization_id)
         await session.delete(existing)
 
 

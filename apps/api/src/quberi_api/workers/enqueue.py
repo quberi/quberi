@@ -71,6 +71,32 @@ async def enqueue_image_text(document_id: uuid.UUID, checksum: Optional[str]) ->
         await pool.close()
 
 
+async def enqueue_image_caption(document_id: uuid.UUID, checksum: Optional[str]) -> Optional[str]:
+    """Enqueue describing a picture with the organisation's vision model.
+
+    The job id carries the picture's checksum for the same reason as
+    :func:`enqueue_image_text`: a replaced picture is a different job.
+    """
+
+    try:
+        pool = await create_pool(build_redis_settings())
+    except Exception:  # noqa: BLE001
+        _log.exception("could not open arq pool to enqueue picture description for %s", document_id)
+        return None
+    try:
+        job = await pool.enqueue_job(
+            "index_image_caption_job",
+            str(document_id),
+            _job_id=f"image-caption-{document_id}-{(checksum or 'none')[:16]}",
+        )
+        return job.job_id if job else None
+    except Exception:  # noqa: BLE001
+        _log.exception("failed to enqueue index_image_caption_job for %s", document_id)
+        return None
+    finally:
+        await pool.close()
+
+
 async def enqueue_feishu_sync(source_id: uuid.UUID) -> Optional[str]:
     """Enqueue an incremental re-sync of a Feishu document source.
 

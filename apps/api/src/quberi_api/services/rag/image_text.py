@@ -284,6 +284,8 @@ async def index_image_text(
         # The text of the current picture only replaces the text filed for this version;
         # what an earlier version of the document left in the index stays.
         version_number=await versions_service.current_version_number(session, doc),
+        # Only the text read out of the picture; a description of it is filed separately.
+        replace_source_kind="image_ocr",
         chunks=[
             ChunkPoint(
                 chunk_index=c.index,

@@ -21,6 +21,7 @@ from quberi_api.services.ai.base import (
     ChatResponse,
     ChatStreamChunk,
     EmbeddingProvider,
+    ImagePart,
     ProviderConfig,
 )
 from quberi_api.services.ai.registry import MODEL_REGISTRY, ModelSpec, capabilities_for
@@ -29,10 +30,12 @@ from quberi_api.services.ai.resolver import (
     resolve_chat_provider,
     resolve_chat_provider_explicit,
     resolve_embedding_provider,
+    resolve_vision_provider,
 )
 
 __all__ = [
     "ChatMessage",
+    "ImagePart",
     "ChatProvider",
     "ChatResponse",
     "ChatStreamChunk",
@@ -45,4 +48,5 @@ __all__ = [
     "resolve_chat_provider",
     "resolve_chat_provider_explicit",
     "resolve_embedding_provider",
+    "resolve_vision_provider",
 ]

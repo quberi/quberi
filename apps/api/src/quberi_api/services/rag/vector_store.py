@@ -188,8 +188,14 @@ def _point_id_for(document_id: uuid.UUID, chunk_index: int, version_number: int 
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{document_id}:v{version_number}:{chunk_index}"))
 
 
-def _document_filter(document_id: uuid.UUID, version_number: int | None) -> qmodels.Filter:
+def _document_filter(
+    document_id: uuid.UUID, version_number: int | None, source_kind: str | None = None
+) -> qmodels.Filter:
     """Points of one document: all of them, or those read from one version.
+
+    ``source_kind`` narrows to the points of one kind ("image_ocr", "image_caption"): the
+    text read out of a picture and the description of it are filed separately, so redoing
+    one leaves the other alone.
 
     A point without a ``version_number`` was indexed before versions existed and is
     version 1, so version 1 is "no number, or a number below 2" and any later version is
@@ -200,6 +206,10 @@ def _document_filter(document_id: uuid.UUID, version_number: int | None) -> qmod
         qmodels.FieldCondition(key="document_id", match=qmodels.MatchValue(value=str(document_id)))
     ]
     must_not: list[Any] = []
+    if source_kind is not None:
+        must.append(
+            qmodels.FieldCondition(key="source_kind", match=qmodels.MatchValue(value=source_kind))
+        )
     if version_number is not None:
         if version_number <= 1:
             must_not.append(
@@ -327,6 +337,7 @@ class VectorStore:
         chunks: Sequence[ChunkPoint],
         version_number: int = 1,
         keep_other_versions: bool = True,
+        replace_source_kind: str | None = None,
     ) -> None:
         """Replace the points of one version of a document.
 
@@ -335,16 +346,21 @@ class VectorStore:
         ``version_number`` are replaced: an earlier version of the document stays
         searchable, labelled with its version. ``keep_other_versions=False`` replaces
         everything the document has in the index (a picture, which is searched by what
-        it shows now).
+        it shows now). ``replace_source_kind`` replaces only the points of that kind, so
+        the text read out of a picture and the description of it do not erase each other.
         """
 
         scope = None if not keep_other_versions else version_number
         if not chunks:
-            await self.delete_document(document_id=document_id, version_number=scope)
+            await self.delete_document(
+                document_id=document_id, version_number=scope, source_kind=replace_source_kind
+            )
             return
 
         await self.ensure_collection()
-        await self.delete_document(document_id=document_id, version_number=scope)
+        await self.delete_document(
+            document_id=document_id, version_number=scope, source_kind=replace_source_kind
+        )
 
         points = [
             qmodels.PointStruct(
@@ -373,11 +389,16 @@ class VectorStore:
         )
 
     async def delete_document(
-        self, *, document_id: uuid.UUID, version_number: int | None = None
+        self,
+        *,
+        document_id: uuid.UUID,
+        version_number: int | None = None,
+        source_kind: str | None = None,
     ) -> None:
         """Remove the points of a document (no-op if collection missing).
 
-        Every version's points by default; with ``version_number``, only that version's.
+        Every version's points by default; with ``version_number``, only that version's;
+        with ``source_kind``, only the points of that kind.
         """
 
         if not await self._client.collection_exists(self._collection):
@@ -385,7 +406,7 @@ class VectorStore:
         await self._client.delete(
             collection_name=self._collection,
             points_selector=qmodels.FilterSelector(
-                filter=_document_filter(document_id, version_number)
+                filter=_document_filter(document_id, version_number, source_kind)
             ),
             wait=True,
         )

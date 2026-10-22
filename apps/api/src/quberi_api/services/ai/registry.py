@@ -11,7 +11,9 @@ Every entry declares:
 * ``model_id`` — the string persisted in ``ai_model_selections.model_id``.
 * ``provider_kind`` — which :class:`ChatProvider` / :class:`EmbeddingProvider`
   subclass serves it (must match a class registered in the resolver).
-* ``purpose`` — one of ``chat`` / ``embedding`` / ``reranker``.
+* ``purpose`` — one of ``chat`` / ``embedding`` / ``reranker`` (a model that reads
+  pictures is a ``chat`` model with ``supports_vision``; "vision" is only the name of the
+  organisation's separate choice of which one describes pictures).
 * ``vector_dim`` — required for embeddings (Qdrant collection sizing).
 * ``context_window`` — advisory, used by the chunker + retriever budgets.
 * ``notes`` — human-readable pointer for the settings UI.
@@ -43,6 +45,11 @@ class ModelSpec:
     # (e.g. Kimi K2.x only accepts 1). When set, the provider overrides
     # the caller's temperature with this value instead of failing with 400.
     fixed_temperature: Optional[float] = None
+    # Whether the model accepts pictures in a user message. Only such models are offered
+    # as a "vision model" (the one that describes pictures for search). A model name an
+    # administrator types in for their own endpoint is not in this registry, so it is not
+    # assumed to read pictures; they declare it by choosing it as the vision model.
+    supports_vision: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +76,19 @@ _CHAT_MODELS: tuple[ModelSpec, ...] = (
         vendor="deepseek",
     ),
     # OpenAI — enabled the moment an org drops in a key.
+    # DeepSeek's model that also reads pictures (up to 1024 tokens each; JPEG, PNG, GIF and
+    # WebP; pictures only in user messages). The earlier experimental vision name is retired
+    # and now routes here.
+    ModelSpec(
+        model_id="deepseek-flash",
+        provider_kind="openai_compat",
+        purpose="chat",
+        display_name="DeepSeek Flash (reads pictures)",
+        context_window=128_000,
+        notes="Base URL: https://api.deepseek.com. Accepts pictures in user messages.",
+        vendor="deepseek",
+        supports_vision=True,
+    ),
     ModelSpec(
         model_id="gpt-4o-mini",
         provider_kind="openai_compat",
@@ -77,6 +97,7 @@ _CHAT_MODELS: tuple[ModelSpec, ...] = (
         context_window=128_000,
         notes="Base URL: https://api.openai.com/v1. Requires OpenAI API key.",
         vendor="openai",
+        supports_vision=True,
     ),
     ModelSpec(
         model_id="gpt-4o",
@@ -85,6 +106,7 @@ _CHAT_MODELS: tuple[ModelSpec, ...] = (
         display_name="OpenAI GPT-4o",
         context_window=128_000,
         vendor="openai",
+        supports_vision=True,
     ),
     # Qwen via DashScope OpenAI-compat mode.
     ModelSpec(
@@ -103,6 +125,16 @@ _CHAT_MODELS: tuple[ModelSpec, ...] = (
         display_name="通义千问 Plus",
         context_window=32_000,
         vendor="dashscope",
+    ),
+    ModelSpec(
+        model_id="qwen-vl-max",
+        provider_kind="openai_compat",
+        purpose="chat",
+        display_name="通义千问 VL Max (reads pictures)",
+        context_window=32_000,
+        notes="Base URL: https://dashscope.aliyuncs.com/compatible-mode/v1",
+        vendor="dashscope",
+        supports_vision=True,
     ),
     # Kimi / Moonshot.
     ModelSpec(
@@ -269,6 +301,9 @@ def capabilities_for(model_id: str) -> ModelSpec:
 
 
 def models_for_purpose(purpose: str) -> list[ModelSpec]:
+    if purpose == "vision":
+        # A vision model is a chat model that can read pictures, not a separate kind.
+        return [m for m in MODEL_REGISTRY.values() if m.supports_vision]
     return [m for m in MODEL_REGISTRY.values() if m.purpose == purpose]
 
 

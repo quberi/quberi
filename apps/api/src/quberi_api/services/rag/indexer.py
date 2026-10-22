@@ -299,6 +299,7 @@ async def _index_image(
         await remove_image_from_index(qdrant=qdrant, document_id=doc.id, model_id=previous_model)
     _log.info("indexed picture %s in %s (model=%s)", doc.id, store.collection, model_id)
     await _queue_picture_text(doc)
+    await _queue_picture_caption(session, doc)
     return IndexingResult(
         document_id=doc.id, chunk_count=1, collection=store.collection, model_id=model_id
     )
@@ -393,6 +394,22 @@ async def _queue_picture_text(doc: Document) -> None:
         await enqueue_image_text(doc.id, doc.checksum_sha256)
     except Exception:  # noqa: BLE001
         _log.exception("could not queue the text of picture %s", doc.id)
+
+
+async def _queue_picture_caption(session: AsyncSession, doc: Document) -> None:
+    """Ask for a picture to be described by the organisation's vision model, if it has
+    turned that on. Nothing is queued otherwise, so nothing can be sent. Never raises."""
+
+    try:
+        from quberi_api.services.rag.image_caption import descriptions_enabled
+
+        if not await descriptions_enabled(session, doc.organization_id):
+            return
+        from quberi_api.workers.enqueue import enqueue_image_caption
+
+        await enqueue_image_caption(doc.id, doc.checksum_sha256)
+    except Exception:  # noqa: BLE001
+        _log.exception("could not queue the description of picture %s", doc.id)
 
 
 async def index_document_from_text(

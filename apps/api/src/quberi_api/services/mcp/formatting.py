@@ -326,6 +326,9 @@ def _page_note(p) -> str:
     if p.unit_label == "ocr_block" or p.source_kind == "image_ocr":
         note = "recognised from a scan, may contain errors"
         place = f"{place} ({note})" if place else note
+    if p.source_kind == "image_caption":
+        note = "described by a model from the picture, may contain errors"
+        place = f"{place} ({note})" if place else note
     version = _version_note(p)
     if version:
         place = f"{place}, {version}" if place else version
@@ -359,7 +362,8 @@ def format_search_result(query: str, result: SearchResponse) -> str:
         "When you answer, name the document each point comes from, in the user's language, as "
         "ordinary Markdown text (not a code block). Give the page too when one is shown, so the "
         "reader can check it in the original. A passage marked as recognised from a scan may "
-        "contain misread characters: say so when you rely on one.",
+        "contain misread characters, and one described by a model is a guide to what a picture "
+        "shows, not a transcript: say so when you rely on either.",
         "",
     ]
     for i, p in enumerate(result.passages):

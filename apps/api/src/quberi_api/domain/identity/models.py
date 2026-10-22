@@ -76,6 +76,12 @@ class Organization(TimestampMixin, Base):
     allow_external_tools: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )
+    # Pictures may be sent to the organisation's chosen vision model to be described, so
+    # their content can be searched. Off by default: the picture leaves Quberi for that
+    # model's company, so an owner/admin opts in, knowing that.
+    image_vision_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     # Platform-admin control over which platform-shared chat models (if
     # any) this org's members may even see in their model picker — some
     # customers don't want platform fallbacks exposed to users at all,
