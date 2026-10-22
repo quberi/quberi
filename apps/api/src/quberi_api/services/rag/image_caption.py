@@ -63,6 +63,12 @@ MAX_CAPTION_CHARS = 1200
 SEND_MAX_SIDE = 2048
 MAX_SEND_PIXELS = 40_000_000
 EMBED_BATCH_SIZE = 32
+# A picture the model could not describe (a failed call, an empty answer) is tried again, but
+# not forever: each try sends the picture to the model's company again and uses up the day's
+# allowance. After this many tries with the same file and model it is left alone.
+MAX_FAILED_ATTEMPTS = 3
+# The catch-up waits this long after a failure before it tries the picture again.
+RETRY_AFTER_HOURS = 6
 
 SYSTEM_PROMPT = (
     "你是图片检索系统的描述员。用中文简要描述用户给你的这张图片。它可能是工程图纸、设备铭牌、"
@@ -96,6 +102,66 @@ class CaptionOutcome:
 def stored_state(doc: Document) -> dict[str, Any]:
     state = (doc.attributes or {}).get(IMAGE_CAPTION_KEY)
     return state if isinstance(state, dict) else {}
+
+
+def failed_attempts(state: dict[str, Any], *, checksum: str, vision_model: str) -> int:
+    """How many times the model has already failed on this file, for this model."""
+
+    if (
+        state.get("status") != "failed"
+        or state.get("source_checksum") != checksum
+        or state.get("vision_model") != vision_model
+    ):
+        return 0
+    try:
+        return max(0, int(state.get("attempts") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+async def _record_failure(
+    session: AsyncSession,
+    doc: Document,
+    *,
+    attempts: int,
+    checksum: str,
+    vision_model: str,
+    reason: str,
+    finish_reason: str | None = None,
+    completion_tokens: int | None = None,
+) -> None:
+    """Remember that the model could not describe this picture, and say why.
+
+    Only what the provider reported about the *answer* is kept (why it stopped, how many tokens
+    it spent), never the answer, the picture or the provider's own error message.
+    """
+
+    await save_attribute(
+        session,
+        doc.id,
+        IMAGE_CAPTION_KEY,
+        {
+            "status": "failed",
+            "retryable": True,
+            "error": reason,
+            "finish_reason": finish_reason,
+            "completion_tokens": completion_tokens,
+            "attempts": attempts,
+            "source_checksum": checksum,
+            "vision_model": vision_model,
+            "failed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
+    )
+    _log.warning(
+        "picture %s was not described: %s "
+        "(finish_reason=%s, completion_tokens=%s, attempt %d of %d)",
+        doc.id,
+        reason,
+        finish_reason,
+        completion_tokens,
+        attempts,
+        MAX_FAILED_ATTEMPTS,
+    )
 
 
 def is_current(
@@ -272,6 +338,13 @@ async def index_image_caption(
     if reusable and not force:
         caption = state["caption"]
     else:
+        tried = failed_attempts(state, checksum=checksum, vision_model=vision_model)
+        if tried >= MAX_FAILED_ATTEMPTS and not force:
+            return CaptionOutcome(
+                document_id,
+                "skipped",
+                f"the model failed on this picture {tried} times; not sent again",
+            )
         if not await _take_quota(redis, organization_id):
             return CaptionOutcome(
                 document_id, "skipped", "the daily limit of descriptions is reached"
@@ -313,19 +386,30 @@ async def index_image_caption(
                 max_tokens=600,
             )
         except Exception as exc:  # noqa: BLE001 - a provider failure must not crash the worker
-            _log.warning("vision call failed for %s: %s", doc.id, type(exc).__name__)
-            return CaptionOutcome(
-                document_id,
-                "failed",
-                f"the vision model call failed ({type(exc).__name__})",
-                0,
-                called,
+            reason = f"the vision model call failed ({type(exc).__name__})"
+            await _record_failure(
+                session,
+                doc,
+                attempts=tried + 1,
+                checksum=checksum,
+                vision_model=vision_model,
+                reason=reason,
             )
+            return CaptionOutcome(document_id, "failed", reason, 0, called)
         caption = clean_caption(response.content)
         if not caption:
-            return CaptionOutcome(
-                document_id, "failed", "the model returned no description", 0, called
+            reason = "the model returned no description"
+            await _record_failure(
+                session,
+                doc,
+                attempts=tried + 1,
+                checksum=checksum,
+                vision_model=vision_model,
+                reason=reason,
+                finish_reason=getattr(response, "finish_reason", None),
+                completion_tokens=getattr(response, "completion_tokens", None),
             )
+            return CaptionOutcome(document_id, "failed", reason, 0, called)
 
     block = build_block(doc.name, caption)
     chunks = chunk_text(block)

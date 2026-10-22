@@ -136,14 +136,25 @@ def test_only_models_that_read_pictures_are_candidates():
 class Vision:
     """The vision model: records what it is sent."""
 
-    def __init__(self, answer="一张红色齿轮箱的照片，铭牌上写着 HZ-8800B。", error=None):
+    def __init__(
+        self,
+        answer="一张红色齿轮箱的照片，铭牌上写着 HZ-8800B。",
+        error=None,
+        finish_reason=None,
+        completion_tokens=0,
+    ):
         self.answer, self.error, self.calls = answer, error, []
+        self.finish_reason, self.completion_tokens = finish_reason, completion_tokens
 
     async def complete(self, *, messages, model, temperature=0.2, max_tokens=None, **_kw):
         self.calls.append(SimpleNamespace(messages=list(messages), model=model))
         if self.error:
             raise self.error
-        return ChatResponse(content=self.answer)
+        return ChatResponse(
+            content=self.answer,
+            finish_reason=self.finish_reason,
+            completion_tokens=self.completion_tokens,
+        )
 
 
 class Embedder:
@@ -440,7 +451,12 @@ async def test_a_new_embedding_model_refiles_the_saved_description_without_calli
     assert await qdrant.collection_exists(store.collection)
 
 
-async def test_a_failed_call_files_nothing_and_leaves_no_state_so_it_is_tried_again(
+async def _state(db, pic):
+    row = (await db.execute(select(Document).where(Document.id == pic.id))).scalar_one()
+    return (row.attributes or {}).get(image_caption.IMAGE_CAPTION_KEY)
+
+
+async def test_a_failed_call_files_nothing_and_is_remembered_as_a_failure_to_try_again(
     db_session, org_and_owner, qdrant, world
 ):
     world.vision.error = RuntimeError("upstream 500: secret-key-in-message")
@@ -452,19 +468,81 @@ async def test_a_failed_call_files_nothing_and_leaves_no_state_so_it_is_tried_ag
     assert outcome.status == "failed" and outcome.called_model
     assert "secret-key" not in (outcome.reason or "")  # the provider's message is not repeated
     assert await _points(qdrant) == []
-    row = (await db_session.execute(select(Document).where(Document.id == pic.id))).scalar_one()
-    assert image_caption.IMAGE_CAPTION_KEY not in (row.attributes or {})
+    state = await _state(db_session, pic)
+    assert state["status"] == "failed" and state["retryable"] is True
+    assert state["attempts"] == 1 and state["vision_model"] == VISION_MODEL
+    assert state["source_checksum"] == pic.checksum and state["failed_at"]
+    assert "RuntimeError" in state["error"] and "secret-key" not in json.dumps(state)
 
 
 async def test_an_empty_answer_is_a_failure_not_an_empty_description(
     db_session, org_and_owner, qdrant, world
 ):
     world.vision.answer = "   "
+    world.vision.finish_reason, world.vision.completion_tokens = "length", 600
     await _enable(db_session, org_and_owner)
     pic = await _picture(db_session, org_and_owner)
 
     assert (await _run(db_session, qdrant, world, pic)).status == "failed"
     assert await _points(qdrant) == []
+    # Why it came back empty is kept, so it can be diagnosed; what it said never is.
+    state = await _state(db_session, pic)
+    assert state["error"] == "the model returned no description"
+    assert state["finish_reason"] == "length" and state["completion_tokens"] == 600
+
+
+async def test_the_model_is_not_sent_the_same_picture_again_after_three_failures(
+    db_session, org_and_owner, qdrant, world
+):
+    world.vision.answer = ""
+    await _enable(db_session, org_and_owner)
+    pic = await _picture(db_session, org_and_owner)
+
+    for expected in (1, 2, 3):
+        assert (await _run(db_session, qdrant, world, pic)).status == "failed"
+        assert (await _state(db_session, pic))["attempts"] == expected
+    assert len(world.vision.calls) == 3
+
+    again = await _run(db_session, qdrant, world, pic)
+
+    assert again.status == "skipped" and "3 times" in again.reason
+    assert len(world.vision.calls) == 3  # nothing more was sent
+
+    # An explicit request still goes through.
+    forced = await _run(db_session, qdrant, world, pic, force=True)
+    assert forced.status == "failed" and len(world.vision.calls) == 4
+
+
+async def test_a_success_after_failures_replaces_the_failure(
+    db_session, org_and_owner, qdrant, world
+):
+    world.vision.error = RuntimeError("down")
+    await _enable(db_session, org_and_owner)
+    pic = await _picture(db_session, org_and_owner)
+    await _run(db_session, qdrant, world, pic)
+    assert (await _state(db_session, pic))["status"] == "failed"
+
+    world.vision.error = None
+    outcome = await _run(db_session, qdrant, world, pic)
+
+    assert outcome.status == "indexed"
+    state = await _state(db_session, pic)
+    assert state["status"] == "indexed" and "attempts" not in state and "retryable" not in state
+
+
+def test_failures_under_another_model_or_another_file_do_not_count():
+    state = {"status": "failed", "attempts": 2, "source_checksum": "a", "vision_model": "m1"}
+    assert image_caption.failed_attempts(state, checksum="a", vision_model="m1") == 2
+    assert image_caption.failed_attempts(state, checksum="a", vision_model="m2") == 0
+    assert image_caption.failed_attempts(state, checksum="b", vision_model="m1") == 0
+    indexed = {"status": "indexed"}
+    assert image_caption.failed_attempts(indexed, checksum="a", vision_model="m1") == 0
+    assert (
+        image_caption.failed_attempts(
+            {**state, "attempts": "many"}, checksum="a", vision_model="m1"
+        )
+        == 0
+    )
 
 
 async def test_a_file_that_is_not_really_a_picture_is_not_sent_and_not_retried(
@@ -628,6 +706,56 @@ async def test_the_catch_up_leaves_out_what_must_not_be_sent_or_is_done(db_sessi
 
     assert owed == {wanted.id, replaced.id}
     assert not owed & {done.id, failed.id, waiting.id, guest.id, unindexed.id}
+
+
+async def test_the_catch_up_tries_a_failed_description_again_after_a_wait_and_not_forever(
+    db_session, org_and_owner
+):
+    from datetime import datetime, timedelta, timezone
+
+    from tests.test_vision_settings import _binding, _select
+
+    await _enable(db_session, org_and_owner)
+    binding = await _binding(db_session, org_id=org_and_owner.organization_id)
+    await _select(db_session, org_and_owner, binding, VISION_MODEL)
+    space = await _space(db_session, org_and_owner)
+    recent = await _picture(db_session, org_and_owner, space, "recent.png")
+    waited = await _picture(db_session, org_and_owner, space, "waited.png")
+    exhausted = await _picture(db_session, org_and_owner, space, "exhausted.png")
+    the_picture_itself = await _picture(db_session, org_and_owner, space, "picture-itself.png")
+    other_model = await _picture(db_session, org_and_owner, space, "other-model.png")
+
+    def failed(pic, *, hours_ago, attempts, model=VISION_MODEL, retryable=True):
+        when = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+        state = {
+            "status": "failed",
+            "attempts": attempts,
+            "source_checksum": pic.checksum,
+            "vision_model": model,
+            "failed_at": when.isoformat(timespec="seconds"),
+        }
+        if retryable:
+            state["retryable"] = True
+        return state
+
+    key = image_caption.IMAGE_CAPTION_KEY
+    for pic, state in (
+        (recent, failed(recent, hours_ago=1, attempts=1)),
+        (waited, failed(waited, hours_ago=7, attempts=2)),
+        (exhausted, failed(exhausted, hours_ago=7, attempts=3)),
+        # A failure about the picture itself carries no ``retryable``: never sent again.
+        (the_picture_itself, failed(the_picture_itself, hours_ago=99, attempts=1, retryable=False)),
+        # Three failures under a model the organisation no longer uses: a new model, a new try.
+        (other_model, failed(other_model, hours_ago=1, attempts=3, model="some-older-model")),
+    ):
+        await db_session.execute(
+            update(Document).where(Document.id == pic.id).values(attributes={key: state})
+        )
+    await db_session.commit()
+
+    owed = await _owed(db_session)
+
+    assert owed == {waited.id, other_model.id}
 
 
 async def test_the_catch_up_does_not_cross_organisations(db_session, org_and_owner):

@@ -20,15 +20,21 @@ were indexed before it could be read.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, func, not_, or_, select
+from sqlalchemy import Integer, and_, cast, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quberi_api.domain.ai.models import AiModelSelection
 from quberi_api.domain.documents.models import Document
 from quberi_api.domain.identity.models import Organization
 from quberi_api.domain.spaces.models import Space
 from quberi_api.services.ai.ocr.models import ENGINE_VERSION
-from quberi_api.services.rag.image_caption import IMAGE_CAPTION_KEY
+from quberi_api.services.rag.image_caption import (
+    IMAGE_CAPTION_KEY,
+    MAX_FAILED_ATTEMPTS,
+    RETRY_AFTER_HOURS,
+)
 from quberi_api.services.rag.image_text import IMAGE_TEXT_KEY
 from quberi_api.services.rag.indexer import (
     IMAGE_INDEX_MODEL_KEY,
@@ -110,12 +116,39 @@ async def pictures_needing_caption(
     """Pictures of organisations that turned descriptions on, not yet described.
 
     ``(id, checksum)`` pairs, oldest first. Only pictures that are indexed, approved, not
-    archived, in an active space, a stored file and not a guest upload; a description that
-    failed for the same file is not retried. A description made by an earlier model is kept
-    (describing everything again for a change of model would cost a call per picture).
+    archived, in an active space, a stored file and not a guest upload. A description that
+    failed because of the picture is not retried; one that failed because the model could not
+    describe it is tried again after a wait, at most a few times, or at once under another
+    model (see ``image_caption.MAX_FAILED_ATTEMPTS``). A description made by an earlier model
+    is kept (describing everything again for a change of model would cost a call per picture).
     """
 
     state = Document.attributes[IMAGE_CAPTION_KEY]
+    # The model the organisation uses now: a failure under another model is worth a new try.
+    current_model = (
+        select(AiModelSelection.model_id)
+        .where(
+            AiModelSelection.organization_id == Document.organization_id,
+            AiModelSelection.purpose == "vision",
+        )
+        .scalar_subquery()
+    )
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=RETRY_AFTER_HOURS)).isoformat(
+        timespec="seconds"
+    )
+    # A failure of the model itself (``retryable``) is tried again, but not at once and not
+    # forever; a failure about the picture (not a readable file) never is.
+    failed_but_worth_another_try = and_(
+        state["status"].astext == "failed",
+        state["retryable"].astext == "true",
+        or_(
+            state["vision_model"].astext != current_model,
+            and_(
+                cast(state["attempts"].astext, Integer) < MAX_FAILED_ATTEMPTS,
+                state["failed_at"].astext < cutoff,
+            ),
+        ),
+    )
     stmt = (
         select(Document.id, Document.checksum_sha256)
         .join(Space, Space.id == Document.space_id)
@@ -133,6 +166,7 @@ async def pictures_needing_caption(
             or_(
                 not_(Document.attributes.has_key(IMAGE_CAPTION_KEY)),
                 state["source_checksum"].astext != Document.checksum_sha256,
+                failed_but_worth_another_try,
             ),
         )
         .order_by(Document.created_at.asc())
