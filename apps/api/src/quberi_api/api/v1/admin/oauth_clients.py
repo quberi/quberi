@@ -6,7 +6,7 @@ switches a tool off, without a release.
 
 Endpoints
 ---------
-GET    /admin/oauth-clients        - every configured tool, and the latest attempts we refused
+GET    /admin/oauth-clients        - every configured tool, and the latest attempts still refused
 POST   /admin/oauth-clients        - allow a new tool
 PATCH  /admin/oauth-clients/{id}   - edit, or switch on/off
 DELETE /admin/oauth-clients/{id}   - remove
@@ -137,6 +137,13 @@ async def list_clients(
 ) -> OAuthClientList:
     rows = await clients.list_configured(session)
     await session.commit()
+
+    def still_refused(attempt: dict) -> bool:
+        """Would this attempt be turned away today? One that has since been allowed is history."""
+
+        tool = clients.match_client(rows, attempt["client_id"])
+        return tool is None or not tool.redirect_allowed(attempt.get("redirect_uri", ""))
+
     rejected = [
         RejectedAttemptView(
             client_id=r["client_id"],
@@ -145,6 +152,7 @@ async def list_clients(
             at=datetime.fromtimestamp(r["at"], tz=timezone.utc),
         )
         for r in await clients.recent_rejected(infra.redis)
+        if still_refused(r)
     ]
     return OAuthClientList(
         items=[_view(r) for r in rows],

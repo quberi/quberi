@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AdminApiError, type OAuthClientList, type OAuthClientRow } from './api'
-import { ClientsView } from './ClientsView'
+import { ClientsView, draftFromAttempt } from './ClientsView'
 
 const api = vi.hoisted(() => ({
   listOAuthClients: vi.fn(),
@@ -146,5 +146,54 @@ describe('ClientsView', () => {
     api.listOAuthClients.mockRejectedValue(new AdminApiError(401, 'invalid platform admin token'))
     render(<ClientsView token="t" />)
     expect(await screen.findByText('invalid platform admin token')).toBeTruthy()
+  })
+})
+
+describe('draftFromAttempt', () => {
+  const attempt = (client_id: string, redirect_uri: string) => ({
+    client_id,
+    redirect_uri,
+    reason: 'unknown_client',
+    at: '2026-10-22T00:30:53Z',
+  })
+
+  it('turns a callback on the person\'s own machine into "loopback" and the shared id into {id}', () => {
+    const d = draftFromAttempt(
+      attempt(
+        'https://chatgpt.com/oauth/codex/A1VfCm6C2hld/client.json',
+        'http://127.0.0.1:54792/callback/A1VfCm6C2hld',
+      ),
+    )
+    expect(d.kind).toBe('metadata_url')
+    expect(d.client_id).toBe('https://chatgpt.com/oauth/codex/{id}/client.json')
+    expect(d.redirect_uris).toEqual(['loopback'])
+  })
+
+  it('turns the id in an https callback into {id} too', () => {
+    const d = draftFromAttempt(
+      attempt('https://chatgpt.com/oauth/abc123/client.json', 'https://chatgpt.com/connector/oauth/abc123'),
+    )
+    expect(d.client_id).toBe('https://chatgpt.com/oauth/{id}/client.json')
+    expect(d.redirect_uris).toEqual(['https://chatgpt.com/connector/oauth/{id}'])
+  })
+
+  it('leaves a fixed client id and callback exactly as presented', () => {
+    const d = draftFromAttempt(
+      attempt('https://claude.ai/oauth/mcp-oauth-client-metadata', 'https://claude.ai/api/mcp/auth_callback'),
+    )
+    expect(d.client_id).toBe('https://claude.ai/oauth/mcp-oauth-client-metadata')
+    expect(d.redirect_uris).toEqual(['https://claude.ai/api/mcp/auth_callback'])
+  })
+
+  it('does not invent a callback it cannot read, and treats a plain id as a registered client', () => {
+    const d = draftFromAttempt(attempt('my-tool', 'not a url'))
+    expect(d.kind).toBe('registered')
+    expect(d.client_id).toBe('my-tool')
+    expect(d.redirect_uris).toEqual([])
+  })
+
+  it('never offers an http callback that is not on the person\'s own machine', () => {
+    const d = draftFromAttempt(attempt('my-tool', 'http://evil.example/cb'))
+    expect(d.redirect_uris).toEqual([])
   })
 })

@@ -387,3 +387,41 @@ async def test_the_list_of_refused_attempts_is_capped(redis_client):
     for n in range(clients.REJECTED_KEEP + 15):
         await clients.record_rejected(redis_client, client_id=f"c{n}", redirect_uri="x", reason="unknown_client")
     assert len(await clients.recent_rejected(redis_client)) == clients.REJECTED_KEEP
+
+
+async def test_the_admin_list_forgets_refused_attempts_that_would_be_allowed_now(admin, db_session, redis_client):
+    await db_session.commit()
+    codex = "https://chatgpt.com/oauth/codex/A1VfCm6C2hld/client.json"
+    await clients.record_rejected(
+        redis_client, client_id=codex, redirect_uri="http://127.0.0.1:54792/callback/A1VfCm6C2hld",
+        reason="unknown_client",
+    )
+    await clients.record_rejected(
+        redis_client, client_id="quberi-mcp", redirect_uri="https://elsewhere.example/cb",
+        reason="redirect_not_allowed",
+    )
+    await clients.record_rejected(
+        redis_client, client_id=CHATGPT, redirect_uri=CHATGPT_CALLBACK, reason="unknown_client",
+    )
+
+    before = (await admin.get("/api/v1/admin/oauth-clients")).json()["rejected"]
+    seen = {(r["client_id"], r["redirect_uri"]) for r in before}
+    # The Codex one is not allowed yet; a wrong callback for a known tool is still wrong;
+    # the ChatGPT one is allowed already (it was only refused before it was configured).
+    assert (codex, "http://127.0.0.1:54792/callback/A1VfCm6C2hld") in seen
+    assert ("quberi-mcp", "https://elsewhere.example/cb") in seen
+    assert (CHATGPT, CHATGPT_CALLBACK) not in seen
+
+    created = await admin.post(
+        "/api/v1/admin/oauth-clients",
+        json={
+            "client_id": "https://chatgpt.com/oauth/codex/{id}/client.json",
+            "kind": "metadata_url",
+            "name": "Codex (ChatGPT app)",
+            "redirect_uris": ["loopback"],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    after = (await admin.get("/api/v1/admin/oauth-clients")).json()["rejected"]
+    assert {(r["client_id"], r["redirect_uri"]) for r in after} == {("quberi-mcp", "https://elsewhere.example/cb")}

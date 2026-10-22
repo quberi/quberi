@@ -37,14 +37,49 @@ const BLANK: OAuthClientInput = {
   note: null,
 }
 
-function draftFromAttempt(a: RejectedAttempt): Draft {
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
+/**
+ * A starting point for allowing a tool that was just refused, from what it really presented.
+ *
+ * - A callback on the person's own machine becomes the word ``loopback`` (its port changes on
+ *   every run, so the address itself can never be what is allowed).
+ * - Tools often put one opaque id in both their client id and their callback (ChatGPT's
+ *   ``.../oauth/<id>/client.json`` and ``.../connector/oauth/<id>``; Codex's loopback
+ *   ``/callback/<id>``). When the callback ends in a segment that also appears as a whole
+ *   segment of the client id, that segment is turned into ``{id}`` so the entry covers every
+ *   connection of the tool, not just this one.
+ *
+ * It is only a draft: the admin reads it before saving.
+ */
+export function draftFromAttempt(a: RejectedAttempt): Draft {
+  let clientId = a.client_id
+  let redirect = ''
+  try {
+    const target = new URL(a.redirect_uri)
+    const lastSegment = target.pathname.split('/').filter(Boolean).pop() ?? ''
+    if (target.protocol === 'http:' && LOOPBACK_HOSTS.has(target.hostname)) redirect = 'loopback'
+    else if (target.protocol === 'https:') redirect = a.redirect_uri
+    if (a.client_id.startsWith('https://') && /^[A-Za-z0-9_-]{4,64}$/.test(lastSegment)) {
+      const url = new URL(a.client_id)
+      const segments = url.pathname.split('/')
+      if (segments.includes(lastSegment)) {
+        const swapped = segments.map((s) => (s === lastSegment ? '{id}' : s)).join('/')
+        clientId = `${url.origin}${swapped}`
+        if (redirect === a.redirect_uri) {
+          redirect = redirect.replace(`/${lastSegment}`, '/{id}')
+        }
+      }
+    }
+  } catch {
+    // A callback we cannot parse is left for the admin to type.
+  }
   return {
     id: null,
     ...BLANK,
     kind: a.client_id.startsWith('https://') ? 'metadata_url' : 'registered',
-    client_id: a.client_id,
-    // Only a starting point: the admin decides what to trust.
-    redirect_uris: a.redirect_uri.startsWith('https://') ? [a.redirect_uri] : [],
+    client_id: clientId,
+    redirect_uris: redirect ? [redirect] : [],
   }
 }
 

@@ -255,3 +255,46 @@ describe('OAuthConsent', () => {
     expect(screen.getByText('oauth.allow')).toBeEnabled()
   })
 })
+
+describe('asking the server twice', () => {
+  beforeEach(() => {
+    getConsent.mockReset()
+    auth.credentials = { sessionToken: 't' }
+  })
+
+  it('keeps the good answer when an older, slower question times out afterwards', async () => {
+    let failFirst: (reason: unknown) => void = () => undefined
+    getConsent
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { failFirst = reject }))
+      .mockResolvedValueOnce(view())
+    const { rerender } = render(<OAuthConsent navigate={() => undefined} search={SEARCH} />)
+    // The credentials object is replaced (the profile loaded), so the page asks again.
+    auth.credentials = { sessionToken: 't', displayName: 'Ada' }
+    rerender(<OAuthConsent navigate={() => undefined} search={SEARCH} />)
+    await waitFor(() => expect(screen.getAllByText('DeepSeek Harness', { exact: false }).length).toBeGreaterThan(0))
+
+    failFirst(new DOMException('signal is aborted without reason', 'AbortError'))
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(screen.getAllByText('DeepSeek Harness', { exact: false }).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/aborted/)).toBeNull()
+  })
+
+  it('shows the clear error from the newest question, not a timeout from an older one', async () => {
+    let failFirst: (reason: unknown) => void = () => undefined
+    const { ApiError } = await import('../api/client')
+    getConsent
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { failFirst = reject }))
+      .mockRejectedValueOnce(new ApiError(400, 'unknown application'))
+    const { rerender } = render(<OAuthConsent navigate={() => undefined} search={SEARCH} />)
+    auth.credentials = { sessionToken: 't', displayName: 'Ada' }
+    rerender(<OAuthConsent navigate={() => undefined} search={SEARCH} />)
+    await waitFor(() => expect(screen.getByText('unknown application')).toBeTruthy())
+
+    failFirst(new DOMException('signal is aborted without reason', 'AbortError'))
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(screen.getByText('unknown application')).toBeTruthy()
+    expect(screen.queryByText(/aborted/)).toBeNull()
+  })
+})

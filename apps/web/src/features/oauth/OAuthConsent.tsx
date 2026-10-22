@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ApiError } from '../api/client'
@@ -87,10 +87,16 @@ function Consent({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // The page can ask twice (the credentials object is replaced once the profile loads). Only the
+  // newest question may change what is shown: an older one that finishes later, or times out,
+  // must not overwrite a good answer or a clear error with its own.
+  const latest = useRef(0)
   const reload = async () => {
     if (!credentials) return
+    const mine = ++latest.current
     try {
       const view = await getConsent(credentials, params)
+      if (mine !== latest.current) return
       setLoad({ kind: 'ready', view })
       setOrgId((current) => {
         if (current && view.organizations.some((o) => o.organization_id === current)) {
@@ -101,6 +107,7 @@ function Consent({
         return preferred?.organization_id ?? ''
       })
     } catch (err) {
+      if (mine !== latest.current) return
       setLoad({ kind: 'error', message: readErr(err) })
     }
   }
