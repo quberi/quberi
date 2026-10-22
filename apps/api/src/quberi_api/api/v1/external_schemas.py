@@ -65,6 +65,15 @@ class Passage(BaseModel):
     section: str = ""
     unit_start: Optional[int] = None
     unit_end: Optional[int] = None
+    # Where the passage sits in the document's extracted text, so ``read_around`` can return the
+    # text on either side of it. Meaningless for text read from a scan or a picture (those have
+    # no text layer to read around).
+    char_start: int = 0
+    char_end: int = 0
+    # Absolute link to an image of the page the passage is on (a PDF) or of the picture it was
+    # read from, valid for ``preview_expires_in`` seconds. Null when this server has no signing
+    # key or the passage has no page to show.
+    page_preview_url: Optional[str] = None
 
 
 class PendingDocument(BaseModel):
@@ -117,6 +126,43 @@ class SearchResponse(BaseModel):
     # beside the passages; with ``image`` they are simply the closest ones.
     images: list[SearchImageResult] = Field(default_factory=list)
     preview_expires_in: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Reading around a passage
+# ---------------------------------------------------------------------------
+
+
+class ReadAroundRequest(BaseModel):
+    """Which passage to read around: the ids and offsets a search result gave."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: uuid.UUID
+    # The version the passage was found in; omit for the current one.
+    version: Optional[int] = Field(default=None, ge=1, le=65535)
+    char_start: int = Field(ge=0)
+    char_end: int = Field(ge=0)
+    # How much of the text to return on either side of the passage, in characters.
+    before: int = Field(default=1500, ge=0, le=3000)
+    after: int = Field(default=1500, ge=0, le=3000)
+
+
+class ReadAroundResponse(BaseModel):
+    document_id: uuid.UUID
+    document_name: str
+    space_name: str
+    version_number: int
+    latest_version: Optional[int] = None
+    before: str
+    passage: str
+    after: str
+    # Where the returned text begins and ends in the file's text, and how long that text is.
+    window_start: int
+    window_end: int
+    text_length: int
+    # True when the passage itself was cut short to keep the answer small.
+    passage_truncated: bool = False
 
 
 # ---------------------------------------------------------------------------

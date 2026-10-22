@@ -53,7 +53,7 @@ def _list_request(request_id: int = 1) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def test_tools_list_with_full_scope_shows_all_six(http, db_session, redis_client):
+async def test_tools_list_with_full_scope_shows_all_seven(http, db_session, redis_client):
     boot = await _org(db_session)
     tokens = await _mcp_tokens(
         db_session, redis_client, boot, scope="knowledge:read knowledge:write knowledge:upload"
@@ -62,7 +62,8 @@ async def test_tools_list_with_full_scope_shows_all_six(http, db_session, redis_
     resp = await http.post("/", headers=_auth(tokens), json=_list_request())
     names = {t["name"] for t in resp.json()["result"]["tools"]}
     assert names == {
-        "search", "search_images", "list_spaces", "list_documents", "save_note", "upload",
+        "search", "read_around", "search_images", "list_spaces", "list_documents",
+        "save_note", "upload",
     }
     for tool in resp.json()["result"]["tools"]:
         assert set(tool) == {"name", "description", "inputSchema"}
@@ -77,7 +78,7 @@ async def test_tools_list_with_read_only_scope_hides_write_tools(
     await db_session.commit()
     resp = await http.post("/", headers=_auth(tokens), json=_list_request())
     names = {t["name"] for t in resp.json()["result"]["tools"]}
-    assert names == {"search", "search_images", "list_spaces", "list_documents"}
+    assert names == {"search", "read_around", "search_images", "list_spaces", "list_documents"}
     assert "save_note" not in names and "upload" not in names
 
 

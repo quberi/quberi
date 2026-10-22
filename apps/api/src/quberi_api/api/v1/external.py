@@ -34,6 +34,7 @@ functions see, because they're the same object.
 
 from __future__ import annotations
 
+import uuid
 from typing import Optional
 
 from fastapi import (
@@ -57,6 +58,8 @@ from quberi_api.api.v1.external_schemas import (
     DocumentsResponse,
     ImageSearchRequest,
     ImageSearchResponse,
+    ReadAroundRequest,
+    ReadAroundResponse,
     SaveRequest,
     SaveResponse,
     SearchRequest,
@@ -70,8 +73,10 @@ from quberi_api.domain.identity.models import Organization, User
 from quberi_api.domain.oauth.models import OAuthGrant
 from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
-from quberi_api.services import external_image_links
+from quberi_api.services import external_image_links, external_page_links
 from quberi_api.services.documents import core as documents_core
+from quberi_api.services.documents import new_version as new_version_service
+from quberi_api.services.documents import page_render
 from quberi_api.services.documents.errors import DocumentPermissionError
 from quberi_api.services.documents.thumbnail import ThumbnailError, render_thumbnail
 from quberi_api.services.errors import NotFoundError
@@ -93,6 +98,7 @@ _SAVE_RATE_LIMIT = adapters.SAVE_RATE_LIMIT
 _UPLOAD_RATE_LIMIT = adapters.UPLOAD_RATE_LIMIT
 _IMAGE_SEARCH_RATE_LIMIT = adapters.IMAGE_SEARCH_RATE_LIMIT
 _PREVIEW_RATE_LIMIT = adapters.PREVIEW_RATE_LIMIT
+_PAGE_RATE_LIMIT = adapters.PAGE_RATE_LIMIT
 _LIST_RATE_LIMIT = adapters.LIST_RATE_LIMIT
 _MAX_SPACES_LISTED = adapters.MAX_SPACES_LISTED
 _MAX_DOCUMENTS_PER_PAGE = adapters.MAX_DOCUMENTS_PER_PAGE
@@ -144,6 +150,23 @@ async def search(
 
 
 @router.post(
+    "/read-around",
+    response_model=ReadAroundResponse,
+    summary="Read the text on either side of a passage a search returned",
+)
+async def read_around(
+    payload: ReadAroundRequest,
+    ext: core.ExternalCaller = Depends(require_external_caller),
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> ReadAroundResponse:
+    try:
+        return await adapters.do_read_around(payload, ext, session, infra)
+    except adapters.AdapterHTTPError as exc:
+        _raise(exc)
+
+
+@router.post(
     "/images/search", response_model=ImageSearchResponse, summary="Find pictures by a description"
 )
 async def search_images_by_description(
@@ -163,6 +186,144 @@ def _gone() -> HTTPException:
     # One answer for every reason (bad link, expired, revoked, no access, deleted):
     # the link tells a stranger nothing about which.
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+
+async def _live_grant(
+    session: AsyncSession, *, grant_id: uuid.UUID, user_id: uuid.UUID
+) -> tuple[User, Organization]:
+    """The person and organisation behind a signed link, if the grant is still good.
+
+    Re-checked on every use of a link, never trusted from when it was signed: the tool may
+    have been revoked, the person deactivated, the organisation may have switched outside
+    tools off, or the grant may have lost the permission to read.
+    """
+
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    row = (
+        await session.execute(
+            select(OAuthGrant, User, Organization)
+            .join(User, User.id == OAuthGrant.user_id)
+            .join(Organization, Organization.id == OAuthGrant.organization_id)
+            .where(OAuthGrant.id == grant_id, OAuthGrant.user_id == user_id)
+        )
+    ).first()
+    if row is None:
+        raise _gone()
+    grant, user, org = row
+    if (
+        grant.revoked_at is not None
+        or grant.absolute_expires_at <= now
+        or user.status != "active"
+        or org.status != "active"
+        or not org.allow_external_tools
+        or clients.SCOPE_KNOWLEDGE_READ not in grant.scope.split()
+    ):
+        raise _gone()
+    return user, org
+
+
+_NO_STORE = {
+    "Cache-Control": "private, max-age=300",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'",
+}
+
+
+@router.get(
+    "/page/{token}.jpg",
+    summary="An image of one page of a document, named by a short-lived link",
+    responses={200: {"content": {"image/jpeg": {}}}},
+)
+async def page_by_link(
+    token: str,
+    session: AsyncSession = Depends(get_db_session),
+    infra: Infrastructure = Depends(get_infrastructure),
+) -> Response:
+    """No bearer header: the link is the credential, and it is re-checked on every use.
+
+    Like the picture preview, it fails closed with one plain 404 for every reason: a bad or
+    expired link, a revoked tool, a person who lost access, a document or version that is gone,
+    archived, hidden or not yet approved. For a PDF it is the page the link names; for a picture
+    it is the picture itself, larger than its search preview.
+    """
+
+    link = external_page_links.verify(get_settings(), token)
+    if link is None:
+        raise _gone()
+    try:
+        await core.rate_limit(
+            infra.redis,
+            key=f"quberi:external:page:{link.grant_id}",
+            limit=_PAGE_RATE_LIMIT,
+            window_seconds=60,
+        )
+    except core.OAuthError as exc:
+        raise HTTPException(
+            status_code=exc.status,
+            detail="too many requests",
+            headers={"Retry-After": "60"} if exc.status == 429 else None,
+        ) from exc
+
+    user, org = await _live_grant(session, grant_id=link.grant_id, user_id=link.user_id)
+    doc = (
+        await session.execute(
+            select(Document, Space.status)
+            .join(Space, Space.id == Document.space_id)
+            .where(
+                Document.id == link.document_id,
+                Document.organization_id == org.id,
+                Space.organization_id == org.id,
+            )
+        )
+    ).first()
+    if doc is None:
+        raise _gone()
+    document, space_status = doc
+    if document.status == "archived" or space_status != "active":
+        raise _gone()
+    legacy = document.current_version_id is None and link.version_number == 1
+    try:
+        try:
+            # The same permission check as a signed-in download of this version.
+            version, stream = await new_version_service.open_version_stream(
+                session,
+                document_id=document.id,
+                version_number=link.version_number,
+                organization_id=org.id,
+                space_id=document.space_id,
+                caller_user_id=user.id,
+            )
+            mime, filename = (version.mime_type or "").lower(), version.filename
+        except NotFoundError:
+            if not legacy:
+                raise
+            # A file stored before versions were recorded has no version row: its one
+            # version is the file itself, opened with the same check as a download.
+            opened, stream = await documents_core.open_download_stream(
+                session,
+                document_id=document.id,
+                organization_id=org.id,
+                space_id=document.space_id,
+                caller_user_id=user.id,
+            )
+            mime, filename = (opened.mime_type or "").lower(), opened.name
+        if mime == "application/pdf" or filename.lower().endswith(".pdf"):
+            data = await page_render.render_pdf_page(stream, page=link.page)
+        elif is_picture(mime):
+            data = await page_render.render_picture(stream)
+        else:
+            raise _gone()
+    except (NotFoundError, DocumentPermissionError):
+        raise _gone() from None
+    except ThumbnailError as exc:
+        # A page that does not exist is the same "not found" as everything else.
+        if exc.status == 404:
+            raise _gone() from None
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    return Response(content=data, media_type="image/jpeg", headers=_NO_STORE)
 
 
 @router.get(
@@ -205,29 +366,7 @@ async def preview_by_link(
             headers={"Retry-After": "60"} if exc.status == 429 else None,
         ) from exc
 
-    from datetime import datetime, timezone
-
-    now = datetime.now(timezone.utc)
-    row = (
-        await session.execute(
-            select(OAuthGrant, User, Organization)
-            .join(User, User.id == OAuthGrant.user_id)
-            .join(Organization, Organization.id == OAuthGrant.organization_id)
-            .where(OAuthGrant.id == link.grant_id, OAuthGrant.user_id == link.user_id)
-        )
-    ).first()
-    if row is None:
-        raise _gone()
-    grant, user, org = row
-    if (
-        grant.revoked_at is not None
-        or grant.absolute_expires_at <= now
-        or user.status != "active"
-        or org.status != "active"
-        or not org.allow_external_tools
-        or clients.SCOPE_KNOWLEDGE_READ not in grant.scope.split()
-    ):
-        raise _gone()
+    user, org = await _live_grant(session, grant_id=link.grant_id, user_id=link.user_id)
 
     doc = (
         await session.execute(

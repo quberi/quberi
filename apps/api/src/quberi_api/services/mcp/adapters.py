@@ -43,6 +43,8 @@ from quberi_api.api.v1.external_schemas import (
     ImageSearchResponse,
     Passage,
     PendingDocument,
+    ReadAroundRequest,
+    ReadAroundResponse,
     SaveRequest,
     SaveResponse,
     SearchImageResult,
@@ -58,7 +60,7 @@ from quberi_api.domain.documents.models import Document
 from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import documents as documents_service
-from quberi_api.services import external_image_links
+from quberi_api.services import external_image_links, external_page_links
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access, visibility_clause
 from quberi_api.services.documents import core as documents_core
@@ -88,6 +90,11 @@ SAVE_RATE_LIMIT = 30  # per grant per minute — writes are rarer than searches
 UPLOAD_RATE_LIMIT = 10  # per grant per minute — files are heavier than notes
 IMAGE_SEARCH_RATE_LIMIT = 30  # per grant per minute: each search runs the picture model
 PREVIEW_RATE_LIMIT = 240  # per grant per minute: one search can show up to 10 previews
+PAGE_RATE_LIMIT = 30  # per grant per minute: each page is drawn by a process of its own
+READ_RATE_LIMIT = 30  # per grant per minute: each call re-reads and re-extracts a whole file
+MAX_READ_CONTEXT = 3_000  # characters either side of a passage
+DEFAULT_READ_CONTEXT = 1_500
+MAX_READ_PASSAGE = 6_000
 MAX_IMAGE_RESULTS = 10
 MAX_PASSAGE_CHARS = 4_000
 MAX_PENDING_LISTED = 10
@@ -213,6 +220,39 @@ def preview_link(
         settings, user_id=ext.user.id, grant_id=ext.grant_id, document_id=document_id
     )
     return f"{public_origin(request)}/api/v1/external/preview/{token}.jpg"
+
+
+def page_link(request: Request, ext: core.ExternalCaller, chunk) -> Optional[str]:
+    """A link to an image of the page a passage is on, or ``None`` when it has no page to show.
+
+    Only two kinds of passage have one: a passage from a PDF (its page is known) and text read
+    out of, or a description of, a picture (the picture is the page). Slides, sheets and Word
+    paragraphs have no page that can be drawn here. Whether the file really can be drawn is
+    decided when the link is used, not here: making the link costs nothing.
+    """
+
+    settings = get_settings()
+    if not external_page_links.links_available(settings):
+        return None
+    version = chunk.version_number or 1
+    if chunk.source_kind in ("image_ocr", "image_caption"):
+        page = 1
+    elif chunk.unit_label in ("text_block", "ocr_block") and chunk.page_start:
+        page = chunk.page_start
+    else:
+        return None
+    try:
+        token = external_page_links.sign(
+            settings,
+            user_id=ext.user.id,
+            grant_id=ext.grant_id,
+            document_id=chunk.document_id,
+            version_number=version,
+            page=page,
+        )
+    except ValueError:
+        return None
+    return f"{public_origin(request)}/api/v1/external/page/{token}.jpg"
 
 
 def image_result(
@@ -551,30 +591,34 @@ async def do_search(
             )
         )
 
+    passages = [
+        Passage(
+            document_id=c.document_id,
+            document_name=c.document_name,
+            space_id=c.space_id,
+            space_name=names.get(c.space_id, ""),
+            chunk_index=c.chunk_index,
+            text=c.text[:MAX_PASSAGE_CHARS],
+            score=c.score,
+            page_start=c.page_start,
+            page_end=c.page_end,
+            unit_label=c.unit_label,
+            source_kind=c.source_kind,
+            version_number=c.version_number,
+            latest_version=c.latest_version,
+            section=c.section,
+            unit_start=c.unit_start,
+            unit_end=c.unit_end,
+            char_start=c.char_start,
+            char_end=c.char_end,
+            page_preview_url=page_link(request, ext, c),
+        )
+        for c in chunks
+    ]
     return SearchResponse(
         organization=ext.organization.name,
         searched_spaces=len(result.space_ids),
-        passages=[
-            Passage(
-                document_id=c.document_id,
-                document_name=c.document_name,
-                space_id=c.space_id,
-                space_name=names.get(c.space_id, ""),
-                chunk_index=c.chunk_index,
-                text=c.text[:MAX_PASSAGE_CHARS],
-                score=c.score,
-                page_start=c.page_start,
-                page_end=c.page_end,
-                unit_label=c.unit_label,
-                source_kind=c.source_kind,
-                version_number=c.version_number,
-                latest_version=c.latest_version,
-                section=c.section,
-                unit_start=c.unit_start,
-                unit_end=c.unit_end,
-            )
-            for c in chunks
-        ],
+        passages=passages,
         pending_documents=[
             PendingDocument(
                 document_name=name,
@@ -585,7 +629,142 @@ async def do_search(
         ],
         pending_total=pending_total,
         images=_with_passage_numbers(related, chunks),
-        preview_expires_in=external_image_links.LINK_TTL_SECONDS if related else 0,
+        # The picture links and the page links last the same time.
+        preview_expires_in=(
+            external_image_links.LINK_TTL_SECONDS
+            if related or any(p.page_preview_url for p in passages)
+            else 0
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Read around a passage (requires knowledge:read)
+# ---------------------------------------------------------------------------
+#
+# A search returns the passage that matched. This returns the text on either side of it, from the
+# same file and version, so the surroundings can be read without leaving the tool. It reads the
+# document through the same access check as opening it in Quberi, so it can show nothing the
+# person could not open there; and it is bounded (a few thousand characters each way, a rate limit)
+# so it is a way to read a passage in context, not a way to copy a file out.
+
+
+def _document_not_found() -> AdapterHTTPError:
+    # One answer for every reason (no such document or version, no access, archived, hidden,
+    # waiting for approval): it tells a stranger nothing about which.
+    return AdapterHTTPError(
+        404, {"code": "document_not_found", "message": "no such document or version"}
+    )
+
+
+async def do_read_around(
+    payload: ReadAroundRequest,
+    ext: core.ExternalCaller,
+    session: AsyncSession,
+    infra: Infrastructure,
+) -> ReadAroundResponse:
+    require_read(ext)
+    await rate_limited(infra, key=f"quberi:external:read:{ext.grant_id}", limit=READ_RATE_LIMIT)
+    if payload.char_end < payload.char_start:
+        raise AdapterHTTPError(
+            422, {"code": "invalid_range", "message": "char_end is before char_start"}
+        )
+
+    row = (
+        await session.execute(
+            select(Document, Space.name, Space.status)
+            .join(Space, Space.id == Document.space_id)
+            .where(
+                Document.id == payload.document_id,
+                Document.organization_id == ext.organization.id,
+                Space.organization_id == ext.organization.id,
+            )
+        )
+    ).first()
+    if row is None:
+        raise _document_not_found()
+    doc, space_name, space_status = row
+    if doc.status == "archived" or space_status != "active":
+        raise _document_not_found()
+    document_id, document_name, space_id = doc.id, doc.name, doc.space_id
+
+    from quberi_api.services.documents import versions as versions_service
+    from quberi_api.services.rag.extract import ExtractError
+
+    try:
+        text = await documents_core.get_document_text(
+            session,
+            document_id=document_id,
+            organization_id=ext.organization.id,
+            space_id=space_id,
+            caller_user_id=ext.user.id,
+            version_number=payload.version,
+        )
+        latest = await versions_service.current_version_number(session, doc)
+    except (NotFoundError, DocumentPermissionError):
+        raise _document_not_found() from None
+    except ExtractError:
+        raise AdapterHTTPError(
+            422,
+            {
+                "code": "no_text",
+                "message": "this file has no text to read around (a picture, or a scan)",
+            },
+        ) from None
+
+    length = len(text)
+    if payload.char_start >= length:
+        raise AdapterHTTPError(
+            422,
+            {
+                "code": "position_out_of_range",
+                "message": (
+                    "that position is past the end of the file's text; text read from a scan "
+                    "or a picture cannot be read around"
+                ),
+            },
+        )
+    end = min(payload.char_end, length)
+    passage_end = min(end, payload.char_start + MAX_READ_PASSAGE)
+    window_start = max(0, payload.char_start - payload.before)
+    window_end = min(length, passage_end + payload.after)
+    version_number = payload.version or latest
+
+    # The read transaction is still open; close it before writing the audit row.
+    await session.commit()
+    async with session.begin():
+        session.add(
+            AuditEvent(
+                organization_id=ext.organization.id,
+                actor_type="user",
+                actor_id=ext.user.id,
+                action="knowledge.external_read",
+                resource_type="oauth_grant",
+                resource_id=ext.grant_id,
+                payload={
+                    "grant_id": str(ext.grant_id),
+                    "client_name": ext.client_name,
+                    # Ids and sizes only, never the text.
+                    "document_id": str(document_id),
+                    "version": version_number,
+                    "characters": window_end - window_start,
+                },
+            )
+        )
+
+    return ReadAroundResponse(
+        document_id=document_id,
+        document_name=document_name,
+        space_name=space_name,
+        version_number=version_number,
+        latest_version=latest,
+        before=text[window_start : payload.char_start],
+        passage=text[payload.char_start : passage_end],
+        after=text[passage_end:window_end],
+        window_start=window_start,
+        window_end=window_end,
+        text_length=length,
+        passage_truncated=end > passage_end,
     )
 
 

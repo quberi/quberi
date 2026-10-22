@@ -23,8 +23,8 @@ class ThumbnailError(Exception):
         self.detail = detail
 
 
-async def render_thumbnail(stream: AsyncIterator[bytes]) -> bytes:
-    """Read a picture from ``stream`` and return a JPEG of at most 320 px a side.
+async def render_thumbnail(stream: AsyncIterator[bytes], *, side: int = THUMBNAIL_SIDE) -> bytes:
+    """Read a picture from ``stream`` and return a JPEG of at most ``side`` px a side (320).
 
     Whatever the stored file was (even something that only claims to be an image),
     the result is a plain JPEG, so nothing a browser could run is passed on.
@@ -40,7 +40,7 @@ async def render_thumbnail(stream: AsyncIterator[bytes]) -> bytes:
 
     def _render() -> bytes:
         image = prepare_image(bytes(buf))
-        image.thumbnail((THUMBNAIL_SIDE, THUMBNAIL_SIDE))
+        image.thumbnail((side, side))
         out = io.BytesIO()
         image.save(out, format="JPEG", quality=80)
         return out.getvalue()

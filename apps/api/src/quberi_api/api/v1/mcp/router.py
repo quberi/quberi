@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quberi_api.api.dependencies import get_db_session, get_infrastructure
 from quberi_api.api.v1.external_schemas import (
     ImageSearchRequest,
+    ReadAroundRequest,
     SaveRequest,
     SearchRequest,
 )
@@ -270,6 +271,12 @@ async def _tools_call(
             return protocol.tool_result(
                 formatting.format_search_result(payload.query, result),
                 result.model_dump(mode="json"),
+            )
+        if name == "read_around":
+            around = ReadAroundRequest.model_validate(arguments)
+            read = await adapters.do_read_around(around, ext, session, infra)
+            return protocol.tool_result(
+                formatting.format_read_around_result(read), read.model_dump(mode="json")
             )
         if name == "search_images":
             payload = ImageSearchRequest.model_validate(arguments)

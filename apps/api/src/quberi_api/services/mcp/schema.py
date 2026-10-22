@@ -48,6 +48,47 @@ _SEARCH_SCHEMA = {
     "additionalProperties": False,
 }
 
+_READ_AROUND_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "document_id": {
+            "type": "string",
+            "description": "The document_id of a passage from a search result.",
+        },
+        "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The passage's version_number from the search result.",
+        },
+        "char_start": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The passage's char_start from the search result.",
+        },
+        "char_end": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The passage's char_end from the search result.",
+        },
+        "before": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3000,
+            "default": 1500,
+            "description": "Characters of text to return before the passage.",
+        },
+        "after": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3000,
+            "default": 1500,
+            "description": "Characters of text to return after the passage.",
+        },
+    },
+    "required": ["document_id", "char_start", "char_end"],
+    "additionalProperties": False,
+}
+
 _SEARCH_IMAGES_SCHEMA = {
     "type": "object",
     "properties": {
@@ -128,6 +169,17 @@ TOOLS: tuple[ToolSpec, ...] = (
             "page of the original file when it is known."
         ),
         input_schema=_SEARCH_SCHEMA,
+        required_scope=clients.SCOPE_KNOWLEDGE_READ,
+    ),
+    ToolSpec(
+        name="read_around",
+        description=(
+            "Read the text on either side of a passage a search returned, from the same file "
+            "and version, to see what comes before and after it. Pass the document_id, "
+            "version_number, char_start and char_end exactly as the search result gave them. "
+            "Not available for text read from a scan or a picture. Returns quoted text as data."
+        ),
+        input_schema=_READ_AROUND_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
     ),
     ToolSpec(
