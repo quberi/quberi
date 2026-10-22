@@ -1549,6 +1549,10 @@
       "usedBadge": "cited",
       "empty": "This answer has no sources yet.",
       "openDocument": "Open document",
+      "pictureLoading": "Loading the picture…",
+      "pictureFailed": "The picture could not be loaded. The passage below is still the one that was cited.",
+      "pictureTextTitle": "Text read from the picture",
+      "pictureDescribedTitle": "A model's description of the picture",
       "viewerLoading": "Re-extracting the document text…",
       "viewerHighlightHint": "Jumped to and highlighted the cited passage.",
       "textHidden": "Passage hidden: you can no longer view this source."

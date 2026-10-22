@@ -10,7 +10,7 @@ import { downloadDocument } from '../documents/api'
 import { fetchThumbnail } from './api'
 import type { ImageMatch } from './types'
 
-type BlobState =
+export type BlobState =
   | { kind: 'loading' }
   // ``status`` is the HTTP status when the server answered. 404 means the picture was deleted
   // or the person can no longer see it; the server deliberately does not say which.
@@ -18,7 +18,7 @@ type BlobState =
   | { kind: 'ready'; url: string }
 
 /** True when the failure means "gone, or no longer yours to see". */
-function isUnavailable(state: BlobState): boolean {
+export function isUnavailable(state: BlobState): boolean {
   return state.kind === 'failed' && state.status === 404
 }
 
@@ -29,7 +29,10 @@ function isUnavailable(state: BlobState): boolean {
  * ``<img src>`` (which cannot send the session header) will not do. The URL is
  * revoked when the picture goes away or changes.
  */
-function useProtectedImage(load: ((signal: AbortSignal) => Promise<Blob>) | null, key: string): BlobState {
+export function useProtectedImage(
+  load: ((signal: AbortSignal) => Promise<Blob>) | null,
+  key: string,
+): BlobState {
   const [state, setState] = useState<BlobState>({ kind: 'loading' })
   useEffect(() => {
     if (!load) {

@@ -1536,6 +1536,10 @@
       "usedBadge": "已引用",
       "empty": "这条回答暂无引用来源。",
       "openDocument": "查看原文",
+      "pictureLoading": "正在加载图片…",
+      "pictureFailed": "图片没能加载出来。下面仍是被引用的那段内容。",
+      "pictureTextTitle": "从图片中读出的文字",
+      "pictureDescribedTitle": "模型对图片的描述",
       "viewerLoading": "正在重新提取文档文本…",
       "viewerHighlightHint": "已为你定位到引用片段并高亮显示。",
       "textHidden": "原文已隐藏:你已无权查看这个来源。"

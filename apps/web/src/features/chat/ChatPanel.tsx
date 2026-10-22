@@ -49,6 +49,7 @@ import { useChat } from './ChatContext'
 import { ensureQueryPicture, useQueryPicture } from './queryPictures'
 import { ImageMatchesRail } from './ImageMatches'
 import { NewConversationDialog } from './NewConversationDialog'
+import { PictureSourceViewer, isPictureSource } from './PictureSourceViewer'
 import { ReviewCard } from './ReviewCard'
 import { ScopeChipStrip } from './ScopeChipStrip'
 import type {
@@ -1431,7 +1432,10 @@ function CitationsRail({
           </li>
         ))}
       </ul>
-      {viewerCitation && (
+      {viewerCitation && isPictureSource(viewerCitation) && (
+        <PictureSourceViewer citation={viewerCitation} onClose={() => setViewerCitation(null)} />
+      )}
+      {viewerCitation && !isPictureSource(viewerCitation) && (
         <DocumentTextViewer
           spaceId={viewerCitation.space_id}
           documentId={viewerCitation.document_id}
