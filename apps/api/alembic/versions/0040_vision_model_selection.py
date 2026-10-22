@@ -1,7 +1,7 @@
 """a vision model choice, and the switch that lets pictures be described.
 
-Revision ID: 0039
-Revises: 0038
+Revision ID: 0040
+Revises: 0039
 
 An organisation can choose which model describes its pictures (so what a picture shows can
 be searched), separately from the model that answers chat. That choice is one more
@@ -21,8 +21,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0039"
-down_revision: str | None = "0038"
+revision: str = "0040"
+down_revision: str | None = "0039"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

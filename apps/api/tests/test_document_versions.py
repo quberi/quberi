@@ -622,8 +622,8 @@ def _migration():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    path = root / "alembic" / "versions" / "0038_document_versions.py"
-    spec = importlib.util.spec_from_file_location("migration_0038", path)
+    path = root / "alembic" / "versions" / "0039_document_versions.py"
+    spec = importlib.util.spec_from_file_location("migration_0039", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

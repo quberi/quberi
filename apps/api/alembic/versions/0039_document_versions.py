@@ -1,7 +1,7 @@
 """document versions.
 
-Revision ID: 0038
-Revises: 0037
+Revision ID: 0039
+Revises: 0038
 
 A document can hold several stored files over time. ``document_versions`` keeps each one
 (never changed once written) and ``documents.current_version_id`` points at the one the
@@ -25,8 +25,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0038"
-down_revision: str | None = "0037"
+revision: str = "0039"
+down_revision: str | None = "0038"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
