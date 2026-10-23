@@ -733,6 +733,59 @@ code {
   opacity: 1;
 }
 
+/* Language switch (EN / 中文): rail footer and under the gate cards */
+.admin-gate-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 420px;
+}
+.admin-lang-switch {
+  display: flex;
+  align-self: stretch;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+  background: #fff;
+}
+.admin-gate-stack .admin-lang-switch {
+  align-self: center;
+  width: auto;
+}
+.admin-rail .admin-lang-switch {
+  margin: 0 0 6px;
+}
+.admin-lang-switch button {
+  flex: 1;
+  min-width: 56px;
+  padding: 7px 14px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4a4560;
+  cursor: pointer;
+}
+.admin-lang-switch button:last-child {
+  border-right: 0;
+}
+.admin-lang-switch button:hover {
+  background: var(--purple-100);
+  color: var(--purple-700);
+}
+.admin-lang-switch button.active {
+  background: linear-gradient(135deg, var(--purple-700), var(--purple-500));
+  color: #fff;
+}
+.admin-lang-switch button:focus-visible {
+  outline: 2px solid var(--purple-500);
+  outline-offset: -2px;
+}
+
 /* Outside tools */
 .admin-code-break { word-break: break-all; font-size: 11.5px; }
 .admin-field textarea {

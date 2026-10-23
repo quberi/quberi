@@ -8,16 +8,59 @@
  * used for the curl-only ``/api/v1/admin/*`` surface.
  */
 
+import { getLang, LOCALE, type MessageRef, type Params } from './i18n'
+
+export type { MessageRef }
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 ).replace(/\/$/, '')
 
 export class AdminApiError extends Error {
   readonly status: number
-  constructor(status: number, detail: string) {
+  /** The server's own message, '' when it sent none. */
+  readonly detail: string
+  /** Stable message code (e.g. `admin.auth.bad_credentials`); `validation` for a 422. */
+  readonly code: string | null
+  readonly params: Params | undefined
+  constructor(status: number, detail: string, code: string | null = null, params?: Params) {
     super(detail || `Request failed with status ${status}`)
     this.status = status
+    this.detail = detail
+    this.code = code
+    this.params = params
   }
+}
+
+/** Read an error response: its text, its message code and the code's parameters. */
+async function readErrorBody(
+  response: Response,
+): Promise<{ detail: string; code: string | null; params?: Params }> {
+  try {
+    const payload = (await response.json()) as {
+      detail?: unknown
+      code?: unknown
+      params?: unknown
+    }
+    // A FastAPI 422 sends `detail` as a list of problems, not a string.
+    if (Array.isArray(payload.detail)) return { detail: '', code: 'validation' }
+    const params =
+      typeof payload.params === 'object' && payload.params !== null
+        ? (payload.params as Params)
+        : undefined
+    return {
+      detail: typeof payload.detail === 'string' ? payload.detail : '',
+      code: typeof payload.code === 'string' ? payload.code : null,
+      params,
+    }
+  } catch {
+    return { detail: '', code: null }
+  }
+}
+
+/** Asks the server for messages in the console's language. Read per call, so a toggle applies next. */
+function acceptLanguage(): string {
+  return LOCALE[getLang()]
 }
 
 async function adminFetch<T>(
@@ -29,20 +72,15 @@ async function adminFetch<T>(
     method: init.method ?? 'GET',
     headers: {
       Accept: 'application/json',
+      'Accept-Language': acceptLanguage(),
       Authorization: `Bearer ${token}`,
       ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   })
   if (!response.ok) {
-    let detail = ''
-    try {
-      const payload = (await response.json()) as { detail?: string }
-      detail = payload.detail ?? ''
-    } catch {
-      /* ignore */
-    }
-    throw new AdminApiError(response.status, detail)
+    const { detail, code, params } = await readErrorBody(response)
+    throw new AdminApiError(response.status, detail, code, params)
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
@@ -62,17 +100,16 @@ export async function adminLogin(
 ): Promise<AdminSession> {
   const response = await fetch(`${API_BASE_URL}/api/v1/admin/auth/login`, {
     method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      'Accept-Language': acceptLanguage(),
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({ username, password }),
   })
   if (!response.ok) {
-    let detail = ''
-    try {
-      detail = ((await response.json()) as { detail?: string }).detail ?? ''
-    } catch {
-      /* ignore */
-    }
-    throw new AdminApiError(response.status, detail)
+    const { detail, code, params } = await readErrorBody(response)
+    throw new AdminApiError(response.status, detail, code, params)
   }
   return (await response.json()) as AdminSession
 }
@@ -365,6 +402,8 @@ export interface TrafficSummary {
   files_read: number
   truncated_by_cap: boolean
   address_note: string
+  /** Message code for `address_note`; the console renders it from its own dictionary. */
+  address_note_code?: string
   totals: {
     requests: number
     distinct_visitors: number
