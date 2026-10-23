@@ -187,6 +187,22 @@ Two things worth passing on to the person reading the answer:
   is the one to rely on when they disagree. A file that has only one version is
   described exactly as before.
 
+### Citing a passage
+
+Every passage comes with `citation`: one line that says where it is from, ready to put after a point it
+supports, for example `handbook.pdf, page 3, version 2 (latest)` or
+`handbook.pdf, under "3.2 Payment", paragraph 12`. It is made from the same place and version fields
+described above, so the words always agree, and it says only what is known: a passage with no recorded
+place is cited by the document alone, never by an invented page. The text result puts it under each
+passage as `Cite as: ...`, and asks the model to end each point with it, copied as given.
+
+The server also sends this request once, as the `instructions` of the MCP `initialize` result, and
+repeats the key part in the `search` tool description and in every result. A client decides whether to
+pass `instructions` to its model, and a model decides whether to follow them, so none of this is
+enforced: it makes the right citation the easiest thing to copy. A client that wants a source shown
+whatever the model writes can build it from the structured fields (`document_name`, `citation`,
+`page_start`, `unit_label`, `version_number`).
+
 ### Seeing the page, and reading around a passage
 
 Two more things come with a search result, so the answer can be checked without leaving the tool.

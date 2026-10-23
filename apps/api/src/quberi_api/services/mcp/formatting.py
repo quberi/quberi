@@ -28,7 +28,7 @@ from quberi_api.api.v1.external_schemas import (
     UploadResponse,
 )
 from quberi_api.services.mcp.adapters import AdapterHTTPError
-from quberi_api.services.rag.place import place_en, place_of
+from quberi_api.services.rag.place import place_en, place_of, version_note_en
 
 # Below this closeness, even the "best" picture match is not really a match —
 # ported verbatim from controller.ts's ``WEAK_PICTURE_SCORE``.
@@ -301,13 +301,7 @@ def _version_note(p) -> str:
     """"version 2 (latest)" / "version 1 (older, replaced by version 2)"; empty for a file
     that has only ever had one version."""
 
-    latest = getattr(p, "latest_version", None)
-    number = getattr(p, "version_number", 1)
-    if latest is None or latest <= 1:
-        return ""
-    if number >= latest:
-        return f"version {number} (latest)"
-    return f"version {number} (older, replaced by version {latest})"
+    return version_note_en(getattr(p, "version_number", 1), getattr(p, "latest_version", None))
 
 
 def _place_only(p) -> str:
@@ -456,6 +450,8 @@ def format_search_result(query: str, result: SearchResponse) -> str:
         "reader can check it in the original. A passage marked as recognised from a scan may "
         "contain misread characters, and one described by a model is a guide to what a picture "
         "shows, not a transcript: say so when you rely on either.",
+        "End each point you take from a passage with that passage's \"Cite as\" line, copied "
+        "as given. Never state a page, line, slide, row or version that is not given there.",
         "",
     ]
     for i, p in enumerate(result.passages):
@@ -463,6 +459,8 @@ def format_search_result(query: str, result: SearchResponse) -> str:
         place = _page_note(p)
         lines.append(f"[{i + 1}] {where}{', ' + place if place else ''}, relevance {p.score:.2f}")
         lines.append(p.text.strip())
+        if p.citation:
+            lines.append(f"Cite as: {p.citation}")
         read = _read_hint(p)
         if read:
             lines.append(read)

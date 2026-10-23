@@ -74,6 +74,11 @@ class Passage(BaseModel):
     # read from, valid for ``preview_expires_in`` seconds. Null when this server has no signing
     # key or the passage has no page to show.
     page_preview_url: Optional[str] = None
+    # Where this passage is from, ready to put after a point it supports: the document, the
+    # place in it and the version when the file has more than one, for example
+    # ``handbook.pdf, page 3, version 2 (latest)``. It says only what is known: a passage with no
+    # recorded place is cited by the document alone. Empty on results made before this existed.
+    citation: str = ""
 
 
 class PendingDocument(BaseModel):

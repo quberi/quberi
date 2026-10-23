@@ -348,6 +348,7 @@ async def test_a_pdf_passage_carries_a_link_to_its_own_page(
 
     passage = body["passages"][0]
     assert (passage["char_start"], passage["char_end"]) == (10, 40)
+    assert passage["citation"] == "report.pdf, page 2, version 2 (latest)"
     url = passage["page_preview_url"]
     assert url.startswith(f"{ORIGIN}/api/v1/external/page/") and url.endswith(".jpg")
     found = links.verify(get_settings(), url.removeprefix(f"{ORIGIN}/api/v1/external/page/")[:-4])
@@ -390,6 +391,17 @@ async def test_a_passage_with_no_page_to_show_has_no_link(
 
     assert body["passages"][0]["page_preview_url"] is None
     assert body["preview_expires_in"] == 0
+
+
+async def test_a_passage_with_no_recorded_place_is_cited_by_its_document_alone(
+    http, db_session, redis_client, blobs, monkeypatch
+):
+    boot, space, doc, _t, _g = await _setup(db_session, redis_client, blobs)
+    _stub(monkeypatch, space, _hit(doc))
+
+    body = await _search(http, db_session, redis_client, boot)
+
+    assert body["passages"][0]["citation"] == "report.pdf"  # never an invented page
 
 
 async def test_without_a_signing_key_search_works_and_has_no_page_links(

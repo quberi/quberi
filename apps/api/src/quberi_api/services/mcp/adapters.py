@@ -75,6 +75,7 @@ from quberi_api.services.errors import NotFoundError
 from quberi_api.services.oauth import clients, core
 from quberi_api.services.rag import image_search
 from quberi_api.services.rag.picture_links import passage_numbers_by_document
+from quberi_api.services.rag.place import citation_of, place_of
 from quberi_api.services.rag.retrieve import retrieve_for_user
 from quberi_api.services.retrieval_audit import document_ids_from_chunks
 
@@ -612,6 +613,19 @@ async def do_search(
             char_start=c.char_start,
             char_end=c.char_end,
             page_preview_url=page_link(request, ext, c),
+            citation=citation_of(
+                c.document_name,
+                place_of(
+                    page_start=c.page_start,
+                    page_end=c.page_end,
+                    unit_start=c.unit_start,
+                    unit_end=c.unit_end,
+                    unit_label=c.unit_label,
+                    section=c.section,
+                ),
+                version_number=c.version_number or 1,
+                latest_version=c.latest_version,
+            ),
         )
         for c in chunks
     ]

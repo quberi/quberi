@@ -128,3 +128,36 @@ def place_en(place: Place) -> str:
         number = f"{'paragraphs' if many else 'paragraph'} {span}" if span else ""
         return ", ".join(part for part in (under, number) if part)
     return ""
+
+
+def version_note_en(number: int, latest: int | None) -> str:
+    """"version 2 (latest)" / "version 1 (older, replaced by version 2)"; empty for a file that
+    has only ever had one version."""
+
+    if latest is None or latest <= 1:
+        return ""
+    if number >= latest:
+        return f"version {number} (latest)"
+    return f"version {number} (older, replaced by version {latest})"
+
+
+def citation_of(
+    document_name: str,
+    place: Place,
+    *,
+    version_number: int,
+    latest_version: int | None,
+) -> str:
+    """One line a person (or a model writing for one) can put after a point to say where it
+    came from: the document, where in it, and the version when the file has more than one.
+
+    ``handbook.pdf, page 3, version 2 (latest)``. It says only what is known: a passage with
+    no recorded place is cited by the document alone, never by an invented page.
+    """
+
+    parts = [
+        " ".join((document_name or "").split()),
+        place_en(place),
+        version_note_en(version_number, latest_version),
+    ]
+    return ", ".join(part for part in parts if part)
