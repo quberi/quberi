@@ -5,6 +5,7 @@ from quberi_api.api.v1.admin.oauth_clients import admin_oauth_clients_router
 from quberi_api.api.v1.admin.auth import admin_auth_router
 from quberi_api.api.v1.admin.organizations import router as admin_organizations_router
 from quberi_api.api.v1.admin.stats import admin_stats_router
+from quberi_api.api.v1.admin.traffic import admin_traffic_router
 from quberi_api.api.v1.external import external_router
 from quberi_api.api.v1.me_ai_providers import me_ai_providers_router
 from quberi_api.api.v1.me_external_access import me_external_access_router
@@ -47,6 +48,7 @@ router.include_router(platform_router)
 router.include_router(admin_auth_router)
 router.include_router(admin_organizations_router)
 router.include_router(admin_stats_router)
+router.include_router(admin_traffic_router)
 router.include_router(admin_ai_providers_router)
 router.include_router(admin_oauth_clients_router)
 router.include_router(spaces_router)

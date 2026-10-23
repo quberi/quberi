@@ -26,6 +26,15 @@ services:
     restart: unless-stopped
     networks: [quberi]
 
+  # The admin Traffic page reads caddy's access log. The volume is mounted read-only; the
+  # file is root-owned (0600) and the api container runs as root, so it can read it.
+  api:
+    environment:
+      QUBERI_ACCESS_LOG_PATH: /caddy-data/access.log
+      QUBERI_TRAFFIC_SITE_HOSTS: ai.quberi.com,api.quberi.com,mcp.quberi.com,quberi.com
+    volumes:
+      - caddy-data:/caddy-data:ro
+
 volumes:
   caddy-data:
   caddy-config:

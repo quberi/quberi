@@ -216,6 +216,15 @@ class Settings(BaseSettings):
     bootstrap_admin_password: Optional[SecretStr] = None
     # How long an admin console session lasts. Shorter than a member session.
     platform_admin_session_ttl_seconds: int = 60 * 60 * 12  # 12 hours
+    # --- Traffic page (the /admin console's summary of the reverse proxy's access log) ---
+    # Path of the proxy's JSON access log as seen from this container (env
+    # ``QUBERI_ACCESS_LOG_PATH``). Empty = the Traffic page is off. It is a fixed server
+    # setting: no request can name a path.
+    access_log_path: str = ""
+    # Comma-separated host names this deployment serves (env ``QUBERI_TRAFFIC_SITE_HOSTS``).
+    # A request for any other Host (a bare address, a scanner's made-up domain) is counted as
+    # "direct or unknown host". Empty = only address-literal and empty hosts count as such.
+    traffic_site_hosts: str = ""
     # Verification code lifetime + per-email send cooldown (seconds).
     verification_code_ttl_seconds: int = 60 * 10  # 10 minutes
     verification_code_cooldown_seconds: int = 60  # 1 send / minute / email
@@ -224,6 +233,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def traffic_hosts(self) -> list[str]:
+        return [h.strip().lower() for h in self.traffic_site_hosts.split(",") if h.strip()]
 
     @property
     def web_origin(self) -> Optional[str]:

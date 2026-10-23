@@ -134,6 +134,30 @@ curl -I https://api.quberi.com/health/live
 5. **迁移是自动的**:`api` 容器启动时,`apps/api/docker/entrypoint.sh` 会执行 `alembic upgrade head`,不需要另外跑。用 `docker logs <api 容器>` 确认出现 `Running upgrade` 且没有报错。
 6. **验证**:按上面第 4 步检查健康接口,并确认 `api`、`worker` 日志没有 Traceback。
 
+### 6. Access log and the admin Traffic page
+
+Caddy writes one JSON line per request to `/data/access.log` in the `caddy-data` volume (the `(access_log)` snippet in `deploy/Caddyfile`, imported by every site). The file rolls at 20 MiB, keeps 10 files for at most 14 days, and rolled files are gzip-compressed.
+
+- **A line holds:** time, host, method, path, status, response size, duration, the connecting address, the visitor address and country as Cloudflare reports them, and the User-Agent.
+- **A line never holds:** query strings, request or response headers, or bodies.
+- **Privacy:** the raw file contains visitor addresses. The admin Traffic page shows only masked ones (`203.0.113.x`) and never a raw line.
+
+The admin console's **Traffic** page summarises this file (real people vs crawlers, scanners, MCP directories and MCP clients). It is off until the api container can read the file:
+
+| Setting | Meaning |
+|---|---|
+| `QUBERI_ACCESS_LOG_PATH` | Path of the log inside the api container. Empty (default) turns the page off. |
+| `QUBERI_TRAFFIC_SITE_HOSTS` | Comma-separated host names this deployment serves. Requests for any other `Host` (a bare address, a scanner's made-up domain) are counted as "direct or unknown host". |
+
+`deploy/compose.prod.yaml` sets both and mounts the volume into the api container read-only (`caddy-data:/caddy-data:ro`). To apply it, recreate only the api container (no Caddy reload is needed), then check the file is visible:
+
+```bash
+docker compose --env-file .env -f compose.yaml -f deploy/compose.prod.yaml --profile app up -d --no-build --no-deps api
+docker compose --env-file .env -f compose.yaml -f deploy/compose.prod.yaml --profile app exec api ls -l /caddy-data/access.log
+```
+
+Caddy creates the log with mode 0600 (root). The api image runs as root, so it can read it. If the image ever runs as a non-root user, add `mode 0644` to the `output file` block in the `(access_log)` snippet and reload Caddy.
+
 ---
 
 ## 四、已知坑 & 排错记录
