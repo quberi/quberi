@@ -342,3 +342,67 @@ export function updateOAuthClient(
 export function deleteOAuthClient(token: string, id: string): Promise<void> {
   return adminFetch(token, `/api/v1/admin/oauth-clients/${id}`, { method: 'DELETE' })
 }
+
+// ---------------------------------------------------------------------------
+// Traffic (mirrors apps/api/.../admin/traffic.py)
+// ---------------------------------------------------------------------------
+
+export type TrafficKind =
+  | 'direct_or_unknown_host'
+  | 'search_engine'
+  | 'mcp_directory_or_probe'
+  | 'scanner_or_tool'
+  | 'mcp_client'
+  | 'browser_like'
+  | 'other'
+
+export type TrafficDisabledReason = 'not_configured' | 'file_missing' | 'unreadable'
+
+export interface TrafficSummary {
+  enabled: boolean
+  reason: TrafficDisabledReason | null
+  window: { from: string; to: string }
+  files_read: number
+  truncated_by_cap: boolean
+  address_note: string
+  totals: {
+    requests: number
+    distinct_visitors: number
+    automated_requests: number
+    automated_share: number
+  }
+  by_site: { host: string; requests: number }[]
+  by_kind: { kind: TrafficKind; requests: number }[]
+  by_status_class: { status_class: string; requests: number }[]
+  by_country: { country: string; requests: number }[]
+  mcp: {
+    top_user_agents: { user_agent: string; kind: TrafficKind; requests: number }[]
+    top_paths: { method: string; path: string; status: number; requests: number }[]
+  }
+  web_pages: { path: string; browser_like: number; search_engine: number; total: number }[]
+  signals: {
+    guest_questions: number
+    sign_in_requests: number
+    oauth_requests: number
+    mcp_successful_posts: number
+  }
+  top_visitors: {
+    address: string
+    address_source: 'header' | 'remote_ip'
+    kind: TrafficKind
+    country: string
+    user_agent: string
+    requests: number
+  }[]
+  hourly: { hour: string; requests: number; automated_requests: number }[]
+}
+
+/** Summary of the proxy's access log for the last ``hours`` hours (1 to 336). */
+export function getTraffic(
+  token: string,
+  opts: { hours: number; excludeIps?: string },
+): Promise<TrafficSummary> {
+  const params = new URLSearchParams({ hours: String(opts.hours) })
+  if (opts.excludeIps) params.set('exclude_ips', opts.excludeIps)
+  return adminFetch(token, `/api/v1/admin/traffic?${params.toString()}`)
+}

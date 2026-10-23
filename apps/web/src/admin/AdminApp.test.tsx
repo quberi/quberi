@@ -20,6 +20,7 @@ vi.mock('./OverviewView', () => ({ OverviewView: () => <div>overview-view</div> 
 vi.mock('./OrganizationsView', () => ({ OrganizationsView: () => <div>orgs-view</div> }))
 vi.mock('./ModelsView', () => ({ ModelsView: () => <div>models-view</div> }))
 vi.mock('./ClientsView', () => ({ ClientsView: () => <div>clients-view</div> }))
+vi.mock('./TrafficView', () => ({ TrafficView: () => <div>traffic-view</div> }))
 
 import { AdminApp } from './AdminApp'
 
@@ -195,5 +196,13 @@ describe('AdminApp session', () => {
     render(<AdminApp />)
     await waitFor(() => expect(screen.getByLabelText('Username')).toBeTruthy())
     expect(window.sessionStorage.getItem('quberi.admin.token')).toBeNull()
+  })
+  it('opens the Traffic page from the side navigation', async () => {
+    window.sessionStorage.setItem('quberi.admin.token', 'sess-1')
+    render(<AdminApp />)
+    await screen.findByText('overview-view')
+    fireEvent.click(screen.getByRole('button', { name: 'Traffic' }))
+    expect(await screen.findByText('traffic-view')).toBeTruthy()
+    expect(screen.queryByText('overview-view')).toBeNull()
   })
 })
