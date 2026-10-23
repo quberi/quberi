@@ -22,12 +22,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.domain.oauth.models import OAuthClientConfig
+from quberi_api.services.admin_messages import CodedValueError, ref
 
 # What a grant can do. ``knowledge:read`` searches knowledge the person can
 # read; ``knowledge:write`` additionally saves notes into a space they can
@@ -143,41 +145,55 @@ def redirect_allowed(rules: tuple[str, ...] | list[str], uri: str, *, captured_i
 # ---------------------------------------------------------------------------
 
 
-class ClientConfigError(ValueError):
-    """The configuration an admin typed is not acceptable."""
+class ClientConfigError(CodedValueError):
+    """The configuration an admin typed is not acceptable.
+
+    Carries a message ``code`` and ``params`` (see ``services.admin_messages``) so the admin
+    console can show it in its own language; ``str(exc)`` is the English text.
+    """
 
 
-def _check_https_url(value: str, *, what: str, allow_id: bool) -> None:
+def _check_https_url(value: str, *, subject: dict[str, Any], allow_id: bool) -> None:
+    """``subject`` is a message reference naming what is being checked ("the client id URL")."""
+
     if len(value) > MAX_CLIENT_ID_LENGTH:
-        raise ClientConfigError(f"{what} is too long")
+        raise ClientConfigError("admin.oauth.url_too_long", subject=subject)
     if "*" in value or " " in value:
-        raise ClientConfigError(f"{what} may not contain wildcards or spaces")
+        raise ClientConfigError("admin.oauth.url_wildcard_space", subject=subject)
     placeholder_count = value.count(ID_PLACEHOLDER)
     if placeholder_count and not allow_id:
-        raise ClientConfigError(f"{what} may not contain {ID_PLACEHOLDER}")
+        raise ClientConfigError(
+            "admin.oauth.url_placeholder_not_allowed", subject=subject, placeholder=ID_PLACEHOLDER
+        )
     if placeholder_count > 1:
-        raise ClientConfigError(f"{what} may contain {ID_PLACEHOLDER} at most once")
+        raise ClientConfigError(
+            "admin.oauth.url_placeholder_once", subject=subject, placeholder=ID_PLACEHOLDER
+        )
     probe = value.replace(ID_PLACEHOLDER, "x")
     if "{" in probe or "}" in probe:
-        raise ClientConfigError(f"{what} contains braces other than {ID_PLACEHOLDER}")
+        raise ClientConfigError(
+            "admin.oauth.url_braces", subject=subject, placeholder=ID_PLACEHOLDER
+        )
     try:
         parts = urlsplit(probe)
         port = parts.port
     except ValueError as exc:
-        raise ClientConfigError(f"{what} is not a valid address") from exc
+        raise ClientConfigError("admin.oauth.url_invalid", subject=subject) from exc
     if parts.scheme != "https" or not parts.hostname:
-        raise ClientConfigError(f"{what} must be an https:// address")
+        raise ClientConfigError("admin.oauth.url_not_https", subject=subject)
     if parts.username or parts.password or parts.query or parts.fragment:
-        raise ClientConfigError(f"{what} may not carry credentials, a query or a fragment")
+        raise ClientConfigError("admin.oauth.url_extras", subject=subject)
     if port is not None:
-        raise ClientConfigError(f"{what} may not name a port")
+        raise ClientConfigError("admin.oauth.url_port", subject=subject)
     host = parts.hostname
     if host.replace(".", "").isdigit() or ":" in host or "." not in host:
-        raise ClientConfigError(f"{what} must use a real domain name, not an IP address")
+        raise ClientConfigError("admin.oauth.url_domain", subject=subject)
     if ID_PLACEHOLDER in value:
         path_start = value.find("/", len("https://"))
         if path_start == -1 or value.index(ID_PLACEHOLDER) < path_start:
-            raise ClientConfigError(f"{ID_PLACEHOLDER} may only appear in the path of {what}")
+            raise ClientConfigError(
+                "admin.oauth.url_placeholder_path", subject=subject, placeholder=ID_PLACEHOLDER
+            )
 
 
 def validate_client_config(client_id: str, kind: str, redirect_uris: list[str]) -> tuple[str, list[str]]:
@@ -185,29 +201,29 @@ def validate_client_config(client_id: str, kind: str, redirect_uris: list[str]) 
 
     client_id = (client_id or "").strip()
     if kind not in KINDS:
-        raise ClientConfigError("unknown kind")
+        raise ClientConfigError("admin.oauth.unknown_kind")
     if kind == KIND_REGISTERED:
         if not _REGISTERED_ID_RE.match(client_id):
-            raise ClientConfigError(
-                "a registered client id is 1 to 64 letters, digits, dots, dashes or underscores"
-            )
+            raise ClientConfigError("admin.oauth.registered_id_format")
     else:
-        _check_https_url(client_id, what="the client id URL", allow_id=True)
+        _check_https_url(client_id, subject=ref("admin.oauth.subject.client_id_url"), allow_id=True)
     rules: list[str] = []
     for raw in redirect_uris or []:
         rule = (raw or "").strip()
         if not rule:
             continue
         if rule != LOOPBACK:
-            _check_https_url(rule, what=f"redirect {rule!r}", allow_id=True)
+            _check_https_url(
+                rule, subject=ref("admin.oauth.subject.redirect", rule=repr(rule)), allow_id=True
+            )
             if ID_PLACEHOLDER in rule and ID_PLACEHOLDER not in client_id:
                 raise ClientConfigError(
-                    f"redirect {rule!r} uses {ID_PLACEHOLDER} but the client id does not"
+                    "admin.oauth.redirect_needs_id", rule=repr(rule), placeholder=ID_PLACEHOLDER
                 )
         if rule not in rules:
             rules.append(rule)
     if not rules:
-        raise ClientConfigError("at least one redirect rule is required")
+        raise ClientConfigError("admin.oauth.redirect_required")
     return client_id, rules
 
 

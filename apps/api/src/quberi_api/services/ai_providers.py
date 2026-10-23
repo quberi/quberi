@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.core.config import Settings
 from quberi_api.domain.ai.models import AiModelSelection, AiProviderBinding
+from quberi_api.services.admin_messages import CodedValueError
 from quberi_api.services.ai.registry import MODEL_REGISTRY, models_for_vendor
 from quberi_api.services.security.crypto import seal
 
@@ -838,14 +839,14 @@ async def set_org_platform_model_visibility(
     """
 
     if mode not in ("all", "none", "allowlist"):
-        raise ValueError(f"invalid platform_model_visibility mode {mode!r}")
+        raise CodedValueError("admin.models.visibility_mode_invalid", mode=repr(mode))
 
     from quberi_api.domain.ai.models import OrganizationPlatformModelAllowlist
     from quberi_api.domain.identity.models import Organization
 
     org = await session.get(Organization, organization_id)
     if org is None:
-        raise ValueError(f"organization {organization_id} not found")
+        raise CodedValueError("admin.models.org_not_found", id=str(organization_id))
 
     await session.commit()
     async with session.begin():

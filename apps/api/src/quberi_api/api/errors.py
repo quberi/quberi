@@ -19,7 +19,9 @@ import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from quberi_api.api.admin_errors import AdminApiException
 from quberi_api.api.security import SessionInvalidError
+from quberi_api.services.admin_messages import pick_language, render
 from quberi_api.services.ai.resolver import ProviderResolutionError
 from quberi_api.services.auth.account_status import AccountUnavailableError
 from quberi_api.services.errors import (
@@ -44,6 +46,24 @@ logger = logging.getLogger(__name__)
 
 def _payload(detail: str) -> dict[str, str]:
     return {"detail": detail}
+
+
+async def _handle_admin_api_exception(
+    request: Request, exc: AdminApiException
+) -> JSONResponse:
+    # ``detail`` follows Accept-Language (English without it); ``code`` and ``params`` let
+    # the platform admin console show the text from its own dictionary instead.
+    content: dict[str, object] = {
+        "detail": render(
+            exc.code, pick_language(request.headers.get("accept-language")), exc.params
+        ),
+        "code": exc.code,
+    }
+    if exc.params:
+        content["params"] = exc.params
+    return JSONResponse(
+        status_code=exc.status_code, content=content, headers=exc.headers
+    )
 
 
 async def _handle_invalid_input(_: Request, exc: InvalidInputError) -> JSONResponse:
@@ -196,6 +216,7 @@ async def _handle_service_error(_: Request, exc: ServiceError) -> JSONResponse:
 def register_exception_handlers(app: FastAPI) -> None:
     # Order matters: FastAPI matches the *first* handler whose exception type
     # matches ``isinstance``. Register concrete subclasses before the base.
+    app.add_exception_handler(AdminApiException, _handle_admin_api_exception)
     app.add_exception_handler(InvalidInputError, _handle_invalid_input)
     app.add_exception_handler(QuotaExceededError, _handle_quota_exceeded)
     app.add_exception_handler(FreeQuotaExhaustedError, _handle_free_quota_exhausted)

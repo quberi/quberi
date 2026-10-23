@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quberi_api.api.admin_errors import AdminApiException
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import require_platform_admin
 from quberi_api.api.v1.admin.schemas import (
@@ -36,7 +37,6 @@ from quberi_api.api.v1.admin.schemas import (
     OrganizationSummary,
 )
 from quberi_api.domain.identity.models import Organization
-from quberi_api.services.errors import NotFoundError
 from quberi_api.services.onboarding import bootstrap_organization
 
 router = APIRouter(
@@ -123,5 +123,5 @@ async def get_organization(
         await session.execute(select(Organization).where(Organization.id == organization_id))
     ).scalar_one_or_none()
     if row is None:
-        raise NotFoundError(f"organization not found: {organization_id}")
+        raise AdminApiException(404, "admin.orgs.not_found", id=str(organization_id))
     return OrganizationDetail.model_validate(row)

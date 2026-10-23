@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from sqlalchemy import select, update
 
 from quberi_api.api import dependencies
+from quberi_api.api.errors import register_exception_handlers
 from quberi_api.api.security import require_platform_admin
 from quberi_api.api.v1.admin.oauth_clients import admin_oauth_clients_router
 from quberi_api.api.v1.oauth import oauth_router, well_known_router
@@ -435,3 +436,120 @@ async def test_cursor_is_a_built_in_tool_that_may_only_use_its_own_machine(db_se
     assert not cursor.redirect_allowed("https://www.cursor.com/agents/mcp/oauth/callback")
     assert not cursor.redirect_allowed("cursor://anysphere.cursor-mcp/oauth/callback")
     assert not cursor.redirect_allowed("https://claude.ai/api/mcp/auth_callback")
+
+
+# --------------------------------------------------------------------------
+# Message codes (the fixture's app has no handler registered; these tests add it)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def coded_admin(admin):
+    register_exception_handlers(admin._transport.app)
+    return admin
+
+
+def _new_tool(**over):
+    body = {"client_id": "evil", "kind": "registered", "name": "Evil", "redirect_uris": ["http://evil.example.test/cb"]}
+    body.update(over)
+    return body
+
+
+async def test_without_the_handler_the_refusal_is_a_plain_english_detail(admin, db_session):
+    await db_session.commit()
+    bad = await admin.post("/api/v1/admin/oauth-clients", json=_new_tool())
+    assert bad.status_code == 400
+    assert bad.json() == {"detail": "redirect 'http://evil.example.test/cb' must be an https:// address"}
+
+
+async def test_a_refused_rule_names_its_code_and_what_it_was_about(coded_admin, db_session):
+    await db_session.commit()
+    bad = await coded_admin.post("/api/v1/admin/oauth-clients", json=_new_tool())
+    assert bad.status_code == 400
+    body = bad.json()
+    assert body["code"] == "admin.oauth.url_not_https"
+    assert body["params"]["subject"]["code"] == "admin.oauth.subject.redirect"
+    assert body["params"]["subject"]["params"] == {"rule": "'http://evil.example.test/cb'"}
+    assert "https" in body["detail"]
+    assert body["detail"] == "redirect 'http://evil.example.test/cb' must be an https:// address"
+
+
+async def test_the_same_refusal_in_chinese_when_asked_for(coded_admin, db_session):
+    await db_session.commit()
+    bad = await coded_admin.post(
+        "/api/v1/admin/oauth-clients", json=_new_tool(), headers={"Accept-Language": "zh-CN"}
+    )
+    assert bad.json()["code"] == "admin.oauth.url_not_https"
+    assert bad.json()["detail"] == "回调地址 'http://evil.example.test/cb' 必须是 https:// 地址"
+
+
+async def test_a_placeholder_message_carries_the_placeholder_as_a_param(coded_admin, db_session):
+    await db_session.commit()
+    bad = await coded_admin.post(
+        "/api/v1/admin/oauth-clients",
+        json=_new_tool(redirect_uris=["https://evil.example.test/cb/{id}"]),
+    )
+    body = bad.json()
+    assert body["code"] == "admin.oauth.redirect_needs_id"
+    assert body["params"] == {"rule": "'https://evil.example.test/cb/{id}'", "placeholder": "{id}"}
+    assert body["detail"].endswith("uses {id} but the client id does not")
+
+
+async def test_a_bad_client_id_url_is_about_the_client_id_url(coded_admin, db_session):
+    await db_session.commit()
+    bad = await coded_admin.post(
+        "/api/v1/admin/oauth-clients",
+        json=_new_tool(client_id="http://app.example.test/c.json", kind="metadata_url", redirect_uris=["loopback"]),
+    )
+    body = bad.json()
+    assert body["code"] == "admin.oauth.url_not_https"
+    assert body["params"] == {"subject": {"code": "admin.oauth.subject.client_id_url"}}
+    assert body["detail"] == "the client id URL must be an https:// address"
+
+
+async def test_a_duplicate_and_an_unknown_tool_carry_codes(coded_admin, db_session):
+    await db_session.commit()
+    dup = await coded_admin.post(
+        "/api/v1/admin/oauth-clients",
+        json={"client_id": "quberi-mcp", "kind": "registered", "name": "Again", "redirect_uris": ["loopback"]},
+    )
+    assert dup.status_code == 409
+    assert dup.json() == {
+        "detail": "a tool with that client id is already configured",
+        "code": "admin.oauth.client_id_taken",
+    }
+    missing = "00000000-0000-0000-0000-000000000000"
+    for call in (
+        coded_admin.patch(f"/api/v1/admin/oauth-clients/{missing}", json={"name": "x"}),
+        coded_admin.delete(f"/api/v1/admin/oauth-clients/{missing}"),
+    ):
+        resp = await call
+        assert resp.status_code == 404
+        assert resp.json() == {"detail": "no such tool", "code": "admin.oauth.tool_not_found"}
+
+
+async def test_a_validation_failure_is_still_the_framework_list(coded_admin, db_session):
+    await db_session.commit()
+    resp = await coded_admin.post("/api/v1/admin/oauth-clients", json=_new_tool(name=""))
+    assert resp.status_code == 422
+    assert isinstance(resp.json()["detail"], list)
+    assert "code" not in resp.json()
+
+
+async def test_an_unknown_kind_and_a_missing_rule_carry_codes(coded_admin, db_session):
+    await db_session.commit()
+    kind = await coded_admin.post(
+        "/api/v1/admin/oauth-clients", json=_new_tool(kind="nonsense", redirect_uris=["loopback"])
+    )
+    assert kind.json() == {"detail": "unknown kind", "code": "admin.oauth.unknown_kind"}
+    fmt = await coded_admin.post(
+        "/api/v1/admin/oauth-clients", json=_new_tool(client_id="has space", redirect_uris=["loopback"])
+    )
+    assert fmt.json()["code"] == "admin.oauth.registered_id_format"
+    none = await coded_admin.post(
+        "/api/v1/admin/oauth-clients", json=_new_tool(client_id="fine-id", redirect_uris=[" "])
+    )
+    assert none.json() == {
+        "detail": "at least one redirect rule is required",
+        "code": "admin.oauth.redirect_required",
+    }

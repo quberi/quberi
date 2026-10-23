@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quberi_api.api.admin_errors import AdminApiException
 from quberi_api.api.dependencies import get_db_session, get_infrastructure
 from quberi_api.api.security import require_platform_admin_session
 from quberi_api.api.v1.guest_chat import client_ip
@@ -64,6 +65,8 @@ def _settings(request: Request) -> Settings:
 
 
 def _raise(exc: svc.PlatformAdminError) -> None:
+    if exc.code:
+        raise AdminApiException(exc.status, exc.code, **exc.params) from exc
     raise HTTPException(status_code=exc.status, detail=exc.message) from exc
 
 

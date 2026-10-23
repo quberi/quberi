@@ -27,11 +27,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quberi_api.api.admin_errors import AdminApiException, from_coded
 from quberi_api.api.dependencies import get_db_session, get_infrastructure
 from quberi_api.api.security import require_platform_admin
 from quberi_api.domain.oauth.models import OAuthClientConfig
@@ -113,20 +114,18 @@ def _view(row: OAuthClientConfig) -> OAuthClientView:
     )
 
 
-def _bad(detail: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+def _bad(exc: clients.ClientConfigError) -> AdminApiException:
+    return from_coded(exc, status.HTTP_400_BAD_REQUEST)
 
 
-def _clash() -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_409_CONFLICT, detail="a tool with that client id is already configured"
-    )
+def _clash() -> AdminApiException:
+    return AdminApiException(status.HTTP_409_CONFLICT, "admin.oauth.client_id_taken")
 
 
 async def _get(session: AsyncSession, row_id: uuid.UUID) -> OAuthClientConfig:
     row = await session.get(OAuthClientConfig, row_id)
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such tool")
+        raise AdminApiException(status.HTTP_404_NOT_FOUND, "admin.oauth.tool_not_found")
     return row
 
 
@@ -174,7 +173,7 @@ async def create_client(
             payload.client_id, payload.kind, payload.redirect_uris
         )
     except clients.ClientConfigError as exc:
-        raise _bad(str(exc)) from exc
+        raise _bad(exc) from exc
     row = OAuthClientConfig(
         client_id=client_id,
         kind=payload.kind,
@@ -211,7 +210,7 @@ async def update_client(
     try:
         client_id, redirects = clients.validate_client_config(client_id, kind, redirects)
     except clients.ClientConfigError as exc:
-        raise _bad(str(exc)) from exc
+        raise _bad(exc) from exc
     before = (row.client_id, row.kind, list(row.redirect_uris or []), row.enabled, row.allow_mcp)
     row.client_id, row.kind, row.redirect_uris = client_id, kind, redirects
     if payload.name is not None:

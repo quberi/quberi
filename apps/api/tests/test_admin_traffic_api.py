@@ -225,3 +225,50 @@ async def test_a_missing_file_says_so(db_session, tmp_path):
         resp = await c.get("/api/v1/admin/traffic", headers=_admin())
     assert resp.status_code == 200
     assert resp.json()["reason"] == "file_missing"
+
+
+# ---------------------------------------------------------------------------
+# The address note: a code, and text in the language the request asks for
+# ---------------------------------------------------------------------------
+
+NOTE_CODE = "admin.traffic.address_note"
+
+
+async def test_the_note_has_a_code_and_is_english_by_default(client):
+    body = (await client.get("/api/v1/admin/traffic", headers=_admin())).json()
+    assert body["address_note_code"] == NOTE_CODE
+    assert body["address_note"] == traffic_summary.ADDRESS_NOTE
+    # nothing that was there before has gone
+    assert {"enabled", "reason", "window", "files_read", "truncated_by_cap", "totals", "by_site",
+            "by_kind", "by_status_class", "by_country", "mcp", "web_pages", "signals",
+            "top_visitors", "hourly"} <= set(body)
+
+
+async def test_the_note_is_chinese_for_a_chinese_request_and_english_for_anything_else(client):
+    for header, chinese in (("zh-CN", True), ("zh-CN,zh;q=0.9,en;q=0.8", True), ("en-US", False),
+                            ("fr-FR", False), ("???", False)):
+        body = (
+            await client.get("/api/v1/admin/traffic", headers={**_admin(), "Accept-Language": header})
+        ).json()
+        assert body["address_note_code"] == NOTE_CODE
+        assert (body["address_note"] != traffic_summary.ADDRESS_NOTE) is chinese
+        if chinese:
+            assert "脱敏" in body["address_note"]
+
+
+async def test_a_cached_summary_does_not_pin_the_language_of_the_first_caller(client):
+    zh = (await client.get("/api/v1/admin/traffic", headers={**_admin(), "Accept-Language": "zh-CN"})).json()
+    en = (await client.get("/api/v1/admin/traffic", headers=_admin())).json()
+    zh_again = (await client.get("/api/v1/admin/traffic", headers={**_admin(), "Accept-Language": "zh"})).json()
+    assert zh["address_note"] == zh_again["address_note"] != en["address_note"]
+    assert en["address_note"] == traffic_summary.ADDRESS_NOTE
+    # the three answers came from one cached summary
+    assert zh["totals"] == en["totals"] == zh_again["totals"]
+
+
+async def test_the_disabled_state_also_carries_the_note_code(db_session):
+    async with _make_client(db_session, access_log_path="") as c:
+        body = (await c.get("/api/v1/admin/traffic", headers={**_admin(), "Accept-Language": "zh-CN"})).json()
+    assert body["reason"] == "not_configured"
+    assert body["address_note_code"] == NOTE_CODE
+    assert "脱敏" in body["address_note"]

@@ -36,7 +36,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from cryptography.exceptions import InvalidKey
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
@@ -47,6 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.core.config import Settings
 from quberi_api.domain.platform_admin.models import PlatformAdmin
+from quberi_api.services.admin_messages import render
 from quberi_api.services.security import crypto
 
 _log = logging.getLogger(__name__)
@@ -73,10 +74,27 @@ MAX_PASSWORD_LENGTH = 128
 class PlatformAdminError(Exception):
     """A refused request; ``status`` is the HTTP status to answer with."""
 
-    def __init__(self, message: str, *, status: int = 400) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int = 400,
+        code: Optional[str] = None,
+        params: Optional[dict[str, Any]] = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.status = status
+        # Stable message code for the admin console (see ``admin_messages``); ``message``
+        # stays the English text.
+        self.code = code
+        self.params = params or {}
+
+
+def _coded(code: str, status: int = 400, **params: Any) -> PlatformAdminError:
+    return PlatformAdminError(
+        render(code, "en", params), status=status, code=code, params=params
+    )
 
 
 def _b64e(raw: bytes) -> str:
@@ -125,19 +143,15 @@ _DUMMY_HASH = hash_password(secrets.token_urlsafe(24))
 
 def validate_new_password(password: str, *, username: str) -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
-        raise PlatformAdminError(
-            f"password must be at least {MIN_PASSWORD_LENGTH} characters"
-        )
+        raise _coded("admin.auth.password_too_short", min=MIN_PASSWORD_LENGTH)
     if len(password) > MAX_PASSWORD_LENGTH:
-        raise PlatformAdminError(
-            f"password must be at most {MAX_PASSWORD_LENGTH} characters"
-        )
+        raise _coded("admin.auth.password_too_long", max=MAX_PASSWORD_LENGTH)
     if password.strip() != password:
-        raise PlatformAdminError("password must not start or end with spaces")
+        raise _coded("admin.auth.password_edge_spaces")
     if len(set(password)) < 5:
-        raise PlatformAdminError("password is too repetitive")
+        raise _coded("admin.auth.password_repetitive")
     if username and username.lower() in password.lower():
-        raise PlatformAdminError("password must not contain the username")
+        raise _coded("admin.auth.password_has_username")
 
 
 # ---------------------------------------------------------------------------
@@ -234,18 +248,15 @@ async def _redis_incr(redis: Redis, key: str) -> int:
             await redis.expire(key, _WINDOW_SECONDS)
         return count
     except Exception as exc:  # noqa: BLE001 - fail closed
-        raise PlatformAdminError("try again shortly", status=503) from exc
+        raise _coded("admin.auth.try_again_shortly", 503) from exc
 
 
 async def _redis_count(redis: Redis, key: str) -> int:
     try:
         return int(await redis.get(key) or 0)
     except Exception as exc:  # noqa: BLE001 - fail closed
-        raise PlatformAdminError("try again shortly", status=503) from exc
+        raise _coded("admin.auth.try_again_shortly", 503) from exc
 
-
-_TOO_MANY = "too many attempts, try again later"
-_BAD_CREDENTIALS = "invalid username or password"
 
 
 async def authenticate(
@@ -263,9 +274,9 @@ async def authenticate(
     acct_key = f"{_PREFIX}fail:{hashlib.sha256(name.encode()).hexdigest()}"
 
     if await _redis_incr(redis, ip_key) > _MAX_ATTEMPTS_PER_IP:
-        raise PlatformAdminError(_TOO_MANY, status=429)
+        raise _coded("admin.auth.too_many_attempts", 429)
     if await _redis_count(redis, acct_key) >= _MAX_FAILURES_PER_ACCOUNT:
-        raise PlatformAdminError(_TOO_MANY, status=429)
+        raise _coded("admin.auth.too_many_attempts", 429)
 
     admin = None
     if name and len(name) <= 64 and len(password) <= 1024:
@@ -277,7 +288,7 @@ async def authenticate(
     if admin is None or not ok:
         await session.commit()
         await _redis_incr(redis, acct_key)
-        raise PlatformAdminError(_BAD_CREDENTIALS, status=401)
+        raise _coded("admin.auth.bad_credentials", 401)
 
     try:
         await redis.delete(acct_key)
@@ -296,12 +307,12 @@ async def change_password(
     new_password: str,
 ) -> PlatformAdmin:
     if not verify_password(current_password, admin.password_hash):
-        raise PlatformAdminError("current password is incorrect", status=403)
+        raise _coded("admin.auth.current_password_wrong", 403)
     validate_new_password(new_password, username=admin.username)
     if hmac.compare_digest(
         new_password.encode("utf-8"), current_password.encode("utf-8")
     ):
-        raise PlatformAdminError("choose a password different from the current one")
+        raise _coded("admin.auth.password_unchanged")
     admin.password_hash = hash_password(new_password)
     admin.must_change_password = False
     admin.token_version = int(admin.token_version) + 1

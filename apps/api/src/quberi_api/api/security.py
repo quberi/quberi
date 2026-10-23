@@ -31,6 +31,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quberi_api.api.admin_errors import AdminApiException
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.core.config import Settings
 from quberi_api.domain.auth.models import RevokedSession
@@ -94,9 +95,9 @@ def _validate_admin_token(
     if not secrets.compare_digest(
         credentials.credentials, configured.get_secret_value()
     ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="invalid platform admin token",
+        raise AdminApiException(
+            status.HTTP_401_UNAUTHORIZED,
+            "admin.auth.invalid_token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -152,9 +153,9 @@ async def require_platform_admin(
     _validate_admin_token(credentials, settings)
     # Reached only if a static token is configured and matched, which the first
     # check already handled; keep the guard so this can never fall through open.
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="invalid platform admin token",
+    raise AdminApiException(
+        status.HTTP_401_UNAUTHORIZED,
+        "admin.auth.invalid_token",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -168,9 +169,9 @@ async def require_platform_admin_session(
 
     admin = await _admin_from_session_token(credentials, session)
     if admin is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="sign in required",
+        raise AdminApiException(
+            status.HTTP_401_UNAUTHORIZED,
+            "admin.auth.sign_in_required",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return admin

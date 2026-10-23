@@ -27,6 +27,7 @@ from redis.asyncio import Redis
 from sqlalchemy import delete, select
 
 from quberi_api.api import dependencies
+from quberi_api.api.errors import register_exception_handlers
 from quberi_api.api.v1.admin.auth import admin_auth_router
 from quberi_api.api.v1.admin.stats import admin_stats_router
 from quberi_api.core.config import get_settings
@@ -504,3 +505,141 @@ async def test_with_no_static_token_configured_only_sessions_work(client, db_ses
     token, _ = svc.issue_admin_token(admin, ttl_seconds=600)
     ok = await client.get("/api/v1/admin/stats/overview", headers=_bearer(token))
     assert ok.status_code != 401
+
+
+# ---------------------------------------------------------------------------
+# Message codes (the handler is registered only here; the tests above run on an
+# app without it and prove the plain ``{"detail": ...}`` fallback)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def coded(client):
+    register_exception_handlers(client._transport.app)
+    return client
+
+
+async def test_without_the_handler_an_error_is_still_a_plain_detail(client, db_session):
+    await _make_admin(db_session)
+    resp = await _login(client, password="not the password")
+    assert resp.status_code == 401
+    assert resp.json() == {"detail": "invalid username or password"}
+
+
+async def test_a_bad_login_carries_a_code_and_english_text_by_default(coded, db_session):
+    await _make_admin(db_session)
+    resp = await _login(coded, password="not the password")
+    assert resp.status_code == 401
+    assert resp.json() == {
+        "detail": "invalid username or password",
+        "code": "admin.auth.bad_credentials",
+    }
+
+
+async def test_accept_language_chooses_the_text_but_not_the_code(coded, db_session):
+    await _make_admin(db_session)
+    for header, detail in (
+        ("zh-CN", "用户名或密码不正确"),
+        ("zh-CN,zh;q=0.9,en;q=0.8", "用户名或密码不正确"),
+        ("en-US", "invalid username or password"),
+        ("fr-FR", "invalid username or password"),
+        ("???", "invalid username or password"),
+    ):
+        resp = await coded.post(
+            "/api/v1/admin/auth/login",
+            headers={"Accept-Language": header},
+            json={"username": "root", "password": "not the password"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == detail
+        assert resp.json()["code"] == "admin.auth.bad_credentials"
+
+
+async def test_a_locked_account_answers_429_with_a_code(coded, db_session):
+    await _make_admin(db_session)
+    for _ in range(5):
+        await _login(coded, password="bad guess here")
+    locked = await _login(coded)
+    assert locked.status_code == 429
+    assert locked.json()["code"] == "admin.auth.too_many_attempts"
+    assert locked.json()["detail"] == "too many attempts, try again later"
+
+
+async def test_a_redis_outage_answers_503_with_a_code(coded, db_session, redis_client):
+    await _make_admin(db_session)
+
+    class Down:
+        def __getattr__(self, name):
+            async def boom(*a, **k):
+                raise ConnectionError("redis down")
+
+            return boom
+
+    coded._transport.app.dependency_overrides[dependencies.get_infrastructure] = (
+        lambda: SimpleNamespace(redis=Down())
+    )
+    resp = await _login(coded)
+    assert resp.status_code == 503
+    assert resp.json()["code"] == "admin.auth.try_again_shortly"
+
+
+async def test_change_password_errors_carry_codes_and_params(coded, db_session):
+    await _make_admin(db_session)
+    token = (await _login(coded)).json()["token"]
+
+    async def change(current, new, lang=None):
+        headers = _bearer(token)
+        if lang:
+            headers["Accept-Language"] = lang
+        return await coded.post(
+            "/api/v1/admin/auth/change-password",
+            headers=headers,
+            json={"current_password": current, "new_password": new},
+        )
+
+    wrong = await change("not it at all", "a brand new passphrase")
+    assert wrong.status_code == 403
+    assert wrong.json()["code"] == "admin.auth.current_password_wrong"
+    assert wrong.json()["detail"] == "current password is incorrect"
+
+    short = await change(GOOD_PASSWORD, "short")
+    assert short.status_code == 400
+    assert short.json() == {
+        "detail": "password must be at least 12 characters",
+        "code": "admin.auth.password_too_short",
+        "params": {"min": 12},
+    }
+    short_zh = await change(GOOD_PASSWORD, "short", lang="zh-CN")
+    assert short_zh.json()["detail"] == "密码至少需要 12 个字符"
+    assert short_zh.json()["params"] == {"min": 12}
+
+    same = await change(GOOD_PASSWORD, GOOD_PASSWORD)
+    assert same.status_code == 400
+    assert same.json()["code"] == "admin.auth.password_unchanged"
+
+    long_ = await change(GOOD_PASSWORD, "x" * 129)
+    assert long_.json()["code"] == "admin.auth.password_too_long"
+    assert long_.json()["params"] == {"max": 128}
+
+
+async def test_a_wrong_token_and_a_missing_session_carry_codes_and_the_bearer_header(
+    coded, db_session
+):
+    await _make_admin(db_session)
+    wrong = await coded.get("/api/v1/admin/stats/overview", headers=_bearer("wrong"))
+    assert wrong.status_code == 401
+    assert wrong.headers["www-authenticate"] == "Bearer"
+    assert wrong.json() == {
+        "detail": "invalid platform admin token",
+        "code": "admin.auth.invalid_token",
+    }
+    wrong_zh = await coded.get(
+        "/api/v1/admin/stats/overview",
+        headers={**_bearer("wrong"), "Accept-Language": "zh-CN"},
+    )
+    assert wrong_zh.json()["detail"] == "平台管理员令牌无效"
+
+    no_session = await coded.get("/api/v1/admin/auth/me")
+    assert no_session.status_code == 401
+    assert no_session.headers["www-authenticate"] == "Bearer"
+    assert no_session.json() == {"detail": "sign in required", "code": "admin.auth.sign_in_required"}

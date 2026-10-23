@@ -24,6 +24,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from quberi_api.api.security import require_platform_admin
 from quberi_api.services import traffic_summary
+from quberi_api.services.admin_messages import pick_language, render
+
+ADDRESS_NOTE_CODE = "admin.traffic.address_note"
 
 router = APIRouter(
     prefix="/admin",
@@ -125,6 +128,8 @@ class TrafficSummaryView(BaseModel):
     files_read: int
     truncated_by_cap: bool
     address_note: str
+    # Stable code for ``address_note``; the console shows its own text for it.
+    address_note_code: Optional[str] = None
     totals: TrafficTotalsView
     by_site: list[TrafficSiteView]
     by_kind: list[TrafficKindView]
@@ -152,9 +157,17 @@ async def get_traffic(
     hours: int = Query(default=24, ge=1, le=336),
     exclude_ips: str = Query(default="", max_length=1000),
 ) -> dict:
-    return await traffic_summary.get_traffic(
+    result = await traffic_summary.get_traffic(
         request.app.state.settings, hours=hours, exclude_ips_raw=exclude_ips
     )
+    # The summary is cached for a few seconds and shared by every caller, so the note is
+    # localised on a shallow copy and the cached entry is never changed.
+    lang = pick_language(request.headers.get("accept-language"))
+    return {
+        **result,
+        "address_note": render(ADDRESS_NOTE_CODE, lang),
+        "address_note_code": ADDRESS_NOTE_CODE,
+    }
 
 
 admin_traffic_router = router

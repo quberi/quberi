@@ -29,9 +29,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quberi_api.api.admin_errors import AdminApiException, from_coded
 from quberi_api.api.dependencies import get_db_session
 from quberi_api.api.security import require_platform_admin
 from quberi_api.services import ai_providers as ai_providers_service
+from quberi_api.services.admin_messages import CodedValueError
 from quberi_api.services.ai.registry import MODEL_REGISTRY, vendor_display_name
 
 router = APIRouter(
@@ -176,9 +178,8 @@ async def update_platform_binding(
         session, binding_id=binding_id, **kwargs
     )
     if view is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="platform binding not found",
+        raise AdminApiException(
+            status.HTTP_404_NOT_FOUND, "admin.models.binding_not_found"
         )
     return _view(view)
 
@@ -251,6 +252,8 @@ async def set_platform_model_visibility(
             mode=payload.mode,
             model_ids=payload.model_ids,
         )
+    except CodedValueError as exc:
+        raise from_coded(exc, status.HTTP_400_BAD_REQUEST) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
