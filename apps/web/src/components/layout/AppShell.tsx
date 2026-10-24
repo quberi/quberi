@@ -5,6 +5,7 @@ import {
   Clock3,
   Cpu,
   Database,
+  Info,
   Languages,
   LogIn,
   LogOut,
@@ -304,6 +305,19 @@ export function AppShell({
           <span className="live-dot" />
           <strong>{t(`navigation.${currentView}`)}</strong>
         </div>
+        {/* A guest is on a personal trial account, not on an organisation's knowledge base:
+            say so on every page, and where to go to see the real thing. */}
+        {credentials && isGuest && (
+          <div className="guest-trial-note" role="note">
+            <Info size={14} aria-hidden="true" />
+            <span>{t('auth.guestTrialNote')}</span>
+            {onOpenAuth && (
+              <button className="link-button" onClick={onOpenAuth} type="button">
+                {t('auth.guestTrialSignIn')}
+              </button>
+            )}
+          </div>
+        )}
         <div className="topbar-actions">{headerSlot}</div>
       </header>
 

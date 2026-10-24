@@ -877,7 +877,9 @@
     "signOut": "Sign out",
     "sessionInvalid": "Your session has ended. Please sign in again.",
     "guest": "Guest",
-    "guestCta": "Sign in / sign up"
+    "guestCta": "Sign in / sign up",
+    "guestTrialNote": "This is a personal trial account. To try the enterprise knowledge base, please sign in first.",
+    "guestTrialSignIn": "Sign in"
   },
   "common": {
     "close": "Close",

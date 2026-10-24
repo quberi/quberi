@@ -871,7 +871,9 @@
     "signOut": "登出",
     "sessionInvalid": "登录已失效,请重新登录",
     "guest": "游客",
-    "guestCta": "登录 / 注册"
+    "guestCta": "登录 / 注册",
+    "guestTrialNote": "这是个人用户体验账号，如果您想体验企业知识库，请您先登录。",
+    "guestTrialSignIn": "登录"
   },
   "common": {
     "close": "关闭",
