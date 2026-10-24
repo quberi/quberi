@@ -219,7 +219,7 @@ docker build --build-arg PIP_INDEX_URL=https://pypi.org/simple/ \
 
 ### 4.5 曾经用过的临时手段：`.apioverlay/`（已废弃，不要再用）
 
-这个会话早期，因为 api 完整构建总卡住，一度用 `docker cp` 把改好的 `.py` 文件直接热替换进运行中的容器，再拿一个 `.apioverlay/Dockerfile`（`FROM quberi-api:latest` + 若干 `COPY`）把这些热改"烘"进镜像，绕开重新跑 `pip install`。**这个目录现在已经删除**，因为 4.4 的修复让正规的 `docker compose build api` 本身就能在可接受时间内跑完。如果又看到类似的手段被提起或者复现类似文件，直接走正规构建，不要重新捡起这个模式——它会导致运行中的代码和 `apps/api/src` 下的源码逐渐脱节（这个会话里就因为这样，发现过 4 个文件的 overlay 版本落后于正式源码）。
+此前因为 api 完整构建总卡住，一度用 `docker cp` 把改好的 `.py` 文件直接热替换进运行中的容器，再拿一个 `.apioverlay/Dockerfile`（`FROM quberi-api:latest` + 若干 `COPY`）把这些热改"烘"进镜像，绕开重新跑 `pip install`。**这个目录现在已经删除**，因为 4.4 的修复让正规的 `docker compose build api` 本身就能在可接受时间内跑完。如果又看到类似的手段被提起或者复现类似文件，直接走正规构建，不要重新捡起这个模式——它会导致运行中的代码和 `apps/api/src` 下的源码逐渐脱节（这个会话里就因为这样，发现过 4 个文件的 overlay 版本落后于正式源码）。
 
 ---
 

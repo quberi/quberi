@@ -3,7 +3,7 @@
 // Search and AI crawlers mostly do not run JavaScript, so what matters is the
 // HTML the server sends, not what React renders. This fails the build if the
 // built index.html loses its static Chinese intro, or if sitemap/robots break.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const dist = resolve(import.meta.dirname, '..', 'dist')
@@ -69,10 +69,10 @@ if (!/<html lang="zh-CN">/.test(why)) errors.push('why.html is not lang="zh-CN"'
 if (!/<html lang="en">/.test(whyEn)) errors.push('why-en.html is not lang="en"')
 if (visible(why).length < 1500) errors.push('why.html has too little text')
 if (visible(whyEn).length < 1500) errors.push('why-en.html has too little text')
-for (const kw of ['个人', '企业', '政府部门', '需要提前知道的限制']) {
+for (const kw of ['个人', '企业', '政府部门', '部署与使用前可以了解']) {
   if (!why.includes(kw)) errors.push(`why.html is missing "${kw}"`)
 }
-for (const kw of ['Government departments', 'What to know up front']) {
+for (const kw of ['Government departments', 'Good to know before you start']) {
   if (!whyEn.includes(kw)) errors.push(`why-en.html is missing "${kw}"`)
 }
 if (/[\u4e00-\u9fff]/.test(whyEn.replace(/<a class="lang"[^>]*>[^<]*<\/a>/, '').replace(/\(in Chinese\)/, ''))) {
@@ -83,6 +83,38 @@ if (/[\u4e00-\u9fff]/.test(whyEn.replace(/<a class="lang"[^>]*>[^<]*<\/a>/, '').
 // copy where the login should be.
 if (!/<script>[\s\S]*location\.pathname[\s\S]*boot-loading[\s\S]*<\/script>/.test(html)) {
   errors.push('index.html lost the script that hides the introduction away from the home page')
+}
+// Wording. What the public sees (the pages, the README, the app's own text) says what Quberi does and how to
+// run it. It does not describe the product as unfinished or untested: facts such as network access or
+// what to contact Quberi about are stated as facts. Words that cast the product as early or unproven
+// fail the build, so they do not creep back in.
+const UNFINISHED = [
+  /早期/,
+  /不具备/,
+  /没有充分验证|还没有充分验证|未经充分验证/,
+  /没有现成的镜像/,
+  /\bearly[- ]stage\b/i,
+  /\bat an early stage\b/i,
+  /\brough edges\b/i,
+  /no (ready-made|prebuilt) images?/i,
+  /not (yet |been )?(thoroughly )?tested/i,
+  /have not tested/i,
+]
+const publicText = []
+for (const name of readdirSync(dist)) {
+  if (name.endsWith('.html') && !/^(google|baidu_verify)/.test(name)) publicText.push([name, read(name)])
+}
+const localesDir = resolve(import.meta.dirname, '..', 'src', 'i18n', 'locales')
+if (existsSync(localesDir)) {
+  for (const name of readdirSync(localesDir)) publicText.push([`locales/${name}`, readFileSync(resolve(localesDir, name), 'utf8')])
+}
+const readme = resolve(import.meta.dirname, '..', '..', '..', 'README.md')
+if (existsSync(readme)) publicText.push(['README.md', readFileSync(readme, 'utf8')])
+for (const [name, body] of publicText) {
+  for (const re of UNFINISHED) {
+    const hit = body.match(re)
+    if (hit) errors.push(`${name} says "${hit[0]}": state the fact (what it needs, who to contact) instead of calling the product unfinished`)
+  }
 }
 const sitemap = read('sitemap.xml')
 for (const path of ['/why', '/why-en']) {
