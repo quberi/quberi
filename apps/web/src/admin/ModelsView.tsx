@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Cpu, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 
 import {
-  AdminApiError,
   createPlatformBinding,
   deletePlatformBinding,
   listPlatformBindings,
@@ -10,6 +9,9 @@ import {
   type ModelCatalogEntry,
   type PlatformBindingDetail,
 } from './api'
+import { useLang, type I18n } from './i18n'
+import { errorMessage } from './i18n/errors'
+import { T } from './i18n/Rich'
 
 // Known base URLs per vendor — used only to pre-fill the editor (and to
 // show a vendor-accurate placeholder instead of a misleading hard-coded
@@ -21,6 +23,14 @@ const VENDOR_BASE_URLS: Record<string, string> = {
   dashscope: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   moonshot: 'https://api.moonshot.cn/v1',
   zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+}
+
+const STATUSES = ['active', 'paused', 'error', 'archived'] as const
+
+/** A key's status in the active language; a status this console does not know shows as sent. */
+function statusLabel(t: I18n['t'], status: string): string {
+  const known = STATUSES.find((s) => s === status)
+  return known ? t(`models.status.${known}`) : status
 }
 
 /**
@@ -37,9 +47,10 @@ export function ModelsView({
   token: string
   modelCatalog: ModelCatalogEntry[]
 }) {
+  const { t, tCode } = useLang()
   const [bindings, setBindings] = useState<PlatformBindingDetail[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ err: unknown } | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [editing, setEditing] = useState<PlatformBindingDetail | 'new' | null>(null)
   // "Text models" is the page as it always was. "Vision models" shows the same keys, but only
@@ -54,7 +65,7 @@ export function ModelsView({
       const res = await listPlatformBindings(token)
       setBindings(res.items)
     } catch (err) {
-      setError(err instanceof AdminApiError ? err.message : String(err))
+      setError({ err })
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -97,22 +108,20 @@ export function ModelsView({
     <section className="admin-section">
       <div className="admin-section-head">
         <h2>
-          <Cpu size={16} /> Platform-shared models
+          <Cpu size={16} /> {t('models.title')}
         </h2>
         <div className="admin-section-actions">
           <button disabled={refreshing} onClick={() => void load(true)} type="button">
-            <RefreshCw size={14} className={refreshing ? 'spin' : undefined} /> Refresh
+            <RefreshCw size={14} className={refreshing ? 'spin' : undefined} />{' '}
+            {t('common.refresh')}
           </button>
           <button className="admin-button-primary" onClick={() => setEditing('new')} type="button">
-            <Plus size={14} /> Add key
+            <Plus size={14} /> {t('models.addKey')}
           </button>
         </div>
       </div>
       <p className="admin-section-hint">
-        Keys shown here are available to every organisation (subject to each
-        org's own platform-model visibility setting). Several keys may
-        share a vendor — the active one with the lowest priority number is
-        used; pause a key to take it out of rotation without deleting it.
+        {t('models.hint')}
       </p>
 
       <div className="admin-tabs" role="tablist">
@@ -125,21 +134,20 @@ export function ModelsView({
             role="tab"
             type="button"
           >
-            {id === 'text' ? 'Text models' : 'Vision models'}
+            {id === 'text' ? t('models.tab.text') : t('models.tab.vision')}
           </button>
         ))}
       </div>
       {tab === 'vision' && (
         <p className="admin-section-hint">
-          Models that read pictures, on the same keys. An organisation chooses one of them in its
-          own model settings and turns picture descriptions on; nothing is sent until it does. A
-          model a key serves is available for chat and for pictures alike, so removing one here
-          removes it everywhere. Add <code>deepseek-flash</code> to a DeepSeek key to offer it.
+          <T k="models.visionHint" />
         </p>
       )}
-      {loading && <div className="admin-state">Loading…</div>}
+      {loading && <div className="admin-state">{t('common.loading')}</div>}
       {error && !loading && (
-        <div className="admin-state admin-state-error">{error}</div>
+        <div className="admin-state admin-state-error">
+          {errorMessage(error.err, tCode, t)}
+        </div>
       )}
 
       {!loading && !error && (
@@ -151,12 +159,12 @@ export function ModelsView({
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Base URL</th>
-                      <th>Priority</th>
-                      <th>Status</th>
-                      <th>Models</th>
-                      <th aria-label="actions" />
+                      <th>{t('models.col.name')}</th>
+                      <th>{t('models.col.baseUrl')}</th>
+                      <th>{t('models.col.priority')}</th>
+                      <th>{t('models.col.status')}</th>
+                      <th>{t('models.col.models')}</th>
+                      <th aria-label={t('models.col.actions')} />
                     </tr>
                   </thead>
                   <tbody>
@@ -164,24 +172,24 @@ export function ModelsView({
                       <tr key={b.id}>
                         <td>
                           <strong>{b.display_name}</strong>
-                          <small>{b.api_key_present ? 'Key configured' : 'No key'}</small>
+                          <small>{b.api_key_present ? t('models.keyConfigured') : t('models.noKey')}</small>
                         </td>
                         <td>{b.base_url ?? '—'}</td>
                         <td>{b.priority}</td>
                         <td>
                           <span className={`admin-chip admin-chip-status-${b.status}`}>
-                            {b.status}
+                            {statusLabel(t, b.status)}
                           </span>
                         </td>
                         <td>{shownModels(b.models, tab, visionIds)}</td>
                         <td className="admin-table-row-actions">
-                          <button onClick={() => setEditing(b)} type="button" title="Edit">
+                          <button onClick={() => setEditing(b)} type="button" title={t('common.edit')}>
                             <Pencil size={13} />
                           </button>
                           <button
                             onClick={() => void handleDelete(b)}
                             type="button"
-                            title="Delete"
+                            title={t('common.delete')}
                             className="admin-danger"
                           >
                             <Trash2 size={13} />
@@ -195,7 +203,7 @@ export function ModelsView({
             </div>
           ))}
           {bindings.length === 0 && (
-            <div className="admin-state">No platform-default bindings configured.</div>
+            <div className="admin-state">{t('models.empty')}</div>
           )}
         </div>
       )}
@@ -219,14 +227,14 @@ export function ModelsView({
   )
 
   async function handleDelete(b: PlatformBindingDetail) {
-    if (!window.confirm(`Delete platform key "${b.display_name}"? This cannot be undone.`)) {
+    if (!window.confirm(t('models.confirmDelete', { name: b.display_name }))) {
       return
     }
     try {
       await deletePlatformBinding(token, b.id)
       void load(true)
     } catch (err) {
-      window.alert(err instanceof AdminApiError ? err.message : String(err))
+      window.alert(errorMessage(err, tCode, t))
     }
   }
 }
@@ -260,6 +268,7 @@ function BindingEditorDialog({
   onClose: () => void
   onSaved: () => void
 }) {
+  const { t, tCode } = useLang()
   const isNew = binding === null
   const [vendor, setVendor] = useState(binding?.vendor ?? '')
   const [displayName, setDisplayName] = useState(binding?.display_name ?? '')
@@ -274,7 +283,7 @@ function BindingEditorDialog({
     new Set(binding?.models ?? []),
   )
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ err: unknown } | null>(null)
 
   const toggleModel = (modelId: string) => {
     const next = new Set(selectedModels)
@@ -310,7 +319,7 @@ function BindingEditorDialog({
       }
       onSaved()
     } catch (err) {
-      setError(err instanceof AdminApiError ? err.message : String(err))
+      setError({ err })
     } finally {
       setSaving(false)
     }
@@ -325,15 +334,15 @@ function BindingEditorDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="admin-drawer-head">
-          <strong>{isNew ? 'Add platform key' : `Edit ${binding.display_name}`}</strong>
-          <button onClick={onClose} aria-label="Close" type="button">
+          <strong>{isNew ? t('models.editor.addTitle') : t('models.editor.editTitle', { name: binding.display_name })}</strong>
+          <button onClick={onClose} aria-label={t('common.close')} type="button">
             <X size={16} />
           </button>
         </header>
         <form className="admin-drawer-body admin-form" onSubmit={submit}>
           {isNew && (
             <label className="admin-field">
-              <span>Vendor</span>
+              <span>{t('models.editor.vendor')}</span>
               <input
                 value={vendor}
                 onChange={(e) => {
@@ -345,13 +354,13 @@ function BindingEditorDialog({
                   const known = VENDOR_BASE_URLS[v.trim().toLowerCase()]
                   if (known && !baseUrlTouched) setBaseUrl(known)
                 }}
-                placeholder="e.g. deepseek, openai, dashscope"
+                placeholder={t('models.editor.vendorPlaceholder')}
                 required
               />
             </label>
           )}
           <label className="admin-field">
-            <span>Display name</span>
+            <span>{t('models.editor.displayName')}</span>
             <input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -359,7 +368,7 @@ function BindingEditorDialog({
             />
           </label>
           <label className="admin-field">
-            <span>Base URL</span>
+            <span>{t('models.col.baseUrl')}</span>
             <input
               value={baseUrl}
               onChange={(e) => {
@@ -372,7 +381,7 @@ function BindingEditorDialog({
             />
           </label>
           <label className="admin-field">
-            <span>{isNew ? 'API key' : 'API key (leave blank to keep current)'}</span>
+            <span>{isNew ? t('models.editor.apiKey') : t('models.editor.apiKeyKeep')}</span>
             <input
               type="password"
               value={apiKey}
@@ -381,7 +390,7 @@ function BindingEditorDialog({
             />
           </label>
           <label className="admin-field">
-            <span>Priority (lower tried first)</span>
+            <span>{t('models.editor.priority')}</span>
             <input
               type="number"
               value={priority}
@@ -390,22 +399,23 @@ function BindingEditorDialog({
           </label>
           {!isNew && (
             <label className="admin-field">
-              <span>Status</span>
+              <span>{t('models.col.status')}</span>
               <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="active">active</option>
-                <option value="paused">paused</option>
-                <option value="error">error</option>
-                <option value="archived">archived</option>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {t(`models.status.${s}`)}
+                  </option>
+                ))}
               </select>
             </label>
           )}
           <div className="admin-field">
             <span>
               {mode === 'vision'
-                ? 'Models that read pictures this key serves'
+                ? t('models.editor.visionModels')
                 : binding?.provider_kind === 'local_embedding'
-                  ? 'Embedding models this key serves'
-                  : 'Chat models this key serves'}
+                  ? t('models.editor.embeddingModels')
+                  : t('models.editor.chatModels')}
             </span>
             <div className="admin-model-allowlist">
               {(mode === 'vision'
@@ -429,14 +439,18 @@ function BindingEditorDialog({
             </div>
           </div>
 
-          {error && <div className="admin-state admin-state-error">{error}</div>}
+          {error && (
+            <div className="admin-state admin-state-error">
+              {errorMessage(error.err, tCode, t)}
+            </div>
+          )}
 
           <div className="admin-form-actions">
             <button type="button" onClick={onClose} disabled={saving}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button type="submit" className="admin-button-primary" disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('common.saving') : t('common.save')}
             </button>
           </div>
         </form>

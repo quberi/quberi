@@ -7,6 +7,9 @@ import {
   type TrafficKind,
   type TrafficSummary,
 } from './api'
+import { useLang, type I18n, type MessageKey } from './i18n'
+import { errorMessage } from './i18n/errors'
+import { T } from './i18n/Rich'
 
 const EXCLUDE_KEY = 'quberi.admin.traffic.exclude'
 
@@ -17,41 +20,34 @@ const WINDOWS: { hours: number; label: string }[] = [
   { hours: 336, label: '14d' },
 ]
 
-const KIND_INFO: Record<TrafficKind, { label: string; meaning: string }> = {
-  direct_or_unknown_host: {
-    label: 'Direct or unknown host',
-    meaning: 'Addressed to a bare IP or to a host that is not one of your sites. Scanners.',
-  },
-  search_engine: {
-    label: 'Search engines',
-    meaning: 'Search engines and well-known crawlers that name themselves.',
-  },
-  mcp_directory_or_probe: {
-    label: 'MCP directories and probes',
-    meaning: 'Directories, health checks and trust or ranking services.',
-  },
-  scanner_or_tool: {
-    label: 'Scanners and tools',
-    meaning: 'Command-line tools, HTTP libraries, security scanners, or no User-Agent.',
-  },
-  mcp_client: {
-    label: 'MCP clients',
-    meaning: 'Tools connecting to the MCP endpoint (Codex, Claude, Cursor, ...).',
-  },
-  browser_like: {
-    label: 'Browser-like',
-    meaning: 'A browser User-Agent on one of your sites. It can still be a crawler.',
-  },
-  other: { label: 'Other', meaning: 'Anything the rules above did not match.' },
+const KINDS = [
+  'direct_or_unknown_host',
+  'search_engine',
+  'mcp_directory_or_probe',
+  'scanner_or_tool',
+  'mcp_client',
+  'browser_like',
+  'other',
+] as const satisfies readonly TrafficKind[]
+
+/** Display name of a kind in the active language; a kind this console does not know shows as sent. */
+function kindLabel(t: I18n['t'], kind: string): string {
+  const known = KINDS.find((k) => k === kind)
+  return known ? t(`traffic.kind.${known}.label`) : kind
 }
 
-const REASON_TEXT: Record<TrafficDisabledReason, string> = {
-  not_configured: 'No access log is configured, so there is nothing to summarise yet.',
-  file_missing:
-    'An access log path is set, but there is no file there. The proxy’s log volume is probably not mounted into the API container.',
-  unreadable:
-    'The access log exists, but the API container is not allowed to read it. Check the file’s permissions.',
+/** Names the site/country/status/address values the API sends in place of a real value. */
+function sentinel(t: I18n['t'], value: string, map: Record<string, MessageKey>): string {
+  const key = Object.prototype.hasOwnProperty.call(map, value) ? map[value] : undefined
+  return key ? t(key) : value
 }
+
+const SITE_SENTINELS: Record<string, MessageKey> = {
+  '(unknown host)': 'traffic.site.unknown',
+  '(other host)': 'traffic.site.other',
+}
+const UNKNOWN_SENTINELS: Record<string, MessageKey> = { unknown: 'traffic.unknown' }
+const STATUS_SENTINELS: Record<string, MessageKey> = { other: 'traffic.statusOther' }
 
 function readStoredExclude(): string {
   try {
@@ -113,13 +109,14 @@ const percent = (part: number, whole: number) =>
  * path, host) is shown as plain text and nothing here builds HTML from it.
  */
 export function TrafficView({ token, onSignOut }: { token: string; onSignOut: () => void }) {
+  const { t, tCode } = useLang()
   const [hours, setHours] = useState(24)
   const [excludeInput, setExcludeInput] = useState(readStoredExclude)
   const [excludeApplied, setExcludeApplied] = useState(readStoredExclude)
   const [data, setData] = useState<TrafficSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ err: unknown } | null>(null)
   // A slow older answer must never replace a newer one.
   const latest = useRef(0)
 
@@ -139,7 +136,7 @@ export function TrafficView({ token, onSignOut }: { token: string; onSignOut: ()
           onSignOut()
           return
         }
-        setError(err instanceof Error ? err.message : String(err))
+        setError({ err })
       } finally {
         if (mine === latest.current) {
           setLoading(false)
@@ -165,21 +162,21 @@ export function TrafficView({ token, onSignOut }: { token: string; onSignOut: ()
     <section className="admin-section">
       <div className="admin-section-head">
         <h2>
-          <Activity size={16} /> Traffic
+          <Activity size={16} /> {t('nav.traffic')}
         </h2>
         <div className="admin-section-actions">
           <button disabled={refreshing} onClick={() => void load(true)} type="button">
-            <RefreshCw size={14} className={refreshing ? 'spin' : undefined} /> Refresh
+            <RefreshCw size={14} className={refreshing ? 'spin' : undefined} />{' '}
+            {t('common.refresh')}
           </button>
         </div>
       </div>
       <p className="admin-section-hint">
-        Who is visiting, from the reverse proxy’s access log: real people against crawlers,
-        scanners, MCP directories and MCP clients.
+        {t('traffic.hint')}
       </p>
 
       <div className="admin-traffic-controls">
-        <div className="admin-traffic-window" role="group" aria-label="Time window">
+        <div className="admin-traffic-window" role="group" aria-label={t('traffic.window.aria')}>
           {WINDOWS.map((w) => (
             <button
               aria-pressed={hours === w.hours}
@@ -194,7 +191,7 @@ export function TrafficView({ token, onSignOut }: { token: string; onSignOut: ()
         </div>
         <form className="admin-traffic-exclude" onSubmit={applyExclude}>
           <label className="admin-field">
-            Exclude my addresses
+            {t('traffic.exclude.label')}
             <input
               onChange={(e) => setExcludeInput(e.target.value)}
               placeholder="203.0.113.9, 2001:db8::1"
@@ -203,18 +200,17 @@ export function TrafficView({ token, onSignOut }: { token: string; onSignOut: ()
               value={excludeInput}
             />
           </label>
-          <button type="submit">Apply</button>
+          <button type="submit">{t('traffic.exclude.apply')}</button>
         </form>
         <small className="admin-traffic-exclude-hint">
-          Full addresses, comma-separated. Their requests are left out of every count. Saved in this
-          browser only.
+          {t('traffic.exclude.hint')}
         </small>
       </div>
 
-      {loading && <div className="admin-state">Loading traffic…</div>}
+      {loading && <div className="admin-state">{t('traffic.loading')}</div>}
       {error && !loading && (
         <div className="admin-state admin-state-error">
-          <AlertTriangle size={16} /> {error}
+          <AlertTriangle size={16} /> {errorMessage(error.err, tCode, t)}
         </div>
       )}
       {!loading && !error && data && !data.enabled && <DisabledPanel reason={data.reason} />}
@@ -224,93 +220,101 @@ export function TrafficView({ token, onSignOut }: { token: string; onSignOut: ()
 }
 
 function DisabledPanel({ reason }: { reason: TrafficDisabledReason | null }) {
+  const { t } = useLang()
   return (
     <div className="admin-traffic-disabled" role="status">
-      <h3>Traffic is not set up</h3>
-      <p>{reason ? REASON_TEXT[reason] : REASON_TEXT.not_configured}</p>
-      <p>To turn it on:</p>
+      <h3>{t('traffic.disabled.title')}</h3>
+      <p>{t(`traffic.reason.${reason ?? 'not_configured'}`)}</p>
+      <p>{t('traffic.disabled.turnOn')}</p>
       <ol>
         <li>
-          Mount the proxy’s log volume into the API container, read-only:{' '}
-          <code>caddy-data:/caddy-data:ro</code>.
+          <T k="traffic.disabled.step1" />
         </li>
         <li>
-          Set <code>QUBERI_ACCESS_LOG_PATH</code> (for example <code>/caddy-data/access.log</code>)
-          and <code>QUBERI_TRAFFIC_SITE_HOSTS</code> (the host names you serve, comma-separated).
+          <T k="traffic.disabled.step2" />
         </li>
-        <li>Recreate the API container so it picks up the mount and the settings.</li>
+        <li>{t('traffic.disabled.step3')}</li>
       </ol>
       <p>
-        <code>deploy/compose.prod.yaml</code> already does the first two for the production stack.
-        See “Access log and the admin Traffic page” in <code>deploy/README.md</code>.
+        <T k="traffic.disabled.footer" />
       </p>
     </div>
   )
 }
 
 function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number }) {
+  const { t, tCode, formatNumber } = useLang()
   const total = data.totals.requests
   const bars = bucketSeries(data.hourly, hours)
   const peak = Math.max(1, ...bars.map((b) => b.requests))
   const labelEvery = Math.max(1, Math.ceil(bars.length / 12))
-  const unit = hours <= 48 ? 'hour' : 'day'
+  const unit: 'hour' | 'day' = hours <= 48 ? 'hour' : 'day'
+  const addressNote =
+    (data.address_note_code ? tCode(data.address_note_code) : null) ?? data.address_note
 
   return (
     <>
       <p className="admin-traffic-window-line">
-        {formatTime(data.window.from)} to {formatTime(data.window.to)} UTC · {data.files_read}{' '}
-        {data.files_read === 1 ? 'log file' : 'log files'} read
+        {t('traffic.windowLine', {
+          from: formatTime(data.window.from),
+          to: formatTime(data.window.to),
+          n: data.files_read,
+        })}
       </p>
       {data.truncated_by_cap && (
         <div className="admin-traffic-note admin-traffic-note-warn" role="status">
-          The log is larger than the read limit, so only its newest part is included. Counts for
-          this window are partial.
+          {t('traffic.truncated')}
         </div>
       )}
 
       <div className="admin-kpi-grid admin-traffic-kpis-3">
-        <Kpi label="Requests" value={total.toLocaleString()} />
+        <Kpi label={t('traffic.kpi.requests')} value={formatNumber(total)} />
         <Kpi
-          label="Distinct visitors"
-          value={data.totals.distinct_visitors.toLocaleString()}
-          sub="by address"
+          label={t('traffic.kpi.visitors')}
+          value={formatNumber(data.totals.distinct_visitors)}
+          sub={t('traffic.sub.byAddress')}
         />
         <Kpi
-          label="Automated share"
+          label={t('traffic.kpi.automatedShare')}
           value={`${(data.totals.automated_share * 100).toFixed(1)}%`}
-          sub={`${data.totals.automated_requests.toLocaleString()} automated requests`}
+          sub={t('traffic.sub.automatedRequests', {
+            n: formatNumber(data.totals.automated_requests),
+          })}
         />
       </div>
-      <h3 className="admin-traffic-subhead">Signs of real use (bots left out)</h3>
+      <h3 className="admin-traffic-subhead">{t('traffic.signals.title')}</h3>
       <div className="admin-kpi-grid admin-traffic-kpis-4">
         <Kpi
-          label="Guest questions"
-          value={data.signals.guest_questions.toLocaleString()}
-          sub="successful, not from bots"
+          label={t('traffic.kpi.guestQuestions')}
+          value={formatNumber(data.signals.guest_questions)}
+          sub={t('traffic.sub.notBots')}
         />
         <Kpi
-          label="Sign-in requests"
-          value={data.signals.sign_in_requests.toLocaleString()}
-          sub="email or phone code"
+          label={t('traffic.kpi.signIn')}
+          value={formatNumber(data.signals.sign_in_requests)}
+          sub={t('traffic.sub.signIn')}
         />
         <Kpi
-          label="OAuth requests"
-          value={data.signals.oauth_requests.toLocaleString()}
-          sub="authorize or token"
+          label={t('traffic.kpi.oauth')}
+          value={formatNumber(data.signals.oauth_requests)}
+          sub={t('traffic.sub.oauth')}
         />
         <Kpi
-          label="MCP calls accepted"
-          value={data.signals.mcp_successful_posts.toLocaleString()}
-          sub="successful, not from bots"
+          label={t('traffic.kpi.mcpCalls')}
+          value={formatNumber(data.signals.mcp_successful_posts)}
+          sub={t('traffic.sub.notBots')}
         />
       </div>
 
       <div className="admin-trend">
-        <h3>Requests per {unit} (UTC)</h3>
+        <h3>{t(`traffic.chart.title.${unit}`)}</h3>
         <div
           className="admin-trend-chart admin-traffic-chart"
           role="img"
-          aria-label={`Requests per ${unit}: ${total} in total, ${data.totals.automated_requests} automated`}
+          aria-label={t(`traffic.chart.aria.${unit}`, {
+            total,
+            automated: data.totals.automated_requests,
+          })}
         >
           {bars.map((b, i) => {
             const height = b.requests > 0 ? Math.max(2, Math.round((b.requests / peak) * 64)) : 0
@@ -319,7 +323,11 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
               <div
                 className="admin-trend-bar"
                 key={b.key}
-                title={`${b.key}: ${b.requests} requests, ${b.automated} automated`}
+                title={t('traffic.chart.bar', {
+                  key: b.key,
+                  requests: b.requests,
+                  automated: b.automated,
+                })}
               >
                 <div className="admin-traffic-bar-stack" style={{ height: `${height}px` }}>
                   <div className="admin-traffic-bar-rest" style={{ flex: height - autoHeight }} />
@@ -332,25 +340,25 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
         </div>
         <div className="admin-traffic-legend">
           <span>
-            <i className="admin-traffic-swatch admin-traffic-swatch-auto" /> Automated
+            <i className="admin-traffic-swatch admin-traffic-swatch-auto" /> {t('traffic.legend.automated')}
           </span>
           <span>
-            <i className="admin-traffic-swatch admin-traffic-swatch-rest" /> Everything else
+            <i className="admin-traffic-swatch admin-traffic-swatch-rest" /> {t('traffic.legend.rest')}
           </span>
         </div>
       </div>
 
       <div className="admin-traffic-grid">
-        <Block title="By kind of visitor">
-          <table className="admin-table" aria-label="Requests by kind of visitor">
+        <Block title={t('traffic.block.byKind')}>
+          <table className="admin-table" aria-label={t('traffic.aria.byKind')}>
             <thead>
               <tr>
-                <th scope="col">Kind</th>
+                <th scope="col">{t('traffic.col.kind')}</th>
                 <th scope="col" className="admin-traffic-num">
-                  Requests
+                  {t('traffic.col.requests')}
                 </th>
                 <th scope="col" className="admin-traffic-num">
-                  Share
+                  {t('traffic.col.share')}
                 </th>
               </tr>
             </thead>
@@ -358,10 +366,14 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
               {data.by_kind.map((k) => (
                 <tr key={k.kind}>
                   <td>
-                    <strong>{KIND_INFO[k.kind]?.label ?? k.kind}</strong>
-                    <small>{KIND_INFO[k.kind]?.meaning}</small>
+                    <strong>{kindLabel(t, k.kind)}</strong>
+                    <small>
+                      {KINDS.find((known) => known === k.kind)
+                        ? t(`traffic.kind.${k.kind}.meaning`)
+                        : null}
+                    </small>
                   </td>
-                  <td className="admin-traffic-num">{k.requests.toLocaleString()}</td>
+                  <td className="admin-traffic-num">{formatNumber(k.requests)}</td>
                   <td className="admin-traffic-num">{percent(k.requests, total)}</td>
                 </tr>
               ))}
@@ -369,39 +381,45 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
           </table>
         </Block>
 
-        <Block title="By site">
+        <Block title={t('traffic.block.bySite')}>
           <SimpleTable
-            label="Requests by site"
-            head="Site"
-            rows={data.by_site.map((s) => [s.host, s.requests])}
+            label={t('traffic.aria.bySite')}
+            head={t('traffic.col.site')}
+            rows={data.by_site.map((s) => [sentinel(t, s.host, SITE_SENTINELS), s.requests])}
             code
           />
         </Block>
 
-        <Block title="By country (top 10)">
+        <Block title={t('traffic.block.byCountry')}>
           <SimpleTable
-            label="Requests by country"
-            head="Country"
-            rows={data.by_country.map((c) => [c.country, c.requests])}
+            label={t('traffic.aria.byCountry')}
+            head={t('traffic.col.country')}
+            rows={data.by_country.map((c) => [
+              sentinel(t, c.country, UNKNOWN_SENTINELS),
+              c.requests,
+            ])}
           />
         </Block>
 
-        <Block title="By response">
+        <Block title={t('traffic.block.byResponse')}>
           <SimpleTable
-            label="Requests by response class"
-            head="Status"
-            rows={data.by_status_class.map((s) => [s.status_class, s.requests])}
+            label={t('traffic.aria.byResponse')}
+            head={t('traffic.col.status')}
+            rows={data.by_status_class.map((s) => [
+              sentinel(t, s.status_class, STATUS_SENTINELS),
+              s.requests,
+            ])}
           />
         </Block>
 
-        <Block title="MCP: who is calling">
-          <table className="admin-table" aria-label="MCP user agents">
+        <Block title={t('traffic.block.mcpWho')}>
+          <table className="admin-table" aria-label={t('traffic.aria.mcpAgents')}>
             <thead>
               <tr>
-                <th scope="col">User-Agent</th>
-                <th scope="col">Kind</th>
+                <th scope="col">{t('traffic.col.userAgent')}</th>
+                <th scope="col">{t('traffic.col.kind')}</th>
                 <th scope="col" className="admin-traffic-num">
-                  Requests
+                  {t('traffic.col.requests')}
                 </th>
               </tr>
             </thead>
@@ -409,10 +427,10 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
               {data.mcp.top_user_agents.map((u, i) => (
                 <tr key={`${i}-${u.user_agent}`}>
                   <td>
-                    <code className="admin-code-break">{u.user_agent || '(none)'}</code>
+                    <code className="admin-code-break">{u.user_agent || t('common.none')}</code>
                   </td>
-                  <td>{KIND_INFO[u.kind]?.label ?? u.kind}</td>
-                  <td className="admin-traffic-num">{u.requests.toLocaleString()}</td>
+                  <td>{kindLabel(t, u.kind)}</td>
+                  <td className="admin-traffic-num">{formatNumber(u.requests)}</td>
                 </tr>
               ))}
               {data.mcp.top_user_agents.length === 0 && <EmptyRow cols={3} />}
@@ -420,17 +438,17 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
           </table>
         </Block>
 
-        <Block title="MCP: what they ask for">
-          <table className="admin-table" aria-label="MCP paths">
+        <Block title={t('traffic.block.mcpWhat')}>
+          <table className="admin-table" aria-label={t('traffic.aria.mcpPaths')}>
             <thead>
               <tr>
-                <th scope="col">Method</th>
-                <th scope="col">Path</th>
+                <th scope="col">{t('traffic.col.method')}</th>
+                <th scope="col">{t('traffic.col.path')}</th>
                 <th scope="col" className="admin-traffic-num">
-                  Status
+                  {t('traffic.col.status')}
                 </th>
                 <th scope="col" className="admin-traffic-num">
-                  Requests
+                  {t('traffic.col.requests')}
                 </th>
               </tr>
             </thead>
@@ -442,7 +460,7 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
                     <code className="admin-code-break">{p.path}</code>
                   </td>
                   <td className="admin-traffic-num">{p.status}</td>
-                  <td className="admin-traffic-num">{p.requests.toLocaleString()}</td>
+                  <td className="admin-traffic-num">{formatNumber(p.requests)}</td>
                 </tr>
               ))}
               {data.mcp.top_paths.length === 0 && <EmptyRow cols={4} />}
@@ -450,17 +468,17 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
           </table>
         </Block>
 
-        <Block title="Top visitors" wide>
-          <table className="admin-table" aria-label="Top visitors">
+        <Block title={t('traffic.block.topVisitors')} wide>
+          <table className="admin-table" aria-label={t('traffic.block.topVisitors')}>
             <thead>
               <tr>
-                <th scope="col">Address</th>
-                <th scope="col">Source</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Country</th>
-                <th scope="col">User-Agent</th>
+                <th scope="col">{t('traffic.col.address')}</th>
+                <th scope="col">{t('traffic.col.source')}</th>
+                <th scope="col">{t('traffic.col.kind')}</th>
+                <th scope="col">{t('traffic.col.country')}</th>
+                <th scope="col">{t('traffic.col.userAgent')}</th>
                 <th scope="col" className="admin-traffic-num">
-                  Requests
+                  {t('traffic.col.requests')}
                 </th>
               </tr>
             </thead>
@@ -468,26 +486,28 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
               {data.top_visitors.map((v, i) => (
                 <tr key={`${i}-${v.address}`}>
                   <td>
-                    <code>{v.address}</code>
+                    <code>{sentinel(t, v.address, UNKNOWN_SENTINELS)}</code>
                   </td>
                   <td>
                     <span
                       className="admin-chip"
                       title={
                         v.address_source === 'header'
-                          ? 'Taken from a request header set by the CDN'
-                          : 'The connecting address'
+                          ? t('traffic.sourceTitle.header')
+                          : t('traffic.sourceTitle.remote_ip')
                       }
                     >
-                      {v.address_source}
+                      {v.address_source === 'header' || v.address_source === 'remote_ip'
+                        ? t(`traffic.source.${v.address_source}`)
+                        : v.address_source}
                     </span>
                   </td>
-                  <td>{KIND_INFO[v.kind]?.label ?? v.kind}</td>
-                  <td>{v.country}</td>
+                  <td>{kindLabel(t, v.kind)}</td>
+                  <td>{sentinel(t, v.country, UNKNOWN_SENTINELS)}</td>
                   <td>
-                    <code className="admin-code-break">{v.user_agent || '(none)'}</code>
+                    <code className="admin-code-break">{v.user_agent || t('common.none')}</code>
                   </td>
-                  <td className="admin-traffic-num">{v.requests.toLocaleString()}</td>
+                  <td className="admin-traffic-num">{formatNumber(v.requests)}</td>
                 </tr>
               ))}
               {data.top_visitors.length === 0 && <EmptyRow cols={6} />}
@@ -495,19 +515,19 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
           </table>
         </Block>
 
-        <Block title="Pages on the web site (browser-like and search engines)" wide>
-          <table className="admin-table" aria-label="Web pages">
+        <Block title={t('traffic.block.webPages')} wide>
+          <table className="admin-table" aria-label={t('traffic.aria.webPages')}>
             <thead>
               <tr>
-                <th scope="col">Path</th>
+                <th scope="col">{t('traffic.col.path')}</th>
                 <th scope="col" className="admin-traffic-num">
-                  Browser-like
+                  {t('traffic.kind.browser_like.label')}
                 </th>
                 <th scope="col" className="admin-traffic-num">
-                  Search engines
+                  {t('traffic.kind.search_engine.label')}
                 </th>
                 <th scope="col" className="admin-traffic-num">
-                  Total
+                  {t('traffic.col.total')}
                 </th>
               </tr>
             </thead>
@@ -517,9 +537,9 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
                   <td>
                     <code className="admin-code-break">{p.path}</code>
                   </td>
-                  <td className="admin-traffic-num">{p.browser_like.toLocaleString()}</td>
-                  <td className="admin-traffic-num">{p.search_engine.toLocaleString()}</td>
-                  <td className="admin-traffic-num">{p.total.toLocaleString()}</td>
+                  <td className="admin-traffic-num">{formatNumber(p.browser_like)}</td>
+                  <td className="admin-traffic-num">{formatNumber(p.search_engine)}</td>
+                  <td className="admin-traffic-num">{formatNumber(p.total)}</td>
                 </tr>
               ))}
               {data.web_pages.length === 0 && <EmptyRow cols={4} />}
@@ -529,8 +549,7 @@ function TrafficReport({ data, hours }: { data: TrafficSummary; hours: number })
       </div>
 
       <div className="admin-traffic-note">
-        Kinds are inferred from the User-Agent and the request pattern; a browser-like visit can
-        still be a crawler. {data.address_note}
+        {t('traffic.footer')} {addressNote}
       </div>
     </>
   )
@@ -564,10 +583,11 @@ function Block({
 }
 
 function EmptyRow({ cols }: { cols: number }) {
+  const { t } = useLang()
   return (
     <tr>
       <td className="admin-table-empty" colSpan={cols}>
-        No requests in this window.
+        {t('traffic.empty')}
       </td>
     </tr>
   )
@@ -584,13 +604,14 @@ function SimpleTable({
   rows: [string, number][]
   code?: boolean
 }) {
+  const { t, formatNumber } = useLang()
   return (
     <table className="admin-table" aria-label={label}>
       <thead>
         <tr>
           <th scope="col">{head}</th>
           <th scope="col" className="admin-traffic-num">
-            Requests
+            {t('traffic.col.requests')}
           </th>
         </tr>
       </thead>
@@ -598,7 +619,7 @@ function SimpleTable({
         {rows.map(([name, count], i) => (
           <tr key={`${i}-${name}`}>
             <td>{code ? <code className="admin-code-break">{name}</code> : name}</td>
-            <td className="admin-traffic-num">{count.toLocaleString()}</td>
+            <td className="admin-traffic-num">{formatNumber(count)}</td>
           </tr>
         ))}
         {rows.length === 0 && <EmptyRow cols={2} />}

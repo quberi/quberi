@@ -380,6 +380,8 @@ code {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  /* A two-character Chinese label must not break across lines in a narrow column. */
+  white-space: nowrap;
 }
 
 .admin-table-empty {

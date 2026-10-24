@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { Users, X } from 'lucide-react'
 
 import {
-  AdminApiError,
   getOrgPlatformModelVisibility,
   setOrgPlatformModelVisibility,
   type ModelCatalogEntry,
   type OrganizationStatsRow,
   type PlatformModelVisibility,
 } from './api'
+import { useLang } from './i18n'
+import { errorMessage } from './i18n/errors'
 
 /**
  * Organisations table + a detail panel for the platform-admin-only
@@ -26,26 +27,27 @@ export function OrganizationsView({
   token: string
   modelCatalog: ModelCatalogEntry[]
 }) {
+  const { t, formatDateTime } = useLang()
   const [selected, setSelected] = useState<OrganizationStatsRow | null>(null)
 
   return (
     <section className="admin-section">
       <h2>
-        <Users size={16} /> Organizations ({orgs.length})
+        <Users size={16} /> {t('orgs.title', { n: orgs.length })}
       </h2>
       <div className="admin-table-wrap">
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Tier</th>
-              <th>Owner</th>
-              <th>Members</th>
-              <th>Spaces</th>
-              <th>Docs</th>
-              <th>Conversations</th>
-              <th>Messages</th>
-              <th>Created</th>
+              <th>{t('orgs.col.name')}</th>
+              <th>{t('orgs.col.tier')}</th>
+              <th>{t('orgs.col.owner')}</th>
+              <th>{t('orgs.col.members')}</th>
+              <th>{t('orgs.col.spaces')}</th>
+              <th>{t('orgs.col.docs')}</th>
+              <th>{t('orgs.col.conversations')}</th>
+              <th>{t('orgs.col.messages')}</th>
+              <th>{t('orgs.col.created')}</th>
             </tr>
           </thead>
           <tbody>
@@ -58,22 +60,22 @@ export function OrganizationsView({
                 <td>
                   <strong>{o.name}</strong>
                   <small>{o.slug}</small>
-                  {o.is_demo && <span className="admin-chip">demo</span>}
+                  {o.is_demo && <span className="admin-chip">{t('orgs.demo')}</span>}
                 </td>
-                <td>{o.tier}</td>
+                <td>{o.tier === 'personal' || o.tier === 'team' ? t(`orgs.tier.${o.tier}`) : o.tier}</td>
                 <td>{o.owner_email ?? '—'}</td>
                 <td>{o.member_count}</td>
                 <td>{o.space_count}</td>
                 <td>{o.document_count}</td>
                 <td>{o.conversation_count}</td>
                 <td>{o.message_count}</td>
-                <td>{new Date(o.created_at).toLocaleString()}</td>
+                <td>{formatDateTime(o.created_at)}</td>
               </tr>
             ))}
             {orgs.length === 0 && (
               <tr>
                 <td colSpan={9} className="admin-table-empty">
-                  No organizations yet.
+                  {t('orgs.empty')}
                 </td>
               </tr>
             )}
@@ -106,13 +108,14 @@ function OrgDetailDrawer({
   modelCatalog: ModelCatalogEntry[]
   onClose: () => void
 }) {
+  const { t, tCode } = useLang()
   const [state, setState] = useState<
     | { kind: 'loading' }
-    | { kind: 'error'; message: string }
+    | { kind: 'error'; err: unknown }
     | { kind: 'ready'; mode: VisibilityMode; modelIds: Set<string> }
   >({ kind: 'loading' })
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<{ err: unknown } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -123,10 +126,7 @@ function OrgDetailDrawer({
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setState({
-          kind: 'error',
-          message: err instanceof AdminApiError ? err.message : String(err),
-        })
+        setState({ kind: 'error', err })
       })
     return () => {
       cancelled = true
@@ -145,7 +145,7 @@ function OrgDetailDrawer({
       })
       setState({ kind: 'ready', mode, modelIds })
     } catch (err) {
-      setSaveError(err instanceof AdminApiError ? err.message : String(err))
+      setSaveError({ err })
     } finally {
       setSaving(false)
     }
@@ -177,23 +177,20 @@ function OrgDetailDrawer({
             <strong>{org.name}</strong>
             <small>{org.slug}</small>
           </div>
-          <button onClick={onClose} aria-label="Close" type="button">
+          <button onClick={onClose} aria-label={t('common.close')} type="button">
             <X size={16} />
           </button>
         </header>
 
         <div className="admin-drawer-body">
-          <h3>Platform model visibility</h3>
+          <h3>{t('orgs.drawer.title')}</h3>
           <p className="admin-section-hint">
-            Controls whether this org's members see Quberi's platform-shared
-            chat models (DeepSeek, OpenAI, ...) in their own model picker.
-            Never affects the org's own BYOK models — those stay visible
-            regardless of this setting.
+            {t('orgs.drawer.hint')}
           </p>
 
-          {state.kind === 'loading' && <div className="admin-state">Loading…</div>}
+          {state.kind === 'loading' && <div className="admin-state">{t('common.loading')}</div>}
           {state.kind === 'error' && (
-            <div className="admin-state admin-state-error">{state.message}</div>
+            <div className="admin-state admin-state-error">{errorMessage(state.err, tCode, t)}</div>
           )}
 
           {state.kind === 'ready' && (
@@ -208,8 +205,8 @@ function OrgDetailDrawer({
                     onChange={() => setMode('all')}
                   />
                   <span>
-                    <strong>All</strong>
-                    <small>Every platform model is visible (default).</small>
+                    <strong>{t('orgs.mode.all')}</strong>
+                    <small>{t('orgs.mode.allHint')}</small>
                   </span>
                 </label>
                 <label className="admin-radio-option">
@@ -221,8 +218,8 @@ function OrgDetailDrawer({
                     onChange={() => setMode('none')}
                   />
                   <span>
-                    <strong>None</strong>
-                    <small>Hide every platform model — only this org's own BYOK models show.</small>
+                    <strong>{t('orgs.mode.none')}</strong>
+                    <small>{t('orgs.mode.noneHint')}</small>
                   </span>
                 </label>
                 <label className="admin-radio-option">
@@ -234,8 +231,8 @@ function OrgDetailDrawer({
                     onChange={() => setMode('allowlist')}
                   />
                   <span>
-                    <strong>Allowlist</strong>
-                    <small>Only the models checked below are visible.</small>
+                    <strong>{t('orgs.mode.allowlist')}</strong>
+                    <small>{t('orgs.mode.allowlistHint')}</small>
                   </span>
                 </label>
               </div>
@@ -257,12 +254,12 @@ function OrgDetailDrawer({
                     </label>
                   ))}
                   {chatModels.length === 0 && (
-                    <div className="admin-section-hint">No chat models in the registry.</div>
+                    <div className="admin-section-hint">{t('orgs.noChatModels')}</div>
                   )}
                 </div>
               )}
 
-              {saveError && <div className="admin-state admin-state-error">{saveError}</div>}
+              {saveError && <div className="admin-state admin-state-error">{errorMessage(saveError.err, tCode, t)}</div>}
             </>
           )}
         </div>

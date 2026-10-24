@@ -1,4 +1,5 @@
 import type { PlatformOverview } from './api'
+import { useLang } from './i18n'
 
 /**
  * KPI cards + 14-day signup sparkline. Extracted from the original
@@ -6,6 +7,7 @@ import type { PlatformOverview } from './api'
  * views via the sidebar instead of rendering everything on one page.
  */
 export function OverviewView({ overview }: { overview: PlatformOverview }) {
+  const { t } = useLang()
   const { totals } = overview
   const maxSignup = Math.max(
     1,
@@ -14,42 +16,48 @@ export function OverviewView({ overview }: { overview: PlatformOverview }) {
 
   return (
     <section className="admin-section">
-      <h2>Overview</h2>
+      <h2>{t('overview.title')}</h2>
       <div className="admin-kpi-grid">
         <KpiCard
-          label="Organizations"
+          label={t('overview.kpi.organizations')}
           value={totals.organizations}
-          sub={`${totals.organizations_personal} personal · ${totals.organizations_team} team`}
+          sub={t('overview.sub.organizations', {
+            personal: totals.organizations_personal,
+            team: totals.organizations_team,
+          })}
         />
         <KpiCard
-          label="New orgs (24h / 7d)"
+          label={t('overview.kpi.newOrgs')}
           value={overview.new_organizations_24h}
-          sub={`${overview.new_organizations_7d} in last 7 days`}
+          sub={t('overview.sub.newOrgs', { n: overview.new_organizations_7d })}
           highlight={overview.new_organizations_24h > 0}
         />
         <KpiCard
-          label="Identities (people)"
+          label={t('overview.kpi.identities')}
           value={totals.identities}
-          sub={`${overview.new_identities_24h} new in 24h · ${overview.new_identities_7d} in 7d`}
+          sub={t('overview.sub.identities', {
+            a: overview.new_identities_24h,
+            b: overview.new_identities_7d,
+          })}
         />
         <KpiCard
-          label="Active orgs (7d)"
+          label={t('overview.kpi.activeOrgs')}
           value={overview.active_organizations_7d}
-          sub="sent at least one message"
+          sub={t('overview.sub.activeOrgs')}
         />
-        <KpiCard label="Spaces" value={totals.spaces} />
+        <KpiCard label={t('overview.kpi.spaces')} value={totals.spaces} />
         <KpiCard
-          label="Documents"
+          label={t('overview.kpi.documents')}
           value={totals.documents}
-          sub={`${totals.documents_indexed} indexed`}
+          sub={t('overview.sub.documents', { n: totals.documents_indexed })}
         />
-        <KpiCard label="Conversations" value={totals.conversations} />
-        <KpiCard label="Messages" value={totals.messages} />
+        <KpiCard label={t('overview.kpi.conversations')} value={totals.conversations} />
+        <KpiCard label={t('overview.kpi.messages')} value={totals.messages} />
       </div>
 
       <div className="admin-trend">
-        <h3>Signups — last 14 days</h3>
-        <div className="admin-trend-chart" role="img" aria-label="Daily signups, last 14 days">
+        <h3>{t('overview.trend.title')}</h3>
+        <div className="admin-trend-chart" role="img" aria-label={t('overview.trend.aria')}>
           {overview.signups_by_day.map((p) => {
             const total = p.organizations + p.identities
             const h = Math.max(2, Math.round((total / maxSignup) * 64))
@@ -77,10 +85,11 @@ function KpiCard({
   sub?: string
   highlight?: boolean
 }) {
+  const { formatNumber } = useLang()
   return (
     <div className={highlight ? 'admin-kpi-card is-highlight' : 'admin-kpi-card'}>
       <span className="admin-kpi-label">{label}</span>
-      <span className="admin-kpi-value">{value.toLocaleString()}</span>
+      <span className="admin-kpi-value">{formatNumber(value)}</span>
       {sub && <span className="admin-kpi-sub">{sub}</span>}
     </div>
   )

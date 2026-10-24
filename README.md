@@ -104,6 +104,12 @@ password. Leave the token empty if you do not need it. Sign-in is rate limited:
 5 failed attempts on an account lock it until 15 minutes after the first of those
 failures, even for the right password.
 
+The console is available in English and Simplified Chinese. Switch language at the
+bottom of the sidebar (or below the sign-in card); it follows your browser language
+the first time and remembers your choice. Error messages from the API follow the same
+language. See [apps/web/src/admin/i18n/README.md](apps/web/src/admin/i18n/README.md)
+for how to add a string, a language or a message code.
+
 ### First run and resources
 
 - The first question or upload loads the BGE-M3 embedding model, which is
