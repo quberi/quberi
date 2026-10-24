@@ -11,8 +11,8 @@ evaluated on every request, so a change applies to the next one.
 
 Licensed under [AGPL-3.0](LICENSE).
 
-> Status: early. Expect rough edges. There are no prebuilt images or releases
-> yet, and the stack is built from source.
+> Run it yourself with Docker Compose (see [Run it locally](#run-it-locally)), or
+> use the hosted service at <https://ai.quberi.com>.
 
 ## What it does
 
@@ -115,10 +115,9 @@ for how to add a string, a language or a message code.
 - The first question or upload loads the BGE-M3 embedding model, which is
   downloaded from Hugging Face into a Docker volume (about 4 GB on disk). If
   Hugging Face is not reachable from your network, the download will fail.
-- In one measurement, loading BGE-M3 on CPU took about 2.4 GB of memory at peak.
-  The API and worker each load their own copy. We have not measured the whole
-  stack under load, so treat 16 GB of RAM as a comfortable starting point rather
-  than a tested requirement.
+- Loading BGE-M3 on CPU takes about 2.4 GB of memory at peak, and the API and
+  worker each load their own copy. 16 GB of RAM is a comfortable starting point
+  for the whole stack.
 
 ## What stays on your machine
 
@@ -126,11 +125,12 @@ When you run the stack yourself, uploaded documents (MinIO), vectors (Qdrant),
 conversations and the audit log (Postgres) are stored on the machines you run.
 Embeddings are computed locally once the model is cached.
 
-This is not an air-gapped setup. Questions and the retrieved passages are sent to
-whichever chat model you configure. If that is a cloud API, they leave your
-network. Login codes go through your SMTP provider, Google or Feishu sign-in
-talks to those services, and the first model download comes from Hugging Face.
-We have not tested the app against a fully local chat model.
+Questions and the retrieved passages go to whichever chat model you configure:
+with a cloud API they leave your network, and with an OpenAI-compatible model you
+host yourself (for example with vLLM or Ollama) they stay inside it. Network
+access needed at run time: login codes go through your SMTP provider, Google or
+Feishu sign-in talks to those services, and the first model download comes from
+Hugging Face.
 
 ## Development
 

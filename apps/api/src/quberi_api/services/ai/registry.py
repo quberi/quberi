@@ -77,7 +77,7 @@ _CHAT_MODELS: tuple[ModelSpec, ...] = (
     ),
     # OpenAI — enabled the moment an org drops in a key.
     # DeepSeek's model that also reads pictures (up to 1024 tokens each; JPEG, PNG, GIF and
-    # WebP; pictures only in user messages). The earlier experimental vision name is retired
+    # WebP; pictures only in user messages). The earlier vision name is retired
     # and now routes here.
     ModelSpec(
         model_id="deepseek-flash",

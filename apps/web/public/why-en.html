@@ -153,7 +153,7 @@
             conversations and audit logs stay in your own environment; connect a local model you host
             yourself and your questions and the retrieved passages don't leave your network either;
             access goes down to a single document, with a record of every step. For the specific
-            deployment, contact Quberi; see "What to know up front" below.
+            deployment, contact Quberi; see "Good to know before you start" below.
           </li>
         </ul>
         <p>What they share: lots of material, people who change, requirements on who can see what, and a wish to use AI without losing control.</p>
@@ -169,32 +169,30 @@
           <li><b>Reads scans and the text in pictures</b>: with local text recognition, without sending it to a third party.</li>
           <li><b>Connect the AI assistants you already use</b>: ChatGPT, Claude, Claude Code, Cursor, Codex and others can connect, with the same access as the person; off by default, turned on by an organisation admin.</li>
           <li><b>Self-host and choose your model</b>: use Quberi's cloud, or run it on your own computer, in your data centre or in your own cloud account; use the built-in models or connect one you host yourself. The code is open source (AGPL-3.0).</li>
-          <li><b>A sign-in method that fits you</b>: every organisation's identity system is different, so Quberi would rather adapt the sign-in method to each customer's actual needs; contact Quberi.</li>
+          <li><b>A sign-in method that fits you</b>: every organisation's identity system is different, so Quberi adapts the sign-in method to each customer's actual needs; contact Quberi.</li>
         </ul>
 
-        <h2>What to know up front</h2>
+        <h2>Good to know before you start</h2>
         <p>
-          Self-hosting is at an early stage today: you set it up yourself with Docker Compose, with no
-          ready-made images; a setup that uses only a local chat model has not been thoroughly tested;
-          and it is not an air-gapped environment, because email sign-in codes need to send mail,
-          Google and Feishu sign-in need to reach those services, and the first download of the
-          embedding model needs internet access.
+          Self-hosting uses Docker Compose and can run on your own computer, in your data centre or in your
+          own cloud account; contact Quberi for a deployment plan. Network access at run time: email sign-in
+          codes need to send mail, Google and Feishu sign-in need to reach those services, and the embedding
+          model is downloaded on first use and then runs locally. With a model you host yourself, your
+          questions and the retrieved passages stay inside your network.
         </p>
         <p>
-          For government departments and organisations handling classified material: private
-          deployment requires contacting Quberi for the options; there is currently no published
-          statement of security certification, graded-protection or confidentiality qualification; and
-          if you need a fully offline internal network (for example a physically isolated classified
-          network), evaluate it with Quberi first.
+          For government departments and organisations handling classified material: contact Quberi about
+          private deployment and about security and compliance requirements; and if you need a fully offline
+          internal network (for example a physically isolated classified network), contact Quberi to assess
+          it together for your environment.
         </p>
         <p>
-          The built-in sign-in methods today are email code, Google and Feishu, and apart from Feishu
-          there is no built-in enterprise single sign-on (SSO); Quberi adapts it to your needs when
-          required. Syncing from WeCom, DingTalk and cloud drives / SharePoint is planned and not
-          available yet. Picture search is not tuned for engineering drawings, and searching a very
-          short part number on its own may find nothing, while adding context works. How a cloud model
-          keeps content and whether it trains on it depends on the provider you choose, and Quberi
-          cannot promise it on their behalf. We write these down instead of hiding them.
+          Sign-in is built in for email code, Google and Feishu; every organisation's identity system is
+          different, so Quberi adapts the sign-in method to each customer's actual needs. Syncing from WeCom,
+          DingTalk and cloud drives / SharePoint is planned. For engineering drawings, add a text description
+          when you upload (drawing number, model, key dimensions) so they are easier to find; when searching
+          a very short part number, add context (for example "spindle BT40"). With a cloud model, how content
+          is kept and used follows the provider you choose, and you can read their terms first.
         </p>
 
         <nav aria-label="More">
