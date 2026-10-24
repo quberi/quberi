@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping, Optional
+from typing import Any, Literal, Optional
+from collections.abc import Mapping
 
 Lang = Literal["en", "zh"]
 DEFAULT_LANG: Lang = "en"
@@ -256,7 +257,7 @@ def render(
     template = message.zh if lang == "zh" else message.en
     values = params or {}
 
-    def fill(match: "re.Match[str]") -> str:
+    def fill(match: re.Match[str]) -> str:
         name = match.group(1)
         if name not in values:
             return match.group(0)
