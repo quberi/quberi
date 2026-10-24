@@ -30,6 +30,9 @@ async def render_thumbnail(stream: AsyncIterator[bytes], *, side: int = THUMBNAI
     the result is a plain JPEG, so nothing a browser could run is passed on.
     """
 
+    from quberi_api.services.ai.local_image_embedding import (
+        _MAX_SIDE as MODEL_SIDE,
+    )
     from quberi_api.services.ai.local_image_embedding import ImageDecodeError, prepare_image
 
     buf = bytearray()
@@ -39,7 +42,9 @@ async def render_thumbnail(stream: AsyncIterator[bytes], *, side: int = THUMBNAI
             raise ThumbnailError(413, "picture too large")
 
     def _render() -> bytes:
-        image = prepare_image(bytes(buf))
+        # Decoded no smaller than the picture model's size, and no smaller than asked for, so a
+        # larger view (a page image) is really that large and a small one is unchanged.
+        image = prepare_image(bytes(buf), max_side=max(side, MODEL_SIDE))
         image.thumbnail((side, side))
         out = io.BytesIO()
         image.save(out, format="JPEG", quality=80)

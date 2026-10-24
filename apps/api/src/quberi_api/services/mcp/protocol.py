@@ -129,3 +129,20 @@ def tool_result(text: str, structured: Optional[dict] = None, *, is_error: bool 
     if structured is not None:
         result["structuredContent"] = structured
     return result
+
+
+def image_content(data_base64: str, mime_type: str) -> dict:
+    """An MCP image content block: the picture itself, base64 without a ``data:`` prefix."""
+
+    return {"type": "image", "data": data_base64, "mimeType": mime_type}
+
+
+def tool_result_blocks(
+    blocks: list[dict], structured: Optional[dict] = None, *, is_error: bool = False
+) -> dict:
+    """A ``CallToolResult`` made of ready-built content blocks (text and/or image)."""
+
+    result: dict = {"content": list(blocks), "isError": is_error}
+    if structured is not None:
+        result["structuredContent"] = structured
+    return result

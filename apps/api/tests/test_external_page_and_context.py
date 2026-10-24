@@ -664,16 +664,26 @@ def test_text_that_has_nothing_around_it_does_not_offer_to_read_around(over):
     assert "read_around" not in text
 
 
-def test_a_page_image_is_offered_as_an_exact_line_to_copy_when_asked():
+def test_a_page_is_offered_as_a_get_document_image_call_when_asked():
     url = f"{ORIGIN}/api/v1/external/page/abc.jpg"
     p = _passage_for_text(
         document_name="contract.pdf", page_start=3, page_end=3, unit_label="text_block",
         page_preview_url=url,
     )
     text = format_search_result("delivery", _response(p))
-    assert f"![contract.pdf page 3]({url})" in text
-    assert "only when the user asks to see the original page" in text
-    assert "about 10 minutes" in text
+    hint = f"(get_document_image: document_id={p.document_id}, version=2, page=3)"
+    assert hint in text
+    assert "when the user asks to see the original page" in text
+    # The page is shown by calling the tool, not by copying a link into the answer.
+    assert "![" not in text and url not in text
+
+
+def test_a_picture_passage_is_offered_as_page_one():
+    p = _passage_for_text(
+        source_kind="image_ocr", page_preview_url=f"{ORIGIN}/api/v1/external/page/abc.jpg"
+    )
+    text = format_search_result("gear", _response(p))
+    assert f"(get_document_image: document_id={p.document_id}, version=2, page=1)" in text
 
 
 def test_nothing_is_said_about_images_or_reading_around_when_a_passage_offers_neither():

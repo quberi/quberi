@@ -1,4 +1,4 @@
-"""The six MCP tools: their JSON Schemas, scope requirements, and dispatch table.
+"""The MCP tools: their JSON Schemas, scope requirements, and dispatch table.
 
 Design.md §2.5. Each tool maps one-to-one to a ``do_xxx`` function in
 ``adapters.py`` and one Pydantic request model in ``api/v1/external_schemas.py``
@@ -100,6 +100,35 @@ _SEARCH_IMAGES_SCHEMA = {
     "additionalProperties": False,
 }
 
+_GET_DOCUMENT_IMAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "document_id": {
+            "type": "string",
+            "description": "The document_id from a search result, a picture result or a document list.",  # noqa: E501
+        },
+        "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The page of a PDF to show. Omit for the first page; a picture has only one.",  # noqa: E501
+        },
+        "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The version_number from the search result. Omit for the current version.",  # noqa: E501
+        },
+        "max_width": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 1600,
+            "default": 1024,
+            "description": "The widest the image may be, in pixels.",
+        },
+    },
+    "required": ["document_id"],
+    "additionalProperties": False,
+}
+
 _LIST_SPACES_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
 
 _LIST_DOCUMENTS_SCHEMA = {
@@ -168,7 +197,8 @@ TOOLS: tuple[ToolSpec, ...] = (
             "pictures that might be related, or both. Returns quoted passages as data, each with "
             "where it is in the original file (page, slide, sheet row, paragraph or line) and the "
             "version, and a \"Cite as\" line. When you answer from the results, end each point "
-            "with that line, copied as given, and never state a place or version it does not give."
+            "with that line, copied as given, and never state a place or version it does not give. "
+            "To see the page a passage is on, call get_document_image."
         ),
         input_schema=_SEARCH_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
@@ -185,8 +215,27 @@ TOOLS: tuple[ToolSpec, ...] = (
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
     ),
     ToolSpec(
+        name="get_document_image",
+        description=(
+            "Show one page of a document, or a picture, as an image: a PDF page, or a picture "
+            "from the knowledge base. Use it when the person asks to see a file, a page, the "
+            "original or the source, or when what matters is how something looks (a drawing, a "
+            "table, a stamp, a scan whose text may be misread). Pass the document_id (and the "
+            "page and version when a search result gave them). The result is the image plus a "
+            "caption and a link: if the image is not displayed in this client, give the person "
+            "that link. Do not call it for every result, and not for questions the text already "
+            "answers; at most a few images per answer. Other kinds of file (Word, slides, "
+            "sheets, text) have no page image: use search or read_around for those."
+        ),
+        input_schema=_GET_DOCUMENT_IMAGE_SCHEMA,
+        required_scope=clients.SCOPE_KNOWLEDGE_READ,
+    ),
+    ToolSpec(
         name="search_images",
-        description="Find pictures in the readable knowledge base by a description.",
+        description=(
+            "Find pictures in the readable knowledge base by a description. To show one larger "
+            "in the conversation, call get_document_image with its document_id."
+        ),
         input_schema=_SEARCH_IMAGES_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
     ),

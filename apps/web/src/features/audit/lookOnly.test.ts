@@ -8,6 +8,7 @@ describe('isLookOnlyAction', () => {
       'document.access_checked',
       'space.documents_listed_for_access',
       'knowledge.external_search',
+      'knowledge.external_page_image',
       'message.sent',
     ]) {
       expect(isLookOnlyAction(a)).toBe(true)

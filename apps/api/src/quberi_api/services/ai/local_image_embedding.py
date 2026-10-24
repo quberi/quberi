@@ -93,11 +93,13 @@ class ImageModelIntegrityError(RuntimeError):
     """The model's remote code is not the audited code."""
 
 
-def prepare_image(data: bytes) -> Any:
+def prepare_image(data: bytes, *, max_side: int = _MAX_SIDE) -> Any:
     """Decode untrusted bytes into a small RGB Pillow image, or raise.
 
     Only still frames of PNG, JPEG, GIF and WebP are accepted (by what Pillow
-    detects, not by any label). An animated file uses its first frame.
+    detects, not by any label). An animated file uses its first frame. The picture model
+    needs no more than ``_MAX_SIDE`` px; a caller that wants to show the picture larger
+    (a page image) passes a bigger ``max_side``.
     """
 
     from PIL import Image, UnidentifiedImageError
@@ -122,7 +124,7 @@ def prepare_image(data: bytes) -> Any:
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise ImageDecodeError("the file is not a readable picture") from exc
     rgb = image.convert("RGB")
-    rgb.thumbnail((_MAX_SIDE, _MAX_SIDE))
+    rgb.thumbnail((max_side, max_side))
     return rgb
 
 

@@ -75,8 +75,7 @@ from quberi_api.domain.spaces.models import Space
 from quberi_api.infrastructure.registry import Infrastructure
 from quberi_api.services import external_image_links, external_page_links
 from quberi_api.services.documents import core as documents_core
-from quberi_api.services.documents import new_version as new_version_service
-from quberi_api.services.documents import page_render
+from quberi_api.services.documents import page_image
 from quberi_api.services.documents.errors import DocumentPermissionError
 from quberi_api.services.documents.thumbnail import ThumbnailError, render_thumbnail
 from quberi_api.services.errors import NotFoundError
@@ -284,39 +283,16 @@ async def page_by_link(
     document, space_status = doc
     if document.status == "archived" or space_status != "active":
         raise _gone()
-    legacy = document.current_version_id is None and link.version_number == 1
     try:
-        try:
-            # The same permission check as a signed-in download of this version.
-            version, stream = await new_version_service.open_version_stream(
-                session,
-                document_id=document.id,
-                version_number=link.version_number,
-                organization_id=org.id,
-                space_id=document.space_id,
-                caller_user_id=user.id,
-            )
-            mime, filename = (version.mime_type or "").lower(), version.filename
-        except NotFoundError:
-            if not legacy:
-                raise
-            # A file stored before versions were recorded has no version row: its one
-            # version is the file itself, opened with the same check as a download.
-            opened, stream = await documents_core.open_download_stream(
-                session,
-                document_id=document.id,
-                organization_id=org.id,
-                space_id=document.space_id,
-                caller_user_id=user.id,
-            )
-            mime, filename = (opened.mime_type or "").lower(), opened.name
-        if mime == "application/pdf" or filename.lower().endswith(".pdf"):
-            data = await page_render.render_pdf_page(stream, page=link.page)
-        elif is_picture(mime):
-            data = await page_render.render_picture(stream)
-        else:
-            raise _gone()
-    except (NotFoundError, DocumentPermissionError):
+        data = await page_image.render_document_page(
+            session,
+            document=document,
+            organization_id=org.id,
+            user_id=user.id,
+            version_number=link.version_number,
+            page=link.page,
+        )
+    except (NotFoundError, DocumentPermissionError, page_image.NoPageImageError):
         raise _gone() from None
     except ThumbnailError as exc:
         # A page that does not exist is the same "not found" as everything else.

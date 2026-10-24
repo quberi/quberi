@@ -34,6 +34,7 @@ const LOOK_ONLY_ACTIONS = new Set([
   'space.documents_listed_for_access',
   'knowledge.external_search',
   'knowledge.external_image_search',
+  'knowledge.external_page_image',
   'knowledge.external_list',
   'conversation.created',
   'conversation.renamed',

@@ -8,7 +8,7 @@ the bare domain, so the endpoint itself has to be the domain's root path for
 RFC 9728's "resource equals the endpoint's own canonical URI" rule to hold).
 
 This module is a thin JSON-RPC/HTTP adapter, exactly like the REST routes in
-``api/v1/external.py``: all six tools dispatch into the same
+``api/v1/external.py``: every tool dispatches into the same
 ``services.mcp.adapters.do_xxx`` functions the REST endpoints call, so there
 is exactly one implementation of retrieval/permission/rate-limit/audit logic
 for both protocols (the brief's central rule; see adapters.py's docstring).
@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.dependencies import get_db_session, get_infrastructure
 from quberi_api.api.v1.external_schemas import (
+    DocumentImageRequest,
     ImageSearchRequest,
     ReadAroundRequest,
     SaveRequest,
@@ -284,6 +285,31 @@ async def _tools_call(
             return protocol.tool_result(
                 formatting.format_image_search_result(payload.query, result),
                 result.model_dump(mode="json"),
+            )
+        if name == "get_document_image":
+            wanted = DocumentImageRequest.model_validate(arguments)
+            shown = await adapters.do_get_document_image(wanted, request, ext, session, infra)
+            return protocol.tool_result_blocks(
+                [
+                    protocol.image_content(
+                        base64.b64encode(shown.data).decode("ascii"), "image/jpeg"
+                    ),
+                    protocol.text_content(formatting.format_document_image_text(shown)),
+                ],
+                # The picture itself is not repeated here: it would double the size of the answer.
+                {
+                    "document_id": str(shown.document_id),
+                    "document_name": shown.document_name,
+                    "space_name": shown.space_name,
+                    "version_number": shown.version_number,
+                    "latest_version": shown.latest_version,
+                    "page": shown.page,
+                    "width": shown.width,
+                    "height": shown.height,
+                    "bytes": len(shown.data),
+                    "mime_type": "image/jpeg",
+                    "link": shown.link,
+                },
             )
         if name == "list_spaces":
             result = await adapters.do_list_spaces(ext, session, infra)

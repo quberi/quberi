@@ -2,10 +2,11 @@
 
 Quberi runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server at `https://mcp.quberi.com`. It gives an MCP client (Codex, and any
-other client that speaks Streamable HTTP) the same six tools the DeepSeek
-Harness plugin uses — search, search by image description, list spaces, list
-documents, save a note, and upload a file — scoped to whatever your Quberi
-account can already read or write. It is also listed in the
+other client that speaks Streamable HTTP) the tools the DeepSeek Harness plugin
+uses — search, search by image description, list spaces, list documents, save a
+note, and upload a file — plus two that read a source more closely
+(`read_around`, and `get_document_image` to see a page), scoped to whatever your
+Quberi account can already read or write. It is also listed in the
 [official MCP Registry](https://registry.modelcontextprotocol.io) as
 `com.quberi/mcp`.
 
@@ -22,7 +23,7 @@ For directories that list MCP servers but cannot sign in to scan this one,
 the server publishes a static description of itself at
 `https://mcp.quberi.com/.well-known/mcp/server-card.json`
 ([SEP-1649](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1649)):
-its name and version, that it needs OAuth, and all six tools with their
+its name and version, that it needs OAuth, and every tool with its
 input schemas and the permission each needs. It is generated from the same
 tool table the server uses, needs no sign-in, and says nothing about any
 person or organisation.
@@ -203,14 +204,51 @@ enforced: it makes the right citation the easiest thing to copy. A client that w
 whatever the model writes can build it from the structured fields (`document_name`, `citation`,
 `page_start`, `unit_label`, `version_number`).
 
+### Showing a page in the conversation: `get_document_image`
+
+`get_document_image` returns one page of a PDF, or a picture, as an **image** the client can show inside
+the chat, so the person does not have to open a link. It needs the `knowledge:read` permission and has no
+REST twin.
+
+| Argument | Meaning |
+|---|---|
+| `document_id` | Required. From a search result, a picture result, or `list_documents`. |
+| `page` | The PDF page, from 1. Omit for the first page; a picture has only page 1. |
+| `version` | The `version_number` from the search result. Omit for the current version. |
+| `max_width` | The widest the image may be, 256 to 1600 px (default 1024). |
+
+The result has two content blocks: an MCP `image` block (`data` is plain base64 of a JPEG, `mimeType`
+`image/jpeg`) and a `text` block with a caption (name, space, version, page, size, `document_id`) and a
+**signed link** to the same page at a larger size. Always keep the link: how a client treats an `image`
+block varies. Some show it inline; some pass it to the model without showing it; and reports from users of
+some chat clients, ChatGPT's connectors among them, say the block is dropped or comes back empty. A client
+that does not show the image can give the person the link instead (it is the same short-lived, re-checked
+link described above). The structured part of the result carries the same facts without the picture, so the
+answer is not doubled in size.
+
+The image is kept to about 200 KB (quality is lowered first, then the width, never below 256 px), so it is
+a reading copy, not the original; the original is only reachable through the link. Pictures are shown at the
+width asked for and are never enlarged. Word, slides, sheets and text files have no page to draw: the tool
+says so and points to `search` and `read_around`.
+
+It reads the file through the same access check as opening it in Quberi, and every reason the person may
+not read the document (no such document or version, no access, a deny rule, archived, a space no longer
+active, another organisation, waiting for approval) gives the same `document_not_found` answer. Calls are
+rate limited per tool (20 a minute), drawing is done one page at a time in a separate short-lived process,
+and each call is written to the audit log (`knowledge.external_page_image`) with the document, version, page
+and size, never the picture. `search` results give the exact call to make under each passage that has a
+page, `list_documents` gives the `document_id` under each PDF or picture, and the tool descriptions tell the
+model to use it when the person asks to see a file or page, not for every result.
+
 ### Seeing the page, and reading around a passage
 
 Two more things come with a search result, so the answer can be checked without leaving the tool.
 
 **An image of the page.** A passage from a PDF, and text read out of (or a description of) a picture,
 carries `page_preview_url`: a link to an image of the page it was found on, or of the picture itself
-(larger than its search preview). The text result gives it as a ready-made `![...](...)` line under the
-passage, and tells the model to show it only when the person asks to see the original. The link works
+(larger than its search preview). The text result no longer pastes the link: it gives the exact
+`get_document_image` call for that page under the passage (the structured result still has the link), and
+tells the model to make it only when the person asks to see the original. The link works
 like the picture preview link: it is short-lived (about ten minutes), names one page of one version for
 one person, and is **re-checked every time it is opened**. Revoking the tool, deactivating the
 person, switching outside tools off, losing access to the space or the document, archiving the

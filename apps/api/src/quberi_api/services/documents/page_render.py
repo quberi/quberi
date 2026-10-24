@@ -66,7 +66,7 @@ async def render_pdf_page(
     return out
 
 
-async def render_picture(stream: AsyncIterator[bytes]) -> bytes:
-    """A JPEG of a picture, at most ``PICTURE_SIDE`` px a side (larger than its search preview)."""
+async def render_picture(stream: AsyncIterator[bytes], *, side: int = PICTURE_SIDE) -> bytes:
+    """A JPEG of a picture, at most ``side`` px a side (default larger than its search preview)."""
 
-    return await render_thumbnail(stream, side=PICTURE_SIDE)
+    return await render_thumbnail(stream, side=side)

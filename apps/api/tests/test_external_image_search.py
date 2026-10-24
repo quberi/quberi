@@ -198,8 +198,11 @@ async def test_a_description_finds_the_closest_pictures_with_preview_links(
     assert first["space_name"] == "Parts" and first["mime_type"] == "image/png"
     assert body["preview_expires_in"] == 600
     assert body["searched_spaces"] >= 1
-    # Metadata and a link, never picture bytes or ids.
-    assert set(first) == {"name", "space_name", "mime_type", "size_bytes", "score", "preview_url"}
+    # Metadata, a link and the document's id (to ask for it larger with get_document_image):
+    # never picture bytes.
+    assert set(first) == {
+        "document_id", "name", "space_name", "mime_type", "size_bytes", "score", "preview_url",
+    }
     assert _path(first["preview_url"])
 
 

@@ -1,5 +1,5 @@
 # ruff: noqa: F811  (fixtures are imported by name and used as pytest arguments)
-"""tools/list (scope-filtered) and tools/call for all six MCP tools.
+"""tools/list (scope-filtered) and tools/call for the MCP tools.
 
 Each tools/call branch dispatches into the same ``services.mcp.adapters.do_xxx``
 function the REST external API calls (see router.py and adapters.py). These
@@ -53,7 +53,7 @@ def _list_request(request_id: int = 1) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def test_tools_list_with_full_scope_shows_all_seven(http, db_session, redis_client):
+async def test_tools_list_with_full_scope_shows_all_eight(http, db_session, redis_client):
     boot = await _org(db_session)
     tokens = await _mcp_tokens(
         db_session, redis_client, boot, scope="knowledge:read knowledge:write knowledge:upload"
@@ -62,8 +62,8 @@ async def test_tools_list_with_full_scope_shows_all_seven(http, db_session, redi
     resp = await http.post("/", headers=_auth(tokens), json=_list_request())
     names = {t["name"] for t in resp.json()["result"]["tools"]}
     assert names == {
-        "search", "read_around", "search_images", "list_spaces", "list_documents",
-        "save_note", "upload",
+        "search", "read_around", "get_document_image", "search_images", "list_spaces",
+        "list_documents", "save_note", "upload",
     }
     for tool in resp.json()["result"]["tools"]:
         assert set(tool) == {"name", "description", "inputSchema"}
@@ -78,7 +78,10 @@ async def test_tools_list_with_read_only_scope_hides_write_tools(
     await db_session.commit()
     resp = await http.post("/", headers=_auth(tokens), json=_list_request())
     names = {t["name"] for t in resp.json()["result"]["tools"]}
-    assert names == {"search", "read_around", "search_images", "list_spaces", "list_documents"}
+    assert names == {
+        "search", "read_around", "get_document_image", "search_images", "list_spaces",
+        "list_documents",
+    }
     assert "save_note" not in names and "upload" not in names
 
 

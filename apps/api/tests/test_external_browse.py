@@ -186,12 +186,16 @@ async def test_documents_are_metadata_only(http, db_session, redis_client, _no_i
     assert body["next_cursor"] is None
     (doc,) = body["documents"]
     # review_note is the reviewer's reason, filled only on the caller's own rejected files.
-    assert set(doc) == {"name", "mime_type", "size_bytes", "updated_at", "status", "review_note"}
+    # document_id is what get_document_image needs to show the file; search results carry it too,
+    # and knowing it opens nothing: every use of it is checked against the person's own access.
+    assert set(doc) == {
+        "document_id", "name", "mime_type", "size_bytes", "updated_at", "status", "review_note",
+    }
     assert doc["review_note"] is None
     assert doc["name"] == "AI RMF.pdf"
     assert doc["mime_type"] == "application/pdf"
     assert doc["status"] == "ready"
-    for forbidden in ("uploaded_by", "uploader", "document_id", "text", "storage_key", "checksum"):
+    for forbidden in ("uploaded_by", "uploader", "text", "storage_key", "checksum"):
         assert forbidden not in str(body)
 
 

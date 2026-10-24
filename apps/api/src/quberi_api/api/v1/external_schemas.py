@@ -92,6 +92,8 @@ class PendingDocument(BaseModel):
 
 
 class ImageResult(BaseModel):
+    # Lets a client ask for this picture at a larger size with ``get_document_image``.
+    document_id: Optional[uuid.UUID] = None
     name: str
     space_name: str
     mime_type: str
@@ -151,6 +153,20 @@ class ReadAroundRequest(BaseModel):
     # How much of the text to return on either side of the passage, in characters.
     before: int = Field(default=1500, ge=0, le=3000)
     after: int = Field(default=1500, ge=0, le=3000)
+
+
+class DocumentImageRequest(BaseModel):
+    """Which document, page and version to show as an image."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: uuid.UUID
+    # The page of a PDF; a picture has only page 1. Omit for the first page.
+    page: Optional[int] = Field(default=None, ge=1, le=65535)
+    # The version the passage was found in; omit for the current one.
+    version: Optional[int] = Field(default=None, ge=1, le=65535)
+    # The widest the image may be, in pixels. It is also kept under a size limit.
+    max_width: int = Field(default=1024, ge=256, le=1600)
 
 
 class ReadAroundResponse(BaseModel):
@@ -217,6 +233,8 @@ class SpacesResponse(BaseModel):
 
 
 class DocumentInfo(BaseModel):
+    # Lets a client ask for an image of this document with ``get_document_image``.
+    document_id: Optional[uuid.UUID] = None
     name: str
     mime_type: str
     size_bytes: int

@@ -26,8 +26,10 @@ MCP side turns these same return values into tool-call content.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -36,6 +38,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quberi_api.api.v1.external_schemas import (
+    DocumentImageRequest,
     DocumentInfo,
     DocumentsResponse,
     ImageResult,
@@ -64,13 +67,14 @@ from quberi_api.services import external_image_links, external_page_links
 from quberi_api.services import spaces as spaces_service
 from quberi_api.services.doc_acl import NO_DOC_ACCESS, DocAccess, load_doc_access, visibility_clause
 from quberi_api.services.documents import core as documents_core
-from quberi_api.services.documents import external_upload
+from quberi_api.services.documents import external_upload, page_image
 from quberi_api.services.documents.errors import (
     DocumentPermissionError,
     DocumentValidationError,
     DuplicateDocumentError,
     UnsupportedMimeError,
 )
+from quberi_api.services.documents.thumbnail import ThumbnailError
 from quberi_api.services.errors import NotFoundError
 from quberi_api.services.oauth import clients, core
 from quberi_api.services.rag import image_search
@@ -93,6 +97,7 @@ IMAGE_SEARCH_RATE_LIMIT = 30  # per grant per minute: each search runs the pictu
 PREVIEW_RATE_LIMIT = 240  # per grant per minute: one search can show up to 10 previews
 PAGE_RATE_LIMIT = 30  # per grant per minute: each page is drawn by a process of its own
 READ_RATE_LIMIT = 30  # per grant per minute: each call re-reads and re-extracts a whole file
+DOCIMAGE_RATE_LIMIT = 20  # per grant per minute: each call draws a page in a process of its own
 MAX_READ_CONTEXT = 3_000  # characters either side of a passage
 DEFAULT_READ_CONTEXT = 1_500
 MAX_READ_PASSAGE = 6_000
@@ -260,6 +265,7 @@ def image_result(
     request: Request, ext: core.ExternalCaller, m: image_search.ImageMatch
 ) -> ImageResult:
     return ImageResult(
+        document_id=m.document_id,
         name=m.document_name,
         space_name=m.space_name,
         mime_type=m.mime_type,
@@ -783,6 +789,189 @@ async def do_read_around(
 
 
 # ---------------------------------------------------------------------------
+# do_get_document_image — the MCP tool of the same name (no REST twin)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DocumentImage:
+    """One page of a document as a small JPEG, with what a caption and a citation need."""
+
+    data: bytes
+    width: int
+    height: int
+    document_id: uuid.UUID
+    document_name: str
+    space_name: str
+    version_number: int
+    latest_version: Optional[int]
+    page: int
+    # A short-lived link to the page at a larger size: the fallback for a client that does not
+    # show the image itself. ``None`` when this server has no signing key.
+    link: Optional[str]
+
+
+async def do_get_document_image(
+    payload: DocumentImageRequest,
+    request: Request,
+    ext: core.ExternalCaller,
+    session: AsyncSession,
+    infra: Infrastructure,
+) -> DocumentImage:
+    """The page the person asked to see, as an image the client can show inside the chat.
+
+    The permission check is the one a signed-in download makes (``render_document_page`` opens
+    the version through it), and everything that makes ``read_around`` say "no such document" makes
+    this say it too, in the same words: a stranger learns nothing about which reason it was.
+    """
+
+    require_read(ext)
+    await rate_limited(
+        infra, key=f"quberi:external:docimage:{ext.grant_id}", limit=DOCIMAGE_RATE_LIMIT
+    )
+
+    row = (
+        await session.execute(
+            select(Document, Space.name, Space.status)
+            .join(Space, Space.id == Document.space_id)
+            .where(
+                Document.id == payload.document_id,
+                Document.organization_id == ext.organization.id,
+                Space.organization_id == ext.organization.id,
+            )
+        )
+    ).first()
+    if row is None:
+        raise _document_not_found()
+    doc, space_name, space_status = row
+    if doc.status == "archived" or space_status != "active":
+        raise _document_not_found()
+
+    from quberi_api.services.documents import versions as versions_service
+
+    latest = await versions_service.current_version_number(session, doc)
+    version_number = payload.version or latest
+    page = payload.page or 1
+    document_id, document_name = doc.id, doc.name
+
+    try:
+        drawn = await page_image.render_document_page(
+            session,
+            document=doc,
+            organization_id=ext.organization.id,
+            user_id=ext.user.id,
+            version_number=version_number,
+            page=page,
+            width=payload.max_width,
+        )
+    except (NotFoundError, DocumentPermissionError):
+        raise _document_not_found() from None
+    except page_image.NoPageImageError:
+        raise AdapterHTTPError(
+            422,
+            {
+                "code": "no_page_image",
+                "message": (
+                    "this kind of file has no page to show as an image; "
+                    "use search or read_around for its text"
+                ),
+            },
+        ) from None
+    except ThumbnailError as exc:
+        raise _image_error(exc, page) from None
+    try:
+        data, width, height = await asyncio.to_thread(
+            page_image.fit_jpeg, drawn, max_width=payload.max_width
+        )
+    except Exception as exc:  # noqa: BLE001  (a file Pillow cannot read is not a server fault)
+        raise AdapterHTTPError(
+            422, {"code": "image_unavailable", "message": "the page cannot be drawn"}
+        ) from exc
+
+    link = _page_link_for(request, ext, document_id, version_number, page)
+
+    # The read transaction is still open; close it before writing the audit row.
+    await session.commit()
+    async with session.begin():
+        session.add(
+            AuditEvent(
+                organization_id=ext.organization.id,
+                actor_type="user",
+                actor_id=ext.user.id,
+                action="knowledge.external_page_image",
+                resource_type="oauth_grant",
+                resource_id=ext.grant_id,
+                payload={
+                    "grant_id": str(ext.grant_id),
+                    "client_name": ext.client_name,
+                    # Ids and sizes only, never the picture.
+                    "document_id": str(document_id),
+                    "version": version_number,
+                    "page": page,
+                    "bytes": len(data),
+                    "width": width,
+                    "height": height,
+                },
+            )
+        )
+
+    return DocumentImage(
+        data=data,
+        width=width,
+        height=height,
+        document_id=document_id,
+        document_name=document_name,
+        space_name=space_name,
+        version_number=version_number,
+        latest_version=latest,
+        page=page,
+        link=link,
+    )
+
+
+def _image_error(exc: ThumbnailError, page: int) -> AdapterHTTPError:
+    if exc.status == 404:
+        return AdapterHTTPError(
+            404, {"code": "page_not_found", "message": f"the file has no page {page}"}
+        )
+    if exc.status == 413:
+        return AdapterHTTPError(
+            413, {"code": "file_too_large", "message": "the file is too large to draw a page of"}
+        )
+    if exc.status == 504:
+        return AdapterHTTPError(
+            503, {"code": "image_timeout", "message": "the page took too long to draw; try again"}
+        )
+    return AdapterHTTPError(
+        422, {"code": "image_unavailable", "message": "the page cannot be drawn"}
+    )
+
+
+def _page_link_for(
+    request: Request,
+    ext: core.ExternalCaller,
+    document_id: uuid.UUID,
+    version_number: int,
+    page: int,
+) -> Optional[str]:
+    settings = get_settings()
+    if not external_page_links.links_available(settings):
+        return None
+    try:
+        token = external_page_links.sign(
+            settings,
+            user_id=ext.user.id,
+            grant_id=ext.grant_id,
+            document_id=document_id,
+            version_number=version_number,
+            page=page,
+        )
+    except ValueError:
+        return None
+    return f"{public_origin(request)}/api/v1/external/page/{token}.jpg"
+
+
+# ---------------------------------------------------------------------------
 # Browse: which spaces, and which documents in one (requires knowledge:read)
 # ---------------------------------------------------------------------------
 #
@@ -974,6 +1163,7 @@ async def do_list_documents(
     now = datetime.now(timezone.utc)
     documents = [
         DocumentInfo(
+            document_id=_id,
             name=name,
             mime_type=mime,
             size_bytes=int(size),
