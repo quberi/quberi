@@ -17,6 +17,16 @@
   <url><loc>https://ai.quberi.com/permissions</loc></url>
   <url><loc>https://ai.quberi.com/manufacturing</loc></url>
   <url>
+    <loc>https://ai.quberi.com/why</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/why" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/why-en" />
+  </url>
+  <url>
+    <loc>https://ai.quberi.com/why-en</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/why" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/why-en" />
+  </url>
+  <url>
     <loc>https://ai.quberi.com/privacy</loc>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://ai.quberi.com/privacy" />
     <xhtml:link rel="alternate" hreflang="en" href="https://ai.quberi.com/privacy-en" />

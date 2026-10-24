@@ -55,7 +55,33 @@ const enText = en
 if (enText.length < 800) errors.push(`en.html visible text is ${enText.length} chars, need >= 800`)
 if (!/per document, not per space/i.test(enText)) errors.push('en.html lacks the per-document definition')
 
+// "Why a knowledge base" pages: real content in each language, one language per page, and the
+// parts that keep them honest (the limits, and the two kinds of knowledge base) must stay.
+const visible = (page) =>
+  page
+    .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+const why = read('why.html')
+const whyEn = read('why-en.html')
+if (!/<html lang="zh-CN">/.test(why)) errors.push('why.html is not lang="zh-CN"')
+if (!/<html lang="en">/.test(whyEn)) errors.push('why-en.html is not lang="en"')
+if (visible(why).length < 1500) errors.push('why.html has too little text')
+if (visible(whyEn).length < 1500) errors.push('why-en.html has too little text')
+for (const kw of ['个人', '企业', '政府部门', '需要提前知道的限制']) {
+  if (!why.includes(kw)) errors.push(`why.html is missing "${kw}"`)
+}
+for (const kw of ['Government departments', 'What to know up front']) {
+  if (!whyEn.includes(kw)) errors.push(`why-en.html is missing "${kw}"`)
+}
+if (/[\u4e00-\u9fff]/.test(whyEn.replace(/<a class="lang"[^>]*>[^<]*<\/a>/, '').replace(/\(in Chinese\)/, ''))) {
+  errors.push('why-en.html contains Chinese text outside the language link (one language per page)')
+}
 const sitemap = read('sitemap.xml')
+for (const path of ['/why', '/why-en']) {
+  if (!sitemap.includes(`<loc>https://ai.quberi.com${path}</loc>`)) errors.push(`sitemap.xml does not list ${path}`)
+}
 if (!sitemap.startsWith('<?xml')) errors.push('sitemap.xml is not XML')
 if (!sitemap.includes('<loc>https://ai.quberi.com/en</loc>')) errors.push('sitemap.xml does not list /en')
 
