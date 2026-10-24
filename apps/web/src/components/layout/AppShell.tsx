@@ -2,7 +2,6 @@ import {
   Bot,
   ChevronsLeft,
   ChevronsRight,
-  Clock3,
   Cpu,
   Database,
   Info,
@@ -10,7 +9,6 @@ import {
   LogIn,
   LogOut,
   MessageSquareText,
-  Search,
   ShieldCheck,
   UserRound,
 } from 'lucide-react'
@@ -46,11 +44,6 @@ interface RailItem {
   view: WorkspaceView
 }
 
-interface PlannedRailItem {
-  key: string
-  icon: ComponentType<{ size?: number; strokeWidth?: number }>
-}
-
 // Organization management (org structure, members, integrations, model
 // governance) lives in the admin console now — see ``AdminConsole`` — not
 // in this rail. The workspace rail only carries personal/day-to-day items;
@@ -60,11 +53,6 @@ const ACTIVE_RAIL: RailItem[] = [
   { key: 'agents', icon: Bot, view: 'agents' },
   { key: 'knowledge', icon: Database, view: 'knowledge' },
   { key: 'myModels', icon: Cpu, view: 'myModels' },
-]
-
-const PLANNED_RAIL: PlannedRailItem[] = [
-  { key: 'search', icon: Search },
-  { key: 'history', icon: Clock3 },
 ]
 
 // Every current workspace view renders in the wide content column. Kept
@@ -179,27 +167,6 @@ export function AppShell({
               </button>
             )
           })}
-        </div>
-
-        <div className="rail-divider" role="separator" aria-hidden="true" />
-
-        <div className="rail-group">
-          {PLANNED_RAIL.map(({ key, icon: Icon }) => (
-            <button
-              aria-disabled="true"
-              aria-label={t(`navigation.${key}`)}
-              className="rail-item planned"
-              disabled
-              key={key}
-              title={`${t(`navigation.${key}`)} · ${t('navigation.comingSoon')}`}
-              type="button"
-            >
-              <span className="rail-item-icon">
-                <Icon size={18} strokeWidth={1.9} />
-              </span>
-              <span className="rail-item-label">{t(`navigation.${key}`)}</span>
-            </button>
-          ))}
         </div>
 
         <div className="rail-spacer" />

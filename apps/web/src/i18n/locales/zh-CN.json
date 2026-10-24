@@ -8,14 +8,10 @@
   },
   "navigation": {
     "chat": "对话",
-    "search": "检索",
     "knowledge": "知识库",
     "myModels": "我的模型",
     "account": "账户",
     "agents": "智能体",
-    "history": "历史",
-    "planned": "规划中",
-    "comingSoon": "即将上线",
     "collapsePanel": "收起上下文栏",
     "expandPanel": "展开上下文栏",
     "adminConsole": "管理后台"

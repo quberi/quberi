@@ -273,12 +273,6 @@ button { font: inherit; }
   border-radius: 999px;
   background: var(--purple-700);
 }
-.rail-item.planned {
-  opacity: .35;
-  cursor: not-allowed;
-}
-.rail-item.planned:hover { opacity: .5; background: transparent; }
-
 /* ---- Collapsed mode: hide labels, center icons, no brand wordmark ---- */
 .app-shell:not(.rail-expanded) .rail-item {
   grid-template-columns: 1fr;
@@ -296,14 +290,6 @@ button { font: inherit; }
 /* ---- Expanded mode: reveal labels, brand wordmark ---- */
 .app-shell.rail-expanded .rail-item-label { display: block; }
 .app-shell.rail-expanded .rail-brand-label { display: flex; }
-
-.rail-divider {
-  height: 1px;
-  margin: 4px 8px;
-  background: rgba(95, 65, 153, .18);
-  border: 0;
-}
-.app-shell:not(.rail-expanded) .rail-divider { margin-inline: 12px; }
 
 /* Bottom toggle — same layout mechanics as a rail-item but visually
    quieter so it doesn't compete with the nav rows. */
@@ -771,8 +757,6 @@ button { font: inherit; }
      on a 56px-tall mobile strip — drop them, and the divider before
      them, so the real actions (language switch, account) are never
      squeezed out. */
-  .rail-item.planned { display: none; }
-  .rail-divider { display: none; }
   .rail-user { grid-template-columns: 32px; padding: 0; background: transparent; border: 0; flex-shrink: 0; }
   .rail-user-body { display: none !important; }
   .rail-user-signout { display: none; }

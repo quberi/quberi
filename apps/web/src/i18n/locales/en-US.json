@@ -8,14 +8,10 @@
   },
   "navigation": {
     "chat": "Chat",
-    "search": "Search",
     "knowledge": "Knowledge base",
     "myModels": "My models",
     "account": "Account",
     "agents": "Agent",
-    "history": "History",
-    "planned": "Planned",
-    "comingSoon": "Coming soon",
     "collapsePanel": "Collapse context panel",
     "expandPanel": "Expand context panel",
     "adminConsole": "Admin console"
