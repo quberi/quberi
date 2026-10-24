@@ -302,6 +302,8 @@ export const en = {
 
   // Backend message codes
   'msg.admin.auth.invalid_token': 'Invalid platform admin token.',
+  'msg.admin.auth.api_disabled': 'The platform admin API is disabled on this deployment.',
+  'msg.admin.auth.missing_token': 'Missing bearer token.',
   'msg.admin.auth.sign_in_required': 'Sign in required.',
   'msg.admin.auth.password_too_short': 'Password must be at least {min} characters.',
   'msg.admin.auth.password_too_long': 'Password must be at most {max} characters.',

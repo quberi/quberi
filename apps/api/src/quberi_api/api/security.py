@@ -79,16 +79,16 @@ def _validate_admin_token(
 
     configured = settings.platform_admin_token
     if configured is None or not configured.get_secret_value():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="platform admin API is disabled on this deployment",
+        raise AdminApiException(
+            status.HTTP_401_UNAUTHORIZED,
+            "admin.auth.api_disabled",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="missing bearer token",
+        raise AdminApiException(
+            status.HTTP_401_UNAUTHORIZED,
+            "admin.auth.missing_token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

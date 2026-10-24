@@ -639,6 +639,26 @@ async def test_a_wrong_token_and_a_missing_session_carry_codes_and_the_bearer_he
     )
     assert wrong_zh.json()["detail"] == "平台管理员令牌无效"
 
+    no_token = await coded.get("/api/v1/admin/stats/overview")
+    assert no_token.status_code == 401
+    assert no_token.json() == {
+        "detail": "missing bearer token",
+        "code": "admin.auth.missing_token",
+    }
+
+    coded._transport.app.state.settings = _settings(platform_admin_token=None)
+    disabled = await coded.get(
+        "/api/v1/admin/stats/overview",
+        headers={**_bearer("anything"), "Accept-Language": "zh-CN"},
+    )
+    assert disabled.status_code == 401
+    assert disabled.headers["www-authenticate"] == "Bearer"
+    assert disabled.json()["code"] == "admin.auth.api_disabled"
+    assert disabled.json()["detail"] == "此部署未启用平台管理接口"
+    coded._transport.app.state.settings = _settings(
+        platform_admin_token=SecretStr(STATIC_TOKEN)
+    )
+
     no_session = await coded.get("/api/v1/admin/auth/me")
     assert no_session.status_code == 401
     assert no_session.headers["www-authenticate"] == "Bearer"

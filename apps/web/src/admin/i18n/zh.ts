@@ -280,6 +280,8 @@ export const zh: Record<MessageKey, Entry> = {
 
   // Backend message codes
   'msg.admin.auth.invalid_token': '平台管理员令牌无效。',
+  'msg.admin.auth.api_disabled': '此部署未启用平台管理接口。',
+  'msg.admin.auth.missing_token': '缺少访问令牌。',
   'msg.admin.auth.sign_in_required': '请先登录。',
   'msg.admin.auth.password_too_short': '密码至少需要 {min} 个字符。',
   'msg.admin.auth.password_too_long': '密码最多 {max} 个字符。',

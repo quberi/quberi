@@ -42,6 +42,14 @@ CATALOG: dict[str, Message] = {
         en="invalid platform admin token",
         zh="平台管理员令牌无效",
     ),
+    "admin.auth.api_disabled": Message(
+        en="platform admin API is disabled on this deployment",
+        zh="此部署未启用平台管理接口",
+    ),
+    "admin.auth.missing_token": Message(
+        en="missing bearer token",
+        zh="缺少访问令牌",
+    ),
     "admin.auth.sign_in_required": Message(
         en="sign in required",
         zh="请先登录",
