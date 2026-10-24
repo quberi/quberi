@@ -1633,7 +1633,7 @@
         "layers": {
           "chip": "Two layers of access, down to one document",
           "title": "Two layers of access: firm, and fine-grained",
-          "body": "First, open a “space” (think of it as a filing cabinet) to the right departments, roles, groups or individuals. Then go down to a single document: inside one cabinet, a price quote can be closed to one person, or shared with someone outside the cabinet. When rules conflict, “deny” always wins, and a change applies from the very next request."
+          "body": "First, open a “space” (think of it as a filing cabinet) to the right departments, roles, groups or individuals. Then go down to a single document: inside one cabinet, a price quote can be closed to one person, or shared with someone outside the cabinet. When rules conflict, “deny” wins (a space’s owner is the one exception), and a change applies immediately."
         },
         "offboarding": {
           "chip": "Offboarding in one action",
@@ -1643,7 +1643,7 @@
         "review": {
           "chip": "Check what goes to the model",
           "title": "See what is sent to the model before it goes",
-          "body": "Only your question and the few most relevant passages are sent to the model, never the whole document. Once signed in, turn on “Review before sending” to preview and edit them first, and take out any passage you don't want the model to see."
+          "body": "Only your question and the few most relevant passages are sent to the model, never the whole document. Once signed in, turn on “Check before sending” to preview and edit them first, and take out any passage you don't want the model to see."
         },
         "audit": {
           "chip": "An audit trail for every step",
