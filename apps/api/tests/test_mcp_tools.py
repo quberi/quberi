@@ -66,7 +66,7 @@ async def test_tools_list_with_full_scope_shows_all_eight(http, db_session, redi
         "list_documents", "save_note", "upload",
     }
     for tool in resp.json()["result"]["tools"]:
-        assert set(tool) == {"name", "description", "inputSchema"}
+        assert set(tool) == {"name", "title", "description", "inputSchema", "annotations"}
         assert tool["inputSchema"]["type"] == "object"
 
 

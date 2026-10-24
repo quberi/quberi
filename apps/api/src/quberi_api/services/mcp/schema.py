@@ -15,7 +15,7 @@ showing it (it only produces repeated ``insufficient_scope`` round-trips).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from quberi_api.services.oauth import clients, core
@@ -181,12 +181,43 @@ _UPLOAD_SCHEMA = {
 }
 
 
+# What each tool does to the world, as MCP "tool annotations" (spec 2025-03-26 and later).
+#
+# They are hints a client may use to decide what to ask the person about: a client that
+# honours them can run a read-only tool without a prompt and keep asking before a write. They
+# are NOT a security boundary (the spec tells clients to treat them as untrusted); what keeps
+# data safe is the OAuth scope and the per-document permission checks. They are all written out
+# on purpose: left unsaid, the spec's defaults read "may destroy data" and "reaches outside the
+# server", which makes a client treat a plain search like a delete.
+#
+# ``openWorldHint`` is false everywhere: every tool works only on the signed-in person's own
+# knowledge base. The read tools do write an audit row, but never touch the person's data.
+_READS = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+# Adds something new each time; never overwrites or removes anything.
+_ADDS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": False,
+}
+# Adds, but the same call twice changes nothing more (an identical file is not stored twice).
+_ADDS_ONCE = {**_ADDS, "idempotentHint": True}
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
     description: str
     input_schema: dict
     required_scope: str
+    # A short name for a person to read, and the annotations described above.
+    title: str = ""
+    annotations: dict = field(default_factory=dict)
 
 
 TOOLS: tuple[ToolSpec, ...] = (
@@ -202,6 +233,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         ),
         input_schema=_SEARCH_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
+        title="Search knowledge",
+        annotations=_READS,
     ),
     ToolSpec(
         name="read_around",
@@ -213,6 +246,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         ),
         input_schema=_READ_AROUND_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
+        title="Read around a passage",
+        annotations=_READS,
     ),
     ToolSpec(
         name="get_document_image",
@@ -229,6 +264,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         ),
         input_schema=_GET_DOCUMENT_IMAGE_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
+        title="Show a page as an image",
+        annotations=_READS,
     ),
     ToolSpec(
         name="search_images",
@@ -238,24 +275,32 @@ TOOLS: tuple[ToolSpec, ...] = (
         ),
         input_schema=_SEARCH_IMAGES_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
+        title="Search pictures",
+        annotations=_READS,
     ),
     ToolSpec(
         name="list_spaces",
         description="List the knowledge spaces the signed-in person can read.",
         input_schema=_LIST_SPACES_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
+        title="List spaces",
+        annotations=_READS,
     ),
     ToolSpec(
         name="list_documents",
         description="List the documents in one knowledge space (metadata only, no text).",
         input_schema=_LIST_DOCUMENTS_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_READ,
+        title="List documents",
+        annotations=_READS,
     ),
     ToolSpec(
         name="save_note",
         description="Save a text note into the readable knowledge base.",
         input_schema=_SAVE_NOTE_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_WRITE,
+        title="Save a note",
+        annotations=_ADDS,
     ),
     ToolSpec(
         name="upload",
@@ -266,6 +311,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         ),
         input_schema=_UPLOAD_SCHEMA,
         required_scope=clients.SCOPE_KNOWLEDGE_UPLOAD,
+        title="Upload a file",
+        annotations=_ADDS_ONCE,
     ),
 )
 
@@ -279,11 +326,19 @@ def get_tool(name: str) -> ToolSpec | None:
 def tools_list_for(ext: core.ExternalCaller) -> list[dict[str, Any]]:
     """The ``tools`` array of a ``tools/list`` response, filtered by the grant's scope."""
 
-    return [
-        {"name": t.name, "description": t.description, "inputSchema": t.input_schema}
-        for t in TOOLS
-        if ext.has_scope(t.required_scope)
-    ]
+    return [_listed(t) for t in TOOLS if ext.has_scope(t.required_scope)]
+
+
+def _listed(t: ToolSpec, *, description: str | None = None) -> dict[str, Any]:
+    """One tool as ``tools/list`` and the server card word it."""
+
+    return {
+        "name": t.name,
+        "title": t.title,
+        "description": t.description if description is None else description,
+        "inputSchema": t.input_schema,
+        "annotations": dict(t.annotations),
+    }
 
 
 _SCOPE_NOTE = {
@@ -306,11 +361,10 @@ def server_card(server_info: dict[str, str]) -> dict[str, Any]:
         "serverInfo": {**server_info, "title": "Quberi"},
         "authentication": {"required": True, "schemes": ["oauth2"]},
         "tools": [
-            {
-                "name": t.name,
-                "description": f"{t.description} {_SCOPE_NOTE.get(t.required_scope, '')}".strip(),
-                "inputSchema": t.input_schema,
-            }
+            _listed(
+                t,
+                description=f"{t.description} {_SCOPE_NOTE.get(t.required_scope, '')}".strip(),
+            )
             for t in TOOLS
         ],
         "resources": [],

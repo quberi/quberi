@@ -123,6 +123,47 @@ steps are shown, with copy buttons, on the account page of the web app under
 A self-hosted deployment serves the web app with a different MCP address by
 setting `VITE_MCP_URL` when building it.
 
+## Approvals in your client
+
+Most MCP clients ask the person before a tool runs. So that a plain search does not need the same
+question as an upload, every Quberi tool declares what it does with the standard MCP
+[tool annotations](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) (they are in
+`tools/list` and in the server card):
+
+| Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` | `openWorldHint` |
+|---|---|---|---|---|
+| `search`, `read_around`, `get_document_image`, `search_images`, `list_spaces`, `list_documents` | true | false | true | false |
+| `save_note` | false | false | false | false |
+| `upload` | false | false | true (an identical file is not stored twice) | false |
+
+Nothing here deletes or overwrites anything, and every tool works only on the signed-in person's own
+knowledge base, hence `openWorldHint: false`. The read tools do write an audit row, but never change a
+document.
+
+These are **hints, not permissions**. The MCP specification tells clients to treat them as untrusted, and
+whether a client acts on them, and how, is the client's own choice and setting: some run a read-only tool
+without asking, some ask for every tool whatever it says. What actually limits a tool is the permission the
+person granted (`knowledge:read`, `knowledge:write`, `knowledge:upload`) and the access checks on every
+document, neither of which a hint can widen.
+
+If your client still asks before every Quberi call, change its approval setting; the server cannot do it
+for you. In Codex, `config.toml` has, per server, `default_tools_approval_mode` and, per tool,
+`approval_mode`, each taking `auto`, `prompt`, `writes` or `approve` (see
+[Codex's configuration reference](https://developers.openai.com/codex/config-reference/) for exactly what
+each value does in your version):
+
+```toml
+[mcp_servers.quberi]
+default_tools_approval_mode = "auto"
+
+# Keep asking before the tools that add to the knowledge base.
+[mcp_servers.quberi.tools.save_note]
+approval_mode = "prompt"
+
+[mcp_servers.quberi.tools.upload]
+approval_mode = "prompt"
+```
+
 ## What a connected client can do
 
 A connection acts as the person who approved it, in the organization they
