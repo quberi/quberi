@@ -17,6 +17,7 @@ import {
   Server,
   ShieldCheck,
   UserMinus,
+  Users,
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -36,6 +37,7 @@ export const GUEST_ADVANTAGES: readonly { key: string; Icon: LucideIcon }[] = [
   { key: 'citation', Icon: Quote },
   { key: 'agents', Icon: Plug },
   { key: 'deploy', Icon: Server },
+  { key: 'editions', Icon: Users },
 ]
 
 export function GuestAdvantages({ collapsed }: { collapsed: boolean }) {

@@ -40,10 +40,10 @@ describe.each(LOCALES)('the advantages strip (%s)', (locale) => {
   })
   const bundle = () => bundles[locale] as unknown as Bundle
 
-  it('shows all eight points as chips without opening anything', () => {
+  it('shows all nine points as chips without opening anything', () => {
     render(<GuestAdvantages collapsed={false} />)
     const chips = screen.getAllByRole('listitem')
-    expect(chips).toHaveLength(8)
+    expect(chips).toHaveLength(9)
     for (const key of ITEM_KEYS) {
       expect(screen.getByText(lookup(bundle(), `chat.guestAdv.items.${key}.chip`))).toBeTruthy()
     }
@@ -178,6 +178,26 @@ describe('the wording, in both languages', () => {
   it('says outside assistants are off by default', () => {
     expect(lookup(zhCN as unknown as Bundle, 'chat.guestAdv.items.agents.body')).toContain('默认关闭')
     expect(lookup(enUS as unknown as Bundle, 'chat.guestAdv.items.agents.body')).toContain('off by default')
+  })
+
+  it('says, as the ninth and last point, that personal and enterprise knowledge bases are both supported', () => {
+    expect(ITEM_KEYS).toHaveLength(9)
+    expect(ITEM_KEYS[ITEM_KEYS.length - 1]).toBe('editions')
+    const zh = lookup(zhCN as unknown as Bundle, 'chat.guestAdv.items.editions.body')
+    expect(zh).toContain('个人知识库')
+    expect(zh).toContain('企业')
+    expect(lookup(zhCN as unknown as Bundle, 'chat.guestAdv.items.editions.chip')).toContain('个人')
+    const en = lookup(enUS as unknown as Bundle, 'chat.guestAdv.items.editions.body')
+    expect(en).toContain('personal knowledge base')
+    expect(lookup(enUS as unknown as Bundle, 'chat.guestAdv.items.editions.chip')).toMatch(/Personal and enterprise/)
+    expect(en).toContain('enterprise')
+  })
+
+  it('opens the drawer lead on both kinds of knowledge base, and the link counts nine', () => {
+    expect(lookup(zhCN as unknown as Bundle, 'chat.guestAdv.drawerLead')).toContain('个人和企业都能用')
+    expect(lookup(zhCN as unknown as Bundle, 'chat.guestAdv.more')).toContain('9')
+    expect(lookup(enUS as unknown as Bundle, 'chat.guestAdv.drawerLead')).toMatch(/individuals and companies/)
+    expect(lookup(enUS as unknown as Bundle, 'chat.guestAdv.more')).toContain('9')
   })
 
   it('does not call out jargon such as per-document permission wording', () => {

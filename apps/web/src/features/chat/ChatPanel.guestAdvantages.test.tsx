@@ -72,7 +72,7 @@ describe('the guest chat page', () => {
   it('puts the advantages above the chat and drops the page header the strip replaces', () => {
     const { container } = render(<ChatPanel />)
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('chat.guestAdv.title')
-    expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(8)
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(9)
     expect(container.querySelector('.chat-panel-header')).toBeNull()
     const strip = container.querySelector('.guest-adv')
     const panel = container.querySelector('.chat-panel')
@@ -81,9 +81,9 @@ describe('the guest chat page', () => {
     )
   })
 
-  it('keeps all eight chips before the guest has asked anything, even with a welcome message', () => {
+  it('keeps all nine chips before the guest has asked anything, even with a welcome message', () => {
     const { container } = render(<ChatPanel />)
-    expect(container.querySelectorAll('.guest-adv-chip')).toHaveLength(8)
+    expect(container.querySelectorAll('.guest-adv-chip')).toHaveLength(9)
   })
 
   it('folds the advantages to one line once the guest has asked something', () => {
@@ -96,7 +96,7 @@ describe('the guest chat page', () => {
   it('does not fold while the thread is still loading', () => {
     chat.messages = { kind: 'loading' } as unknown as typeof chat.messages
     const { container } = render(<ChatPanel />)
-    expect(container.querySelectorAll('.guest-adv-chip')).toHaveLength(8)
+    expect(container.querySelectorAll('.guest-adv-chip')).toHaveLength(9)
   })
 })
 

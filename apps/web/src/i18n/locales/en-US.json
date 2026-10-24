@@ -1618,10 +1618,10 @@
     "guestAdv": {
       "title": "Your documents, visible only to the right people, ",
       "titleEm": "AI included",
-      "more": "See all 8 advantages",
+      "more": "See all 9 advantages",
       "cta": "Sign in to try the enterprise knowledge base",
       "drawerTitle": "Why Quberi",
-      "drawerLead": "An enterprise knowledge base you can connect AI assistants to, with a firm hand on who can see what.",
+      "drawerLead": "A knowledge base for individuals and companies alike, one you can connect AI assistants to, with a firm hand on who can see what.",
       "close": "Close",
       "stripLabel": "Why Quberi",
       "items": {
@@ -1664,6 +1664,11 @@
           "chip": "Self-host: your data can stay in-house",
           "title": "You choose how it's deployed, where data goes and which model is used",
           "body": "Deployment: use Quberi's cloud, or run it on your own computer, in your company's data centre or servers, or in your own cloud account.\nWhere data goes: when you self-host, documents, indexes, conversations and audit logs stay on your own servers, and turning text into vectors also happens locally, with no third party involved. Add a local model you host yourself and your questions and retrieved passages don't need to leave your network either.\nModels: DeepSeek, OpenAI, Qwen, Kimi and more are built in; an organisation can fix which models are allowed, and individuals can use their own keys; any OpenAI-compatible model, including ones you run with vLLM or Ollama, can be connected.\nThe code is open source (AGPL-3.0), so you can review it yourself."
+        },
+        "editions": {
+          "chip": "Personal and enterprise knowledge bases",
+          "title": "One account, for a personal and an enterprise knowledge base",
+          "body": "Sign up and you get your own personal knowledge base, visible only to you. When you need to work as a team, create an enterprise organisation from the same account, invite members and grant access by department and position, or join someone else's organisation and switch between them."
         }
       }
     },
