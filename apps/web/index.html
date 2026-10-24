@@ -72,6 +72,21 @@
       #root > main.static-intro h1 { font-size: 28px; letter-spacing: -0.02em; }
       #root > main.static-intro h2 { font-size: 18px; margin-top: 28px; }
       #root > main.static-intro nav a { margin-right: 16px; }
+      /* Shown instead of the introduction on every address except the home page
+         (see the script at the end of <body>). Waits a moment so a fast load never
+         flashes it. React removes it with the rest of #root on mount. */
+      .boot-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", Helvetica, Arial, sans-serif;
+        color: #857aab;
+        opacity: 0;
+        animation: static-intro-in 200ms ease-out 400ms forwards;
+      }
     </style>
   </head>
   <body>
@@ -146,6 +161,25 @@
         <p>你的浏览器禁用了 JavaScript。Quberi 需要 JavaScript 才能运行完整应用。</p>
       </noscript>
     </div>
+    <script>
+      /* The introduction above is for the home page and for crawlers. Anywhere else
+         (the sign-in page a connected tool opens, a deep link) the person came for the
+         app, so show a quiet "loading" in its place while the app loads, instead of
+         marketing copy that would fade in on a slow connection. */
+      (function () {
+        var path = location.pathname
+        if (path === '/' || path === '/index.html') return
+        var root = document.getElementById('root')
+        var intro = root && root.querySelector('main.static-intro')
+        if (!intro) return
+        intro.style.display = 'none'
+        var note = document.createElement('div')
+        note.className = 'boot-loading'
+        note.setAttribute('role', 'status')
+        note.textContent = /^zh/i.test(navigator.language || '') ? '正在加载…' : 'Loading…'
+        root.appendChild(note)
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

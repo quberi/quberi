@@ -78,6 +78,12 @@ for (const kw of ['Government departments', 'What to know up front']) {
 if (/[\u4e00-\u9fff]/.test(whyEn.replace(/<a class="lang"[^>]*>[^<]*<\/a>/, '').replace(/\(in Chinese\)/, ''))) {
   errors.push('why-en.html contains Chinese text outside the language link (one language per page)')
 }
+// The introduction is for the home page only. Every other address (the sign-in page a tool
+// opens, a deep link) must swap it for a quiet "loading", or a slow load shows marketing
+// copy where the login should be.
+if (!/<script>[\s\S]*location\.pathname[\s\S]*boot-loading[\s\S]*<\/script>/.test(html)) {
+  errors.push('index.html lost the script that hides the introduction away from the home page')
+}
 const sitemap = read('sitemap.xml')
 for (const path of ['/why', '/why-en']) {
   if (!sitemap.includes(`<loc>https://ai.quberi.com${path}</loc>`)) errors.push(`sitemap.xml does not list ${path}`)
