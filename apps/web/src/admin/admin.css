@@ -445,6 +445,10 @@ code {
   min-height: 100vh;
 }
 
+/* The rail is pinned to the viewport: it must not grow with a long page, or the brand and the
+ * menu scroll out of sight while the language switch and Sign out sit far below. `align-self:
+ * start` stops the grid from stretching it to the page height; `overflow-y: auto` keeps it
+ * usable on a very short window. */
 .admin-rail {
   display: flex;
   flex-direction: column;
@@ -452,6 +456,11 @@ code {
   gap: 6px;
   background: #fff;
   border-right: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .admin-rail-brand {
