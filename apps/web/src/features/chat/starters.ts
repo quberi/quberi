@@ -7,13 +7,17 @@
 export const GUEST_STARTER_KEYS = [
   'what',
   'isolation',
+  'visibility',
   'data',
   'cloud',
+  'offboard',
+  'connect',
   'start',
   'models',
   'share',
   'files',
   'agents',
+  'audit',
   'guest',
 ] as const
 

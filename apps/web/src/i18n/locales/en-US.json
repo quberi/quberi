@@ -1615,6 +1615,58 @@
       "noneDesc": "Plain chat (selected model + spaces)",
       "empty": "No agents available"
     },
+    "guestAdv": {
+      "title": "Your documents, visible only to the right people, ",
+      "titleEm": "AI included",
+      "more": "See all 8 advantages",
+      "cta": "Sign in to try the enterprise knowledge base",
+      "drawerTitle": "Why Quberi",
+      "drawerLead": "An enterprise knowledge base you can connect AI assistants to, with a firm hand on who can see what.",
+      "close": "Close",
+      "stripLabel": "Why Quberi",
+      "items": {
+        "permission": {
+          "chip": "AI only sees what you may see",
+          "title": "The AI follows the rules too: what you can't see, it can't see",
+          "body": "Ask the same question as different people and the answers can differ, because the AI only draws on documents the person asking is already allowed to read. Content without permission never shows up in an answer or in its citations."
+        },
+        "layers": {
+          "chip": "Two layers of access, down to one document",
+          "title": "Two layers of access: firm, and fine-grained",
+          "body": "First, open a “space” (think of it as a filing cabinet) to the right departments, roles, groups or individuals. Then go down to a single document: inside one cabinet, a price quote can be closed to one person, or shared with someone outside the cabinet. When rules conflict, “deny” always wins, and a change applies from the very next request."
+        },
+        "offboarding": {
+          "chip": "Offboarding in one action",
+          "title": "When someone leaves, one action takes it all back",
+          "body": "Once the organisation owner deactivates a member, their web sign-in, connected AI tools and Feishu sync all stop, any model keys they entered are wiped, and their personal spaces are frozen."
+        },
+        "review": {
+          "chip": "Check what goes to the model",
+          "title": "See what is sent to the model before it goes",
+          "body": "Only your question and the few most relevant passages are sent to the model, never the whole document. Once signed in, turn on “Review before sending” to preview and edit them first, and take out any passage you don't want the model to see."
+        },
+        "audit": {
+          "chip": "An audit trail for every step",
+          "title": "Every step is recorded, so problems can be traced",
+          "body": "Admins can see in the audit log every question asked, which documents the AI drew on, and every change to space, member and document permissions."
+        },
+        "citation": {
+          "chip": "Answers you can check",
+          "title": "Answers come with sources you can check",
+          "body": "Every answer names the documents it used, with page, line and version where available, and one click takes you back to the original. If it isn't in your documents, the AI says it found nothing instead of making something up."
+        },
+        "agents": {
+          "chip": "Works with ChatGPT, Claude and more",
+          "title": "Connect the AI assistants you already use, without widening access",
+          "body": "ChatGPT, Claude, Claude Code, Cursor and Codex can connect to Quberi directly, DeepSeek Harness has a dedicated plugin, and other MCP-capable assistants work too. The assistant searches as you, with your approval, and finds exactly what you would find yourself, so a different entry point never loosens access. This is off by default, turned on by your organisation's admin, and you can disconnect at any time."
+        },
+        "deploy": {
+          "chip": "Self-host: your data can stay in-house",
+          "title": "You choose how it's deployed, where data goes and which model is used",
+          "body": "Deployment: use Quberi's cloud, or run it on your own computer, in your company's data centre or servers, or in your own cloud account.\nWhere data goes: when you self-host, documents, indexes, conversations and audit logs stay on your own servers, and turning text into vectors also happens locally, with no third party involved. Add a local model you host yourself and your questions and retrieved passages don't need to leave your network either.\nModels: DeepSeek, OpenAI, Qwen, Kimi and more are built in; an organisation can fix which models are allowed, and individuals can use their own keys; any OpenAI-compatible model, including ones you run with vLLM or Ollama, can be connected.\nThe code is open source (AGPL-3.0), so you can review it yourself."
+        }
+      }
+    },
     "guest": {
       "placeholder": "Ask anything about Quberi…",
       "remaining": "{{remaining}} of {{limit}} free questions left today.",
@@ -1631,7 +1683,11 @@
         "agents": "What can agents do?",
         "guest": "What can I do without signing in?",
         "data": "Where is my data stored, and can it stay on my own machine?",
-        "cloud": "If a cloud model is used, are my documents uploaded?"
+        "cloud": "If a cloud model is used, are my documents uploaded?",
+        "visibility": "Could the AI see documents I'm not allowed to read?",
+        "offboard": "How do I revoke access when someone leaves?",
+        "connect": "Can I connect my own AI assistant?",
+        "audit": "Who asked what, and can I find out?"
       },
       "startersMore": "Ask more",
       "startersRefresh": "More ideas",

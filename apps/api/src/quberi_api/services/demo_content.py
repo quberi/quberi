@@ -85,13 +85,17 @@ def locale_for(code: str | None) -> DemoLocale:
 GUEST_STARTER_KEYS: tuple[str, ...] = (
     "what",
     "isolation",
+    "visibility",
     "data",
     "cloud",
+    "offboard",
+    "connect",
     "start",
     "models",
     "share",
     "files",
     "agents",
+    "audit",
     "guest",
 )
 

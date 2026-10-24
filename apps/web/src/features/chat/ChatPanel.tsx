@@ -63,6 +63,7 @@ import { SEARCH_MODES, messageImageMatches, messageImageQuery, messageIsPictureA
 import type { SearchMode } from './types'
 import { useFormatDate } from '../../i18n/formatDate'
 import { getGuestStarters } from './guestApi'
+import { GuestAdvantages } from './GuestAdvantages'
 import {
   GUEST_STARTER_BATCH,
   orderStarters,
@@ -89,28 +90,38 @@ import {
  */
 export function ChatPanel() {
   const { t } = useTranslation()
-  const { anchorSpace, accessibleSpaces } = useChat()
+  const { anchorSpace, accessibleSpaces, messages } = useChat()
+  const { isGuest } = useAuth()
 
   if (accessibleSpaces.length === 0) {
     return <NoSpaceState />
   }
 
+  // Once a guest has asked something, the advantages fold to one line.
+  const hasAsked =
+    messages.kind === 'ready' && messages.items.some((m) => m.role === 'user')
+
   return (
-    <section className="panel chat-panel">
-      <div className="chat-panel-header">
-        <div>
-          <span className="section-label">
-            <Sparkles size={15} /> {t('chat.title')}
-          </span>
-          <p>
-            {anchorSpace
-              ? t('chat.description', { space: anchorSpace.name })
-              : t('chat.descriptionNoAnchor')}
-          </p>
-        </div>
-      </div>
-      <ThreadWorkspace />
-    </section>
+    <>
+      {isGuest && <GuestAdvantages collapsed={hasAsked} />}
+      <section className={isGuest ? 'panel chat-panel chat-panel-guest' : 'panel chat-panel'}>
+        {!isGuest && (
+          <div className="chat-panel-header">
+            <div>
+              <span className="section-label">
+                <Sparkles size={15} /> {t('chat.title')}
+              </span>
+              <p>
+                {anchorSpace
+                  ? t('chat.description', { space: anchorSpace.name })
+                  : t('chat.descriptionNoAnchor')}
+              </p>
+            </div>
+          </div>
+        )}
+        <ThreadWorkspace />
+      </section>
+    </>
   )
 }
 
