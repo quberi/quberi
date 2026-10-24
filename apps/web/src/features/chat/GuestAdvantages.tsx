@@ -8,6 +8,7 @@
  */
 import {
   ChevronRight,
+  ExternalLink,
   Eye,
   Layers,
   LogIn,
@@ -40,6 +41,29 @@ export const GUEST_ADVANTAGES: readonly { key: string; Icon: LucideIcon }[] = [
   { key: 'editions', Icon: Users },
 ]
 
+/**
+ * The page that explains why a knowledge base is needed and by whom. It is a plain page of the site,
+ * not part of this app, so it opens in a new tab and keeps the conversation where it is.
+ */
+export function whyPageHref(language: string | undefined): string {
+  return (language ?? '').toLowerCase().startsWith('zh') ? '/why' : '/why-en'
+}
+
+function WhyLink({ long = false }: { long?: boolean }) {
+  const { t, i18n } = useTranslation()
+  return (
+    <a
+      className={long ? 'link-button guest-adv-why-long' : 'link-button guest-adv-why'}
+      href={whyPageHref(i18n?.resolvedLanguage ?? i18n?.language)}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      {t(long ? 'chat.guestAdv.whyLong' : 'chat.guestAdv.why')}
+      <ExternalLink size={13} />
+    </a>
+  )
+}
+
 export function GuestAdvantages({ collapsed }: { collapsed: boolean }) {
   const { t } = useTranslation()
   // ``null`` = closed; otherwise the point to bring into view.
@@ -55,14 +79,17 @@ export function GuestAdvantages({ collapsed }: { collapsed: boolean }) {
           {t('chat.guestAdv.title')}
           <em>{t('chat.guestAdv.titleEm')}</em>
         </h2>
-        <button
-          className="link-button guest-adv-more"
-          onClick={() => setOpen(GUEST_ADVANTAGES[0].key)}
-          type="button"
-        >
-          {t('chat.guestAdv.more')}
-          <ChevronRight size={14} />
-        </button>
+        <div className="guest-adv-links">
+          <WhyLink />
+          <button
+            className="link-button guest-adv-more"
+            onClick={() => setOpen(GUEST_ADVANTAGES[0].key)}
+            type="button"
+          >
+            {t('chat.guestAdv.more')}
+            <ChevronRight size={14} />
+          </button>
+        </div>
       </div>
       {!collapsed && (
         <ul className="guest-adv-chips">
@@ -137,6 +164,9 @@ function GuestAdvantagesDrawer({
         </header>
         <div className="doc-drawer-body doc-drawer-body-top">
           <p className="guest-adv-lead">{t('chat.guestAdv.drawerLead')}</p>
+          <p className="guest-adv-lead">
+            <WhyLink long />
+          </p>
           <ol className="guest-adv-list">
             {GUEST_ADVANTAGES.map(({ key, Icon }) => (
               <li key={key} ref={key === focusKey ? focusRef : undefined}>

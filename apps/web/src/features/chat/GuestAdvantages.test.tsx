@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import enUS from '../../i18n/locales/en-US.json'
 import zhCN from '../../i18n/locales/zh-CN.json'
 
-import { GUEST_ADVANTAGES, GuestAdvantages } from './GuestAdvantages'
+import { GUEST_ADVANTAGES, GuestAdvantages, whyPageHref } from './GuestAdvantages'
 import { GUEST_STARTER_KEYS } from './starters'
 
 const state = vi.hoisted(() => ({ locale: 'zh-CN', openAuth: vi.fn() }))
@@ -88,6 +88,30 @@ describe.each(LOCALES)('the advantages strip (%s)', (locale) => {
     render(<GuestAdvantages collapsed={false} />)
     fireEvent.click(screen.getByText(lookup(bundle(), 'chat.guestAdv.items.deploy.chip')))
     expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+
+  it('links to the page on why a knowledge base is needed, in this language, in a new tab', () => {
+    render(<GuestAdvantages collapsed={false} />)
+    const link = screen.getByRole('link', { name: lookup(bundle(), 'chat.guestAdv.why') }) as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe(locale === 'zh-CN' ? '/why' : '/why-en')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toContain('noopener')
+    // A link, not a button: it has to work without opening anything first.
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps that link when the strip has folded to one line', () => {
+    render(<GuestAdvantages collapsed />)
+    expect(screen.getByRole('link', { name: lookup(bundle(), 'chat.guestAdv.why') })).toBeTruthy()
+  })
+
+  it('repeats the link, with the full title, inside the drawer', () => {
+    render(<GuestAdvantages collapsed={false} />)
+    fireEvent.click(screen.getByText(lookup(bundle(), 'chat.guestAdv.items.audit.chip')))
+    const dialog = screen.getByRole('dialog')
+    const link = within(dialog).getByRole('link', { name: lookup(bundle(), 'chat.guestAdv.whyLong') })
+    expect(link.getAttribute('href')).toBe(locale === 'zh-CN' ? '/why' : '/why-en')
+    expect(link.getAttribute('target')).toBe('_blank')
   })
 
   it('closes with the close button, with Escape and by clicking outside', () => {
@@ -224,5 +248,21 @@ describe('the starter questions', () => {
     for (const k of ['visibility', 'offboard', 'connect', 'audit']) expect(keys).toContain(k)
     expect(keys.indexOf('visibility')).toBeLessThan(keys.indexOf('start'))
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+describe('which page the link goes to', () => {
+  it('is the Chinese page for Chinese and the English page for everything else', () => {
+    expect(whyPageHref('zh-CN')).toBe('/why')
+    expect(whyPageHref('zh')).toBe('/why')
+    expect(whyPageHref('en-US')).toBe('/why-en')
+    expect(whyPageHref('fr')).toBe('/why-en')
+    expect(whyPageHref(undefined)).toBe('/why-en')
+  })
+
+  it('names both pages in both languages, so the text matches where it goes', () => {
+    expect(lookup(zhCN as unknown as Bundle, 'chat.guestAdv.why')).toBe('为什么需要知识库')
+    expect(lookup(enUS as unknown as Bundle, 'chat.guestAdv.why')).toBe('Why a knowledge base')
+    expect(/[\u4e00-\u9fff]/.test(lookup(enUS as unknown as Bundle, 'chat.guestAdv.whyLong'))).toBe(false)
   })
 })

@@ -6487,6 +6487,10 @@ details.review-part > summary { cursor: pointer; }
 }
 .guest-adv-head h2 em { font-style: normal; color: var(--purple-700); }
 .guest-adv .link-button { margin-top: 0; flex: none; white-space: nowrap; }
+.guest-adv-links { display: flex; align-items: baseline; gap: 4px; flex: none; }
+.guest-adv-why, .guest-adv-why-long { text-decoration: none; }
+.guest-adv-why svg, .guest-adv-why-long svg { margin-left: 2px; }
+.guest-adv-lead .guest-adv-why-long { padding-left: 0; white-space: normal; text-align: left; }
 .guest-adv-chips {
   list-style: none;
   margin: 12px 0 0;
@@ -6533,5 +6537,6 @@ details.review-part > summary { cursor: pointer; }
 @media (max-width: 620px) {
   .guest-adv { padding: 12px 14px; }
   .guest-adv-head h2 { font-size: 15px; }
+  .guest-adv-why { display: none; }
   .guest-adv-chips li:nth-child(n + 4) { display: none; }
 }
