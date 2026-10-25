@@ -266,9 +266,11 @@ some chat clients, ChatGPT's connectors among them, say the block is dropped or 
 that does not show the image can give the person the link instead (it is the same short-lived, re-checked
 link described above), as an ordinary link, not as an embedded picture: a chat window does not load it.
 
-The result deliberately has **no `structuredContent`**. Some clients (Codex and VS Code, as reported) pass the
-model only the structured part when there is one and drop `content[]`, which would lose the image and the
-caption together. The caption has what a client needs (name, space, version, page, size, `document_id`, link),
+The result deliberately has **no `structuredContent`**. Some clients pass the model only the structured part
+when there is one and drop `content[]`, which loses the image and the caption together. This was seen in Codex
+(the app showed a broken picture while the tool had succeeded; with the structured part removed, the same
+call reached the model as the caption plus an image, and the picture appeared in the chat) and is reported
+for VS Code. The caption has what a client needs (name, space, version, page, size, `document_id`, link),
 and the picture is not repeated, so the answer is not doubled in size.
 
 The image is kept to about 200 KB (quality is lowered first, then the width, never below 256 px), so it is
