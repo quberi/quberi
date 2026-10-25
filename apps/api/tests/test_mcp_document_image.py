@@ -110,6 +110,14 @@ def _decoded(result: dict) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(image_blocks[0]["data"], validate=True)))
 
 
+def _link_in(text: str) -> str:
+    """The address on the last line of the caption."""
+
+    last = text.strip().splitlines()[-1]
+    assert last.startswith("http"), last
+    return last
+
+
 def _text(result: dict) -> str:
     texts = [b["text"] for b in result["content"] if b["type"] == "text"]
     assert len(texts) == 1
@@ -145,11 +153,10 @@ async def test_a_pdf_page_comes_back_as_an_image_block_a_caption_and_a_link(
     assert f"document_id={doc.id}" in text
     assert "if the image above is not displayed" in text.lower()
 
-    structured = result["structuredContent"]
-    assert structured["document_id"] == str(doc.id) and structured["page"] == 2
-    assert structured["width"] == 1024 and structured["mime_type"] == "image/jpeg"
-    # The picture is not repeated in the structured part: it would double the answer.
-    assert "data" not in structured and block["data"] not in str(structured)
+    # No structuredContent: a client that prefers it would hand the model only that and drop the
+    # image and this caption. The caption carries everything, including the size.
+    assert "structuredContent" not in result
+    assert "1024x" in text and "KB" in text and "space: Reports" in text
 
 
 async def test_the_link_in_the_caption_really_opens_the_same_page(
@@ -160,8 +167,7 @@ async def test_the_link_in_the_caption_really_opens_the_same_page(
     tokens = await _reader(db_session, redis_client, boot)
 
     result = await _call(http, tokens, {"document_id": str(doc.id), "page": 3})
-    link = result["structuredContent"]["link"]
-    assert link in _text(result)
+    link = _link_in(_text(result))
     assert link.startswith(f"{ORIGIN}/api/v1/external/page/") and link.endswith(".jpg")
     # No access token in the address: the link is its own short-lived proof.
     assert tokens.access_token not in link
@@ -278,7 +284,7 @@ async def test_without_a_signing_key_the_image_still_comes_and_the_text_says_no_
 
     result = await _call(http, tokens, {"document_id": str(doc.id)})
     assert result["isError"] is False and _decoded(result).format == "JPEG"
-    assert result["structuredContent"]["link"] is None
+    assert "structuredContent" not in result
     assert "http" not in _text(result)
 
 
@@ -560,3 +566,33 @@ async def test_the_tool_is_listed_with_a_schema_that_matches_what_it_accepts(
     assert set(schema["properties"]) == {"document_id", "page", "version", "max_width"}
     assert schema["properties"]["max_width"]["minimum"] == 256
     assert schema["properties"]["max_width"]["maximum"] == 1600
+
+
+async def test_the_caption_tells_the_model_to_give_the_link_as_a_link_not_as_a_picture(
+    http, db_session, redis_client, blobs
+):
+    boot = await _org(db_session)
+    _space, doc = await _stored(db_session, boot, blobs)
+    tokens = await _reader(db_session, redis_client, boot)
+
+    text = _text(await _call(http, tokens, {"document_id": str(doc.id)}))
+
+    assert "ordinary Markdown link" in text
+    assert "Do not put it in your answer as an image" in text
+    assert "![" in text  # named only to forbid it
+
+
+async def test_other_tools_still_carry_their_structured_part(http, db_session, redis_client):
+    boot = await _org(db_session)
+    tokens = await _reader(db_session, redis_client, boot)
+    resp = await http.post(
+        "/",
+        headers={"Authorization": f"Bearer {tokens.access_token}"},
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "list_spaces", "arguments": {}},
+        },
+    )
+    assert "structuredContent" in resp.json()["result"]

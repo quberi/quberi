@@ -569,7 +569,10 @@ def format_document_image_text(result: DocumentImage) -> str:
     if result.link:
         lines.append(
             "If the image above is not displayed in this client, give the person this link "
-            "instead, exactly as written (it works for about 10 minutes):"
+            "instead, as an ordinary Markdown link such as [Open the page](address) with the "
+            "address exactly as written. Do not put it in your answer as an image "
+            "(![...](...)): a chat window does not load it and shows a broken picture. It works "
+            "for about 10 minutes:"
         )
         lines.append(result.link)
     else:

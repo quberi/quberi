@@ -264,8 +264,12 @@ The result has two content blocks: an MCP `image` block (`data` is plain base64 
 block varies. Some show it inline; some pass it to the model without showing it; and reports from users of
 some chat clients, ChatGPT's connectors among them, say the block is dropped or comes back empty. A client
 that does not show the image can give the person the link instead (it is the same short-lived, re-checked
-link described above). The structured part of the result carries the same facts without the picture, so the
-answer is not doubled in size.
+link described above), as an ordinary link, not as an embedded picture: a chat window does not load it.
+
+The result deliberately has **no `structuredContent`**. Some clients (Codex and VS Code, as reported) pass the
+model only the structured part when there is one and drop `content[]`, which would lose the image and the
+caption together. The caption has what a client needs (name, space, version, page, size, `document_id`, link),
+and the picture is not repeated, so the answer is not doubled in size.
 
 The image is kept to about 200 KB (quality is lowered first, then the width, never below 256 px), so it is
 a reading copy, not the original; the original is only reachable through the link. Pictures are shown at the

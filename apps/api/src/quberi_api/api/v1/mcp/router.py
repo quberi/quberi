@@ -289,27 +289,17 @@ async def _tools_call(
         if name == "get_document_image":
             wanted = DocumentImageRequest.model_validate(arguments)
             shown = await adapters.do_get_document_image(wanted, request, ext, session, infra)
+            # No structuredContent on purpose. Some clients (Codex, VS Code) hand the model only
+            # the structured part when there is one and drop content[], which loses the image
+            # and the caption. Everything a client needs is in the caption, so the image block
+            # and the text are the whole answer.
             return protocol.tool_result_blocks(
                 [
                     protocol.image_content(
                         base64.b64encode(shown.data).decode("ascii"), "image/jpeg"
                     ),
                     protocol.text_content(formatting.format_document_image_text(shown)),
-                ],
-                # The picture itself is not repeated here: it would double the size of the answer.
-                {
-                    "document_id": str(shown.document_id),
-                    "document_name": shown.document_name,
-                    "space_name": shown.space_name,
-                    "version_number": shown.version_number,
-                    "latest_version": shown.latest_version,
-                    "page": shown.page,
-                    "width": shown.width,
-                    "height": shown.height,
-                    "bytes": len(shown.data),
-                    "mime_type": "image/jpeg",
-                    "link": shown.link,
-                },
+                ]
             )
         if name == "list_spaces":
             result = await adapters.do_list_spaces(ext, session, infra)
