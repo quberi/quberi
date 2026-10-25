@@ -174,9 +174,8 @@ async def test_a_frozen_members_personal_content_disappears_from_mcp_search(
     }
 
     before = await http.post("/", headers=headers, json=search_call)
-    before_result = before.json()["result"]["structuredContent"]
-    before_names = {p["document_name"] for p in before_result["passages"]}
-    assert before_names == {"private-note.pdf", "shared-doc.pdf"}
+    before_text = before.json()["result"]["content"][0]["text"]
+    assert "private-note.pdf" in before_text and "shared-doc.pdf" in before_text
 
     await db_session.commit()
     async with db_session.begin():
@@ -189,9 +188,8 @@ async def test_a_frozen_members_personal_content_disappears_from_mcp_search(
 
     search_call["id"] = 2
     after = await http.post("/", headers=headers, json=search_call)
-    after_result = after.json()["result"]["structuredContent"]
-    after_names = {p["document_name"] for p in after_result["passages"]}
-    assert after_names == {"shared-doc.pdf"}
+    after_text = after.json()["result"]["content"][0]["text"]
+    assert "shared-doc.pdf" in after_text
     assert "private-note.pdf" not in after.text
 
 
@@ -215,7 +213,7 @@ async def test_a_frozen_personal_space_is_not_listed_by_mcp_list_spaces(
     }
 
     before = await http.post("/", headers=headers, json=list_call)
-    assert before.json()["result"]["structuredContent"]["total"] >= 1
+    assert "Quberi spaces this account can read" in before.json()["result"]["content"][0]["text"]
 
     await db_session.commit()
     async with db_session.begin():
@@ -228,5 +226,5 @@ async def test_a_frozen_personal_space_is_not_listed_by_mcp_list_spaces(
 
     list_call["id"] = 2
     after = await http.post("/", headers=headers, json=list_call)
-    assert after.json()["result"]["structuredContent"]["total"] == 0
+    assert "cannot read any knowledge spaces" in after.json()["result"]["content"][0]["text"]
     _ = personal_id

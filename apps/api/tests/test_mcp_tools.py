@@ -136,7 +136,7 @@ async def test_calling_a_tool_without_its_scope_is_a_tool_execution_error(
 # ---------------------------------------------------------------------------
 
 
-async def test_search_returns_formatted_text_and_structured_content(
+async def test_search_returns_formatted_text_and_nothing_structured(
     http, db_session, redis_client, monkeypatch
 ):
     from quberi_api.services.doc_acl import NO_DOC_ACCESS
@@ -167,7 +167,10 @@ async def test_search_returns_formatted_text_and_structured_content(
     assert result["isError"] is False
     assert "Handbook.md" in result["content"][0]["text"]
     assert "Remote work is allowed." in result["content"][0]["text"]
-    assert result["structuredContent"]["passages"][0]["document_name"] == "Handbook.md"
+    # Text only: a client that prefers a structured part would hand the model that and drop the
+    # text, losing the "Cite as" lines and the notes (Codex does exactly that).
+    assert "structuredContent" not in result
+    assert [b["type"] for b in result["content"]] == ["text"]
 
 
 async def test_list_spaces_returns_the_personal_space(http, db_session, redis_client):
@@ -177,8 +180,9 @@ async def test_list_spaces_returns_the_personal_space(http, db_session, redis_cl
     resp = await http.post("/", headers=_auth(tokens), json=_call("list_spaces", {}))
     result = resp.json()["result"]
     assert result["isError"] is False
-    assert result["structuredContent"]["total"] >= 1
-    assert any(s["kind"] == "personal" for s in result["structuredContent"]["spaces"])
+    assert "structuredContent" not in result
+    text = result["content"][0]["text"]
+    assert "Quberi spaces this account can read" in text and "(personal space," in text
 
 
 async def test_list_documents_needs_a_space_name(http, db_session, redis_client):
@@ -233,7 +237,8 @@ async def test_save_note_lands_in_the_personal_space_by_default(
     assert result["isError"] is False
     assert "Meeting" in result["content"][0]["text"]
     assert "We decided on plan B." in captured["blob"].decode("utf-8")
-    assert result["structuredContent"]["space_id"] == str(boot.personal_space_id)
+    assert "structuredContent" not in result
+    assert 'in Quberi as "Meeting.md"' in result["content"][0]["text"]
 
 
 async def test_upload_decodes_base64_and_stores_it(http, db_session, redis_client, monkeypatch):
@@ -271,7 +276,8 @@ async def test_upload_decodes_base64_and_stores_it(http, db_session, redis_clien
     result = resp.json()["result"]
     assert result["isError"] is False, result
     assert captured["blob"] == png
-    assert result["structuredContent"]["mime_type"] == "image/png"
+    assert "structuredContent" not in result
+    assert 'as "part.png"' in result["content"][0]["text"]
 
 
 async def test_upload_rejects_invalid_base64_as_a_tool_error(http, db_session, redis_client):

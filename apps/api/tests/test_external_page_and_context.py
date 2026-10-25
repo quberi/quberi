@@ -746,6 +746,12 @@ def test_the_document_text_is_framed_as_data_with_the_passage_marked():
     assert text.index("BEFORE TEXT") < text.index("MIDDLE WORDS") < text.index("AFTER TEXT")
     assert "version 1 (older, replaced by version 3)" in text
     assert "characters 10-60 of 900" in text
+    # The surroundings can be cited by document and version only (they have no recorded page);
+    # the passage keeps the "Cite as" line its search result gave it, and no place is invented.
+    cite = "Cite the surroundings as: handbook.md, version 1 (older, replaced by version 3)."
+    assert cite in text
+    assert 'keep the "Cite as" line the search result gave it' in text
+    assert "page" not in text.split("----- BEFORE")[0].split("Cite the surroundings as:")[1]
 
 
 def test_the_mcp_tool_list_offers_read_around_to_a_reading_grant():

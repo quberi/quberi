@@ -263,36 +263,34 @@ async def _tools_call(
     session: AsyncSession,
     infra: Infrastructure,
 ) -> dict:
-    """Dispatch a known tool name (``mcp_post`` already validated it exists)."""
+    """Dispatch a known tool name (``mcp_post`` already validated it exists).
+
+    Every result is text (and, for ``get_document_image``, an image block); none carries
+    ``structuredContent``. Some clients (Codex, VS Code) hand the model only the structured part
+    when there is one and drop ``content[]``, which loses what the text says: the "Cite as"
+    lines, the ready-made calls for the next tool and the notes on how to use the result. The
+    JSON the REST external API returns is unchanged; MCP clients get what the text says.
+    """
 
     try:
         if name == "search":
             payload = SearchRequest.model_validate(arguments)
             result = await adapters.do_search(payload, request, ext, session, infra)
-            return protocol.tool_result(
-                formatting.format_search_result(payload.query, result),
-                result.model_dump(mode="json"),
-            )
+            return protocol.tool_result(formatting.format_search_result(payload.query, result))
         if name == "read_around":
             around = ReadAroundRequest.model_validate(arguments)
             read = await adapters.do_read_around(around, ext, session, infra)
-            return protocol.tool_result(
-                formatting.format_read_around_result(read), read.model_dump(mode="json")
-            )
+            return protocol.tool_result(formatting.format_read_around_result(read))
         if name == "search_images":
             payload = ImageSearchRequest.model_validate(arguments)
             result = await adapters.do_search_images(payload, request, ext, session, infra)
             return protocol.tool_result(
-                formatting.format_image_search_result(payload.query, result),
-                result.model_dump(mode="json"),
+                formatting.format_image_search_result(payload.query, result)
             )
         if name == "get_document_image":
             wanted = DocumentImageRequest.model_validate(arguments)
             shown = await adapters.do_get_document_image(wanted, request, ext, session, infra)
-            # No structuredContent on purpose. Some clients (Codex, VS Code) hand the model only
-            # the structured part when there is one and drop content[], which loses the image
-            # and the caption. Everything a client needs is in the caption, so the image block
-            # and the text are the whole answer.
+            # The image block and the caption are the whole answer (see the docstring above).
             return protocol.tool_result_blocks(
                 [
                     protocol.image_content(
@@ -303,9 +301,7 @@ async def _tools_call(
             )
         if name == "list_spaces":
             result = await adapters.do_list_spaces(ext, session, infra)
-            return protocol.tool_result(
-                formatting.format_spaces_result(result), result.model_dump(mode="json")
-            )
+            return protocol.tool_result(formatting.format_spaces_result(result))
         if name == "list_documents":
             space = arguments.get("space")
             if not isinstance(space, str) or not space.strip():
@@ -322,15 +318,11 @@ async def _tools_call(
                 cursor=cursor if isinstance(cursor, str) else None,
                 type=doc_type if isinstance(doc_type, str) else None,
             )
-            return protocol.tool_result(
-                formatting.format_documents_result(result), result.model_dump(mode="json")
-            )
+            return protocol.tool_result(formatting.format_documents_result(result))
         if name == "save_note":
             payload = SaveRequest.model_validate(arguments)
             result = await adapters.do_save_note(payload, ext, session, infra)
-            return protocol.tool_result(
-                formatting.format_save_result(result), result.model_dump(mode="json")
-            )
+            return protocol.tool_result(formatting.format_save_result(result))
         if name == "upload":
             return await _call_upload(arguments, ext, session)
     except ValidationError as exc:
@@ -383,9 +375,7 @@ async def _call_upload(arguments: dict, ext: core.ExternalCaller, session: Async
         )
     except adapters.AdapterHTTPError as exc:
         return protocol.tool_result(formatting.format_error(exc), is_error=True)
-    return protocol.tool_result(
-        formatting.format_upload_result(result), result.model_dump(mode="json")
-    )
+    return protocol.tool_result(formatting.format_upload_result(result))
 
 
 def _upload_byte_limit() -> int:

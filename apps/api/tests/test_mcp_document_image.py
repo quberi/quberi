@@ -37,7 +37,11 @@ from tests.test_image_indexing import _doc
 from tests.test_image_indexing import _space as _make_space
 from tests.test_image_search import _grant
 from tests.test_image_search_api import blobs  # noqa: F401
-from tests.test_mcp_permission_isolation import _tokens, qdrant  # noqa: F401
+from tests.test_mcp_permission_isolation import (  # noqa: F401
+    _tokens,
+    fake_embedder,
+    qdrant,
+)
 
 NOT_FOUND_TEXT = (
     "No such document or version that you can read. Take the document_id from a search "
@@ -582,17 +586,44 @@ async def test_the_caption_tells_the_model_to_give_the_link_as_a_link_not_as_a_p
     assert "![" in text  # named only to forbid it
 
 
-async def test_other_tools_still_carry_their_structured_part(http, db_session, redis_client):
+# save_note and upload store a file, which this test has no store for: test_mcp_tools covers both.
+async def test_no_tool_carries_a_structured_part_because_some_clients_would_drop_the_text(
+    http, db_session, redis_client, blobs
+):
     boot = await _org(db_session)
-    tokens = await _reader(db_session, redis_client, boot)
-    resp = await http.post(
-        "/",
-        headers={"Authorization": f"Bearer {tokens.access_token}"},
-        json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": "list_spaces", "arguments": {}},
-        },
+    space, doc = await _stored(db_session, boot, blobs)
+    tokens = await _tokens(
+        db_session,
+        redis_client,
+        boot,
+        scope="knowledge:read knowledge:write knowledge:upload",
+        user_id=boot.user_id,
     )
-    assert "structuredContent" in resp.json()["result"]
+    await db_session.commit()
+    calls = {
+        "list_spaces": {},
+        "list_documents": {"space": space.name},
+        "search": {"query": "anything"},
+        "read_around": {"document_id": str(doc.id), "char_start": 0, "char_end": 1},
+        "search_images": {"query": "anything"},
+        "get_document_image": {"document_id": str(doc.id)},
+    }
+    seen = {}
+    for name, arguments in calls.items():
+        resp = await http.post(
+            "/",
+            headers={"Authorization": f"Bearer {tokens.access_token}"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            },
+        )
+        await db_session.commit()
+        result = resp.json()["result"]
+        seen[name] = result
+        # Success or a plain error, the result is text (and an image for one tool), never JSON.
+        assert "structuredContent" not in result, name
+        assert {b["type"] for b in result["content"]} <= {"text", "image"}, name
+    assert [b["type"] for b in seen["get_document_image"]["content"]] == ["image", "text"]

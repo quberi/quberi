@@ -273,6 +273,12 @@ call reached the model as the caption plus an image, and the picture appeared in
 for VS Code. The caption has what a client needs (name, space, version, page, size, `document_id`, link),
 and the picture is not repeated, so the answer is not doubled in size.
 
+**No MCP tool returns `structuredContent`**, for the same reason: what the text says (the `Cite as:` lines under
+each passage, the exact next call to make, the notes on how to use the result) is lost on a client that prefers
+the structured part. A Codex session record showed `search`, `search_images` and `list_documents` arriving as
+bare JSON, with no `Cite as:` line at all, while the tool description told the model to copy one. The REST
+external API still returns JSON; only the MCP results are text.
+
 The image is kept to about 200 KB (quality is lowered first, then the width, never below 256 px), so it is
 a reading copy, not the original; the original is only reachable through the link. Pictures are shown at the
 width asked for and are never enlarged. Word, slides, sheets and text files have no page to draw: the tool
